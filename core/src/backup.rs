@@ -122,6 +122,20 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // The task archive date arrived in schema version 9.
+    if version >= 9 {
+        let bad_archive_dates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks
+                 WHERE archived_date IS NOT NULL AND date(archived_date) IS NOT archived_date",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_archive_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

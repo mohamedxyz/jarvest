@@ -13,6 +13,7 @@ mod model;
 mod quickadd;
 mod reminders;
 mod rewards;
+mod search;
 mod stats;
 mod tasks;
 
@@ -197,6 +198,73 @@ impl GoalCore {
 
     pub fn delete_task_item(&self, item_id: String) -> Result<(), CoreError> {
         tasks::delete_item(&self.conn(), &item_id)
+    }
+
+    // Task power: archive, bulk edit, tags, custom repeat, search
+
+    /// Hides a task in the archive. Not allowed for a milestone's task.
+    pub fn archive_task(&self, task_id: String, today: String) -> Result<(), CoreError> {
+        tasks::archive_task(&self.conn(), &task_id, &today)
+    }
+
+    pub fn unarchive_task(&self, task_id: String) -> Result<(), CoreError> {
+        tasks::unarchive_task(&self.conn(), &task_id)
+    }
+
+    pub fn list_archived_tasks(&self, today: String) -> Result<Vec<Task>, CoreError> {
+        tasks::list_archived(&self.conn(), &today)
+    }
+
+    /// Moves finished archived tasks to the trash. Returns how many.
+    pub fn trash_archived_done(&self, today: String) -> Result<u32, CoreError> {
+        tasks::trash_archived_done(&self.conn(), &today)
+    }
+
+    /// Archives tasks finished `after_days` or more days ago. Call it on app open.
+    pub fn auto_archive_tasks(&self, after_days: u32, today: String) -> Result<u32, CoreError> {
+        tasks::auto_archive(&self.conn(), after_days, &today)
+    }
+
+    pub fn delete_task_forever(&self, task_id: String) -> Result<(), CoreError> {
+        tasks::delete_task_forever(&self.conn(), &task_id)
+    }
+
+    pub fn empty_task_trash(&self) -> Result<u32, CoreError> {
+        tasks::empty_trash(&self.conn())
+    }
+
+    /// Applies one change to many tasks (finish, archive, trash, due, priority, tag, goal).
+    pub fn bulk_update_tasks(
+        &self,
+        ids: Vec<String>,
+        edit: BulkEdit,
+        today: String,
+    ) -> Result<BulkResult, CoreError> {
+        tasks::bulk_update(&mut self.conn(), &ids, edit, &today)
+    }
+
+    pub fn list_tags(&self) -> Result<Vec<TagCount>, CoreError> {
+        tasks::list_tags(&self.conn())
+    }
+
+    /// Sets "every N" and the weekdays of a task's repeat. Choose the repeat itself with `update_task`.
+    pub fn set_task_repeat_rule(
+        &self,
+        task_id: String,
+        every: u32,
+        days: Option<u8>,
+    ) -> Result<(), CoreError> {
+        tasks::set_repeat_rule(&self.conn(), &task_id, every, days)
+    }
+
+    /// Replaces the checklist with one step per line.
+    pub fn replace_task_items(&self, task_id: String, lines: Vec<String>) -> Result<(), CoreError> {
+        tasks::replace_items(&mut self.conn(), &task_id, &lines)
+    }
+
+    /// Looks through tasks (title, notes, tag, checklist) and goals. At most 30 of each.
+    pub fn search(&self, query: String, today: String) -> Result<SearchResults, CoreError> {
+        search::search(&self.conn(), &query, &today)
     }
 
     // Logging

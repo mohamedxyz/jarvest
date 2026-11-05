@@ -2507,3 +2507,451 @@ fn the_daily_summary_counts_tasks_and_calls_out_late_ones() {
         None
     );
 }
+
+// Task power: archive, bulk edit, tags, custom repeat, search, trash details
+
+fn open_tasks(core: &GoalCore) -> Vec<String> {
+    task_titles(core, TaskFilter::All, TaskSort::Newest)
+}
+
+#[test]
+fn archived_tasks_leave_the_lists_and_come_back() {
+    let (core, _dir) = core();
+    let id = add_task(&core, new_task("Old"));
+    add_task(&core, new_task("Keep"));
+    core.archive_task(id.clone(), DAY.into()).unwrap();
+    assert_eq!(open_tasks(&core), ["Keep"]);
+    let archived = core.list_archived_tasks(DAY.into()).unwrap();
+    assert_eq!(archived.len(), 1);
+    assert_eq!(archived[0].archived_date.as_deref(), Some(DAY));
+    core.unarchive_task(id).unwrap();
+    assert_eq!(open_tasks(&core).len(), 2);
+    assert!(core.list_archived_tasks(DAY.into()).unwrap().is_empty());
+}
+
+#[test]
+fn archived_tasks_do_not_count_in_the_daily_summary() {
+    let (core, _dir) = core();
+    let id = add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            ..new_task("Hidden")
+        },
+    );
+    core.archive_task(id, DAY.into()).unwrap();
+    assert_eq!(core.reminder_text(None, DAY.into()).unwrap(), None);
+}
+
+#[test]
+fn milestone_tasks_cannot_be_archived_trashed_moved_or_repeated() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    let task = milestone_task(&core, &goal, "Outline");
+    assert!(core.archive_task(task.id.clone(), DAY.into()).is_err());
+    assert!(core.delete_task(task.id.clone(), DAY.into()).is_err());
+    assert!(core.set_task_repeat_rule(task.id.clone(), 2, None).is_err());
+    // Bulk edits skip it and say so, but still change the ordinary task.
+    let plain = add_task(&core, new_task("Plain"));
+    let edit = BulkEdit {
+        archive: true,
+        ..BulkEdit::default()
+    };
+    let result = core
+        .bulk_update_tasks(vec![task.id.clone(), plain], edit, DAY.into())
+        .unwrap();
+    assert_eq!((result.changed, result.skipped_milestones), (1, 1));
+    assert_eq!(core.list_archived_tasks(DAY.into()).unwrap().len(), 1);
+    assert_eq!(milestone_task(&core, &goal, "Outline").archived_date, None);
+}
+
+#[test]
+fn auto_archive_takes_old_finished_tasks_only() {
+    let (core, _dir) = core();
+    let old = add_task(&core, new_task("Old done"));
+    let fresh = add_task(&core, new_task("Fresh done"));
+    add_task(&core, new_task("Open"));
+    let goal = goal_with_milestones(&core, &["Step"]);
+    let step = milestone_task(&core, &goal, "Step");
+    core.toggle_task(old.clone(), "2026-10-01".into()).unwrap();
+    core.toggle_task(fresh, DAY.into()).unwrap();
+    core.toggle_task(step.id.clone(), "2026-10-01".into())
+        .unwrap();
+    assert_eq!(core.auto_archive_tasks(7, DAY.into()).unwrap(), 1);
+    let archived = core.list_archived_tasks(DAY.into()).unwrap();
+    assert_eq!(archived[0].id, old);
+    // 0 days means every finished task, but a milestone's task is never archived.
+    assert_eq!(core.auto_archive_tasks(0, DAY.into()).unwrap(), 1);
+    assert_eq!(milestone_task(&core, &goal, "Step").archived_date, None);
+}
+
+#[test]
+fn archive_screen_can_trash_finished_tasks() {
+    let (core, _dir) = core();
+    let done = add_task(&core, new_task("Done"));
+    let open = add_task(&core, new_task("Open"));
+    core.toggle_task(done, DAY.into()).unwrap();
+    let all = core
+        .list_tasks(TaskFilter::All, TaskSort::Due, DAY.into())
+        .unwrap();
+    for task in all {
+        core.archive_task(task.id, DAY.into()).unwrap();
+    }
+    assert_eq!(core.trash_archived_done(DAY.into()).unwrap(), 1);
+    let left = core.list_archived_tasks(DAY.into()).unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].id, open);
+    assert_eq!(core.list_trash(DAY.into()).unwrap().len(), 1);
+}
+
+#[test]
+fn bulk_edit_changes_many_tasks_and_counts_pushes() {
+    let (core, _dir) = core();
+    let a = add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-06".into()),
+            ..new_task("A")
+        },
+    );
+    let b = add_task(&core, new_task("B"));
+    let edit = BulkEdit {
+        change_due: true,
+        due: Some("2026-11-10".into()),
+        priority: Some(Priority::High),
+        change_tag: true,
+        tag: Some("#uni".into()),
+        ..BulkEdit::default()
+    };
+    let result = core
+        .bulk_update_tasks(vec![a.clone(), b.clone()], edit, DAY.into())
+        .unwrap();
+    assert_eq!(result.changed, 2);
+    let task_a = core.get_task(a, DAY.into()).unwrap();
+    assert_eq!(task_a.due.as_deref(), Some("2026-11-10"));
+    assert_eq!(task_a.priority, Priority::High);
+    assert_eq!(task_a.tag.as_deref(), Some("uni"));
+    // A had a date that moved later (pushed once). B had none, so it was not "pushed".
+    assert_eq!(task_a.pushed_count, 1);
+    assert_eq!(core.get_task(b, DAY.into()).unwrap().pushed_count, 0);
+}
+
+#[test]
+fn bulk_edit_rejects_bad_input() {
+    let (core, _dir) = core();
+    let a = add_task(&core, new_task("A"));
+    let edit = BulkEdit {
+        change_due: true,
+        due: Some("soon".into()),
+        ..BulkEdit::default()
+    };
+    assert!(
+        core.bulk_update_tasks(vec![a.clone()], edit, DAY.into())
+            .is_err()
+    );
+    let edit = BulkEdit {
+        change_goal: true,
+        goal_id: Some("missing".into()),
+        ..BulkEdit::default()
+    };
+    assert!(core.bulk_update_tasks(vec![a], edit, DAY.into()).is_err());
+}
+
+#[test]
+fn bulk_done_and_trash_can_be_undone_by_restoring() {
+    let (core, _dir) = core();
+    let a = add_task(&core, new_task("A"));
+    let b = add_task(&core, new_task("B"));
+    let ids = vec![a.clone(), b.clone()];
+    let done = BulkEdit {
+        done: true,
+        ..BulkEdit::default()
+    };
+    let result = core
+        .bulk_update_tasks(ids.clone(), done, DAY.into())
+        .unwrap();
+    assert_eq!(result.changed, 2);
+    assert!(core.get_task(a.clone(), DAY.into()).unwrap().done);
+    let trash = BulkEdit {
+        trash: true,
+        ..BulkEdit::default()
+    };
+    core.bulk_update_tasks(ids, trash, DAY.into()).unwrap();
+    assert!(open_tasks(&core).is_empty());
+    assert_eq!(core.list_trash(DAY.into()).unwrap().len(), 2);
+    core.restore_task(a).unwrap();
+    core.restore_task(b).unwrap();
+    assert_eq!(open_tasks(&core).len(), 2);
+}
+
+#[test]
+fn bulk_done_on_a_milestone_task_ticks_the_milestone() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    let task = milestone_task(&core, &goal, "Outline");
+    let done = BulkEdit {
+        done: true,
+        ..BulkEdit::default()
+    };
+    let result = core
+        .bulk_update_tasks(vec![task.id.clone()], done, DAY.into())
+        .unwrap();
+    assert_eq!(result.changed, 1);
+    assert!(milestone_task(&core, &goal, "Outline").done);
+}
+
+#[test]
+fn trash_can_delete_forever_and_be_emptied() {
+    let (core, _dir) = core();
+    let a = add_task(&core, new_task("A"));
+    let b = add_task(&core, new_task("B"));
+    let live = add_task(&core, new_task("Live"));
+    core.delete_task(a.clone(), DAY.into()).unwrap();
+    core.delete_task(b, DAY.into()).unwrap();
+    let trashed = core.list_trash(DAY.into()).unwrap();
+    assert_eq!(trashed[0].deleted_date.as_deref(), Some(DAY));
+    core.delete_task_forever(a).unwrap();
+    assert_eq!(core.list_trash(DAY.into()).unwrap().len(), 1);
+    // Only trashed tasks can be deleted forever.
+    assert!(core.delete_task_forever(live).is_err());
+    assert_eq!(core.empty_task_trash().unwrap(), 1);
+    assert_eq!(open_tasks(&core), ["Live"]);
+}
+
+#[test]
+fn tags_are_listed_with_counts_and_ignore_case() {
+    let (core, _dir) = core();
+    for (title, tag) in [("1", "Uni"), ("2", "uni"), ("3", "home")] {
+        add_task(
+            &core,
+            NewTask {
+                tag: Some(tag.into()),
+                ..new_task(title)
+            },
+        );
+    }
+    let hidden = add_task(
+        &core,
+        NewTask {
+            tag: Some("gone".into()),
+            ..new_task("4")
+        },
+    );
+    core.delete_task(hidden, DAY.into()).unwrap();
+    let tags = core.list_tags().unwrap();
+    let names: Vec<_> = tags
+        .iter()
+        .map(|t| (t.tag.to_lowercase(), t.open))
+        .collect();
+    assert_eq!(names, [("home".to_string(), 1), ("uni".to_string(), 2)]);
+}
+
+#[test]
+fn custom_repeat_every_n_weeks_on_weekdays() {
+    let (core, _dir) = core();
+    let id = add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            repeat: Some(Repeat::Weekly),
+            ..new_task("Gym")
+        },
+    );
+    // Monday + Thursday, every 2 weeks.
+    core.set_task_repeat_rule(id.clone(), 2, Some(1 | 8))
+        .unwrap();
+    let task = core.get_task(id.clone(), DAY.into()).unwrap();
+    assert_eq!((task.repeat_every, task.repeat_days), (2, Some(9)));
+    let result = core.toggle_task(id, DAY.into()).unwrap();
+    assert_eq!(result.next_due.as_deref(), Some("2026-11-16"));
+    // The copy keeps the rule.
+    let copy = core
+        .list_tasks(TaskFilter::All, TaskSort::Due, DAY.into())
+        .unwrap()
+        .into_iter()
+        .find(|t| !t.done)
+        .unwrap();
+    assert_eq!((copy.repeat_every, copy.repeat_days), (2, Some(9)));
+}
+
+#[test]
+fn repeat_rule_is_validated_and_cleared_with_the_repeat() {
+    let (core, _dir) = core();
+    let plain = add_task(&core, new_task("No repeat"));
+    assert!(core.set_task_repeat_rule(plain, 2, None).is_err());
+    let daily = add_task(
+        &core,
+        NewTask {
+            repeat: Some(Repeat::Daily),
+            ..new_task("Daily")
+        },
+    );
+    assert!(core.set_task_repeat_rule(daily.clone(), 0, None).is_err());
+    assert!(core.set_task_repeat_rule(daily.clone(), 366, None).is_err());
+    assert!(
+        core.set_task_repeat_rule(daily.clone(), 3, Some(1))
+            .is_err()
+    );
+    core.set_task_repeat_rule(daily.clone(), 3, None).unwrap();
+    // Removing the repeat resets the rule.
+    let task = core.get_task(daily.clone(), DAY.into()).unwrap();
+    core.update_task(
+        daily.clone(),
+        TaskEdit {
+            repeat: None,
+            ..edit_of(&task)
+        },
+    )
+    .unwrap();
+    assert_eq!(core.get_task(daily, DAY.into()).unwrap().repeat_every, 1);
+}
+
+#[test]
+fn editing_the_due_date_later_counts_a_push_back() {
+    let (core, _dir) = core();
+    let id = add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-06".into()),
+            ..new_task("Essay")
+        },
+    );
+    let task = core.get_task(id.clone(), DAY.into()).unwrap();
+    for due in ["2026-11-08", "2026-11-07", "2026-11-12"] {
+        core.update_task(
+            id.clone(),
+            TaskEdit {
+                due: Some(due.into()),
+                ..edit_of(&task)
+            },
+        )
+        .unwrap();
+    }
+    // 06 -> 08 (later), 08 -> 07 (earlier), 07 -> 12 (later).
+    assert_eq!(core.get_task(id, DAY.into()).unwrap().pushed_count, 2);
+}
+
+#[test]
+fn checklist_can_be_replaced_from_text_and_keeps_ticks() {
+    let (core, _dir) = core();
+    let id = add_task(
+        &core,
+        NewTask {
+            items: vec!["One".into(), "Two".into()],
+            ..new_task("List")
+        },
+    );
+    let first = core.list_task_items(id.clone()).unwrap()[0].id.clone();
+    core.toggle_task_item(first).unwrap();
+    core.replace_task_items(id.clone(), vec!["One".into(), "".into(), "Three".into()])
+        .unwrap();
+    let items = core.list_task_items(id).unwrap();
+    let shown: Vec<_> = items.iter().map(|i| (i.text.as_str(), i.done)).collect();
+    assert_eq!(shown, [("One", true), ("Three", false)]);
+}
+
+#[test]
+fn search_finds_tasks_by_every_field_and_goals_and_marks_archived() {
+    let (core, _dir) = core();
+    add_task(&core, new_task("Write essay"));
+    add_task(
+        &core,
+        NewTask {
+            notes: "ask the tutor".into(),
+            ..new_task("Email")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            tag: Some("tutoring".into()),
+            ..new_task("Prep")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            items: vec!["call tutor".into()],
+            ..new_task("Admin")
+        },
+    );
+    let old = add_task(&core, new_task("Tutor invoice"));
+    core.archive_task(old, DAY.into()).unwrap();
+    let trashed = add_task(&core, new_task("Tutor secret"));
+    core.delete_task(trashed, DAY.into()).unwrap();
+    yes_no(&core, "Tutor session");
+
+    let found = core.search("tutor".into(), DAY.into()).unwrap();
+    assert_eq!(found.tasks.len(), 4);
+    assert_eq!(found.goals.len(), 1);
+    // Open tasks come before archived ones, and trashed ones never show.
+    assert!(found.tasks.last().unwrap().archived_date.is_some());
+    assert!(found.tasks.iter().all(|t| t.title != "Tutor secret"));
+    assert!(
+        core.search("  ".into(), DAY.into())
+            .unwrap()
+            .tasks
+            .is_empty()
+    );
+    // % is a plain character, not a wildcard.
+    assert!(
+        core.search("%".into(), DAY.into())
+            .unwrap()
+            .tasks
+            .is_empty()
+    );
+}
+
+#[test]
+fn search_is_capped_at_thirty_results() {
+    let (core, _dir) = core();
+    for n in 0..40 {
+        add_task(&core, new_task(&format!("Match {n}")));
+    }
+    let found = core.search("match".into(), DAY.into()).unwrap();
+    assert_eq!(found.tasks.len(), 30);
+}
+
+#[test]
+fn upgrading_from_schema_8_adds_the_archive_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v8.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        // The version just before the archive migration.
+        db::migrate_to(&mut conn, 8).unwrap();
+        conn.execute_batch(
+            "INSERT INTO tasks (id, title, created_date, repeat, done_date)
+             VALUES ('t1', 'Old', '2026-01-01', 'weekly', '2026-01-02');",
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    let task = core.get_task("t1".into(), DAY.into()).unwrap();
+    assert_eq!(
+        (
+            task.archived_date,
+            task.pushed_count,
+            task.repeat_every,
+            task.repeat_days
+        ),
+        (None, 0, 1, None)
+    );
+    core.archive_task("t1".into(), DAY.into()).unwrap();
+    assert_eq!(core.list_archived_tasks(DAY.into()).unwrap().len(), 1);
+}
+
+#[test]
+fn rejects_backups_with_invalid_archive_dates() {
+    let (core, dir) = core();
+    let id = add_task(&core, new_task("A"));
+    core.archive_task(id, DAY.into()).unwrap();
+    let path = dir.path().join("bad.sqlite").to_str().unwrap().to_string();
+    core.export_backup(path.clone()).unwrap();
+    let conn = Connection::open(&path).unwrap();
+    conn.execute("UPDATE tasks SET archived_date = 'whenever'", [])
+        .unwrap();
+    drop(conn);
+    assert_invalid_backup(core.restore_backup(path), "invalid dates");
+    assert_eq!(core.list_archived_tasks(DAY.into()).unwrap().len(), 1);
+}
