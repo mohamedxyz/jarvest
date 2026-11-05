@@ -25,6 +25,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.time.temporal.ChronoUnit
 
 /**
  * Reminder alarms. The times live in the Rust core, so backups keep them. Alarms are
@@ -36,6 +37,8 @@ object Reminders {
     private const val KEY_DAILY = "daily"
     private const val PREFS = "reminders"
     private const val SCHEDULED = "scheduled"
+    private const val KEY_STALE = "stale_backup"
+    private const val STALE_DAYS = 7L
 
     fun formatMinutes(minutes: Int): String =
         LocalTime.of(minutes / 60, minutes % 60).format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT))
@@ -59,6 +62,46 @@ object Reminders {
             // Alarms are rebuilt on the next change or app start.
         }
         prefs.edit().putStringSet(SCHEDULED, keys).apply()
+        // The stale-backup alarm isn't in the list above, so it is handled on its own.
+        val last = context.getSharedPreferences("ui", Context.MODE_PRIVATE).getString("last_backup", null)
+        updateStaleBackupAlarm(context, last, todayString())
+    }
+
+    /**
+     * One gentle nudge at 12:00 tomorrow when the last backup is over a week old (or
+     * there never was one). A fresh backup cancels it. The alarm is always the same one,
+     * so calling this again never stacks extra alarms.
+     */
+    fun updateStaleBackupAlarm(context: Context, lastBackup: String?, today: String) {
+        // Someone who has never made a backup is nudged by the banner in the app instead.
+        val days = lastBackup?.let { ChronoUnit.DAYS.between(LocalDate.parse(it), LocalDate.parse(today)) }
+        if (days == null || days <= STALE_DAYS) {
+            cancel(context, KEY_STALE)
+            return
+        }
+        val noonTomorrow = LocalDate.parse(today).plusDays(1).atTime(12, 0)
+        val millis = noonTomorrow.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        context.getSystemService(AlarmManager::class.java)
+            .setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent(context, KEY_STALE))
+    }
+
+    /** Called by the stale-backup alarm. Checks the date again, because a backup may have happened since. */
+    private fun fireStaleBackup(context: Context) {
+        val last = context.getSharedPreferences("ui", Context.MODE_PRIVATE).getString("last_backup", null)
+        val days = last?.let { ChronoUnit.DAYS.between(LocalDate.parse(it), LocalDate.now()) }
+        if (days == null || days <= STALE_DAYS) return
+        val text = "Your last backup was $days days ago. Save a new one in Settings."
+        if (canNotify(context)) notify(context, KEY_STALE, text)
+        // Ask again in a week if nothing changes, so the nudge stays gentle.
+        val again = LocalDate.now().plusDays(STALE_DAYS).atTime(12, 0)
+            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        context.getSystemService(AlarmManager::class.java)
+            .setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, again, pendingIntent(context, KEY_STALE))
+    }
+
+    /** Shows a notification that the automatic backup failed. */
+    fun notifyBackupFailed(context: Context, reason: String) {
+        if (canNotify(context)) notify(context, "backup_failed", "Automatic backup failed: $reason")
     }
 
     private fun pendingIntent(context: Context, key: String): PendingIntent {
@@ -91,6 +134,7 @@ object Reminders {
 
     /** Called by the alarm. Posts a notification if something is due, then sets tomorrow's alarm. */
     fun fire(context: Context, key: String) {
+        if (key == KEY_STALE) return fireStaleBackup(context)
         val app = context.applicationContext as GoalTrackerApp
         try {
             val goalId = key.takeIf { it != KEY_DAILY }

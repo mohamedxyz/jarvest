@@ -42,19 +42,45 @@ class AppController(private val app: GoalTrackerApp) {
 
     private val prefs = app.getSharedPreferences("ui", Context.MODE_PRIVATE)
 
-    var themeMode by mutableStateOf(readEnum("theme", ThemeMode.SYSTEM))
+    // Theme and accent live in the database (the `meta` table), so a restored backup
+    // brings the look back too. Older versions kept them in SharedPreferences, so a value
+    // found there is copied into the database once.
+    var themeMode by mutableStateOf(loadLook("theme", ThemeMode.SYSTEM))
         private set
-    var accent by mutableStateOf(readEnum("accent", Accent.BLUE))
+    var accent by mutableStateOf(loadLook("accent", Accent.BLUE))
         private set
+
+    private inline fun <reified E : Enum<E>> loadLook(key: String, default: E): E {
+        val stored = try {
+            core.getPref(key) ?: prefs.getString(key, null)?.also { core.setPref(key, it) }
+        } catch (_: CoreException) {
+            null
+        }
+        return enumValues<E>().firstOrNull { it.name == stored } ?: default
+    }
+
+    /** Re-reads the look after a restore replaced the database. */
+    private fun reloadLook() {
+        themeMode = loadLook("theme", ThemeMode.SYSTEM)
+        accent = loadLook("accent", Accent.BLUE)
+    }
 
     fun chooseTheme(mode: ThemeMode) {
         themeMode = mode
-        prefs.edit().putString("theme", mode.name).apply()
+        try {
+            core.setPref("theme", mode.name)
+        } catch (e: CoreException) {
+            message = e.userMessage()
+        }
     }
 
     fun chooseAccent(choice: Accent) {
         accent = choice
-        prefs.edit().putString("accent", choice.name).apply()
+        try {
+            core.setPref("accent", choice.name)
+        } catch (e: CoreException) {
+            message = e.userMessage()
+        }
     }
 
     /** Tip cards the user has closed. Kept on the phone only, so backups don't carry it. */
@@ -120,6 +146,13 @@ class AppController(private val app: GoalTrackerApp) {
     fun markBackup() {
         lastBackup = today
         prefs.edit().putString("last_backup", today).apply()
+        Reminders.updateStaleBackupAlarm(app, today, today)
+    }
+
+    /** Picks up a backup the automatic worker made while the app was closed. */
+    fun reloadBackupDate() {
+        lastBackup = prefs.getString("last_backup", null)
+        Reminders.updateStaleBackupAlarm(app, lastBackup, today)
     }
 
     fun snoozeBackup(urgent: Boolean) {
@@ -244,6 +277,8 @@ class AppController(private val app: GoalTrackerApp) {
     fun refresh() {
         // Edits can add, move, or remove reminders, so the alarms are rebuilt each time.
         Reminders.rescheduleAll(app)
+        reloadLook()
+        reloadBackupDate()
         version++
         loadPendingDraw()
         app.refreshWidgets()

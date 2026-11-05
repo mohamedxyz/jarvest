@@ -44,9 +44,39 @@ fn schema_of(conn: &Connection) -> Result<BTreeSet<SchemaObject>, CoreError> {
     Ok(schema)
 }
 
+/// Looks at the first bytes of the file to give a clear message for the most common
+/// problems (empty, not SQLite, or cut short) before SQLite itself is asked.
+fn check_file_shape(path: &str) -> Result<(), CoreError> {
+    use std::io::Read;
+    let mut file = fs::File::open(path).map_err(io_error)?;
+    let size = file.metadata().map_err(io_error)?.len();
+    if size == 0 {
+        return Err(bad("the file is empty"));
+    }
+    let mut header = [0u8; 100];
+    if file.read_exact(&mut header).is_err() || &header[..16] != b"SQLite format 3\0" {
+        return Err(bad("this isn't a backup file"));
+    }
+    // Bytes 16-17 hold the page size (1 means 65536). Bytes 28-31 hold the page count.
+    let raw_page_size = u16::from_be_bytes([header[16], header[17]]) as u64;
+    let page_size = if raw_page_size == 1 {
+        65536
+    } else {
+        raw_page_size
+    };
+    let pages = u32::from_be_bytes([header[28], header[29], header[30], header[31]]) as u64;
+    if pages > 0 && size < page_size * pages {
+        return Err(bad(
+            "the file is cut short, so the copy or download probably didn't finish",
+        ));
+    }
+    Ok(())
+}
+
 /// Checks a file without changing it. Comparing the full schema with the one this
 /// app would create rejects triggers, views, and altered tables.
 pub fn validate(path: &str) -> Result<(), CoreError> {
+    check_file_shape(path)?;
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
     let conn =
         Connection::open_with_flags(path, flags).map_err(|_| bad("this isn't a backup file"))?;
@@ -64,7 +94,9 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(not_backup)?;
     if version > SCHEMA_VERSION {
-        return Err(bad("it was made by a newer version of the app"));
+        return Err(bad(
+            "it was made by a newer version of the app, so update Jarvest and try again",
+        ));
     }
     if version < 1 {
         return Err(bad("this isn't a Goal Tracker backup"));
@@ -145,6 +177,18 @@ pub fn restore(
     db_path: &str,
     backup_path: &str,
 ) -> (Connection, Result<(), CoreError>) {
+    restore_with(conn, db_path, backup_path, || Ok(()))
+}
+
+/// Same as `restore`, plus `after_swap`, which runs once the new file is in place.
+/// If it fails, the old data comes back from the safety copy. Tests use it to force
+/// that failure, because nothing else fails there in practice.
+pub fn restore_with(
+    conn: Connection,
+    db_path: &str,
+    backup_path: &str,
+    after_swap: impl FnOnce() -> Result<(), CoreError>,
+) -> (Connection, Result<(), CoreError>) {
     let staged = format!("{db_path}.restore");
     let safety = format!("{db_path}.before-restore");
 
@@ -173,12 +217,15 @@ pub fn restore(
         remove_if_exists(&format!("{db_path}-wal"))?;
         remove_if_exists(&format!("{db_path}-shm"))?;
         fs::rename(&staged, db_path).map_err(io_error)?;
+        after_swap()?;
         db::open(db_path)
     })();
     match swapped {
         Ok(conn) => (conn, Ok(())),
         Err(e) => {
             // Put the safety copy back so the app keeps working with its old data.
+            let _ = remove_if_exists(&format!("{db_path}-wal"));
+            let _ = remove_if_exists(&format!("{db_path}-shm"));
             let _ = fs::copy(&safety, db_path);
             let conn = db::open(db_path)
                 .or_else(|_| Connection::open_in_memory().map_err(CoreError::from));
@@ -188,4 +235,98 @@ pub fn restore(
             }
         }
     }
+}
+
+/// A quick count of what a database holds. Used to compare a backup with the current data.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BackupPreview {
+    pub goals: u32,
+    pub tasks: u32,
+    pub entries: u32,
+    pub treats: u32,
+    /// Date of the newest log, as YYYY-MM-DD.
+    pub newest_entry: Option<String>,
+    pub schema_version: u32,
+}
+
+fn count(conn: &Connection, sql: &str) -> Result<u32, CoreError> {
+    Ok(conn.query_row(sql, [], |r| r.get(0))?)
+}
+
+/// Counts the rows of an open database. Tasks only exist from schema version 6.
+pub fn summarize(conn: &Connection) -> Result<BackupPreview, CoreError> {
+    let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    let tasks = if version >= 6 {
+        count(
+            conn,
+            "SELECT COUNT(*) FROM tasks WHERE deleted_date IS NULL",
+        )?
+    } else {
+        0
+    };
+    Ok(BackupPreview {
+        goals: count(conn, "SELECT COUNT(*) FROM goals")?,
+        tasks,
+        entries: count(conn, "SELECT COUNT(*) FROM entries")?,
+        treats: count(conn, "SELECT COUNT(*) FROM treats")?,
+        newest_entry: conn.query_row("SELECT MAX(local_date) FROM entries", [], |r| r.get(0))?,
+        schema_version: version as u32,
+    })
+}
+
+/// Validates a backup on a private copy and reports what is inside. The original
+/// file and the live data are never touched.
+pub fn preview(db_path: &str, backup_path: &str) -> Result<BackupPreview, CoreError> {
+    let copy = format!("{db_path}.preview");
+    remove_with_sidecars(&copy)?;
+    let result = (|| {
+        fs::copy(backup_path, &copy).map_err(io_error)?;
+        validate(&copy)?;
+        let flags = OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        let conn = Connection::open_with_flags(&copy, flags)?;
+        conn.execute_batch("PRAGMA trusted_schema = OFF;")?;
+        summarize(&conn)
+    })();
+    let _ = remove_with_sidecars(&copy);
+    result
+}
+
+/// Preferences that travel with backups (theme and accent). Only these keys are
+/// allowed, so the screens can't write arbitrary rows into `meta`.
+const PREF_KEYS: [&str; 2] = ["theme", "accent"];
+
+fn pref_key(key: &str) -> Result<String, CoreError> {
+    if PREF_KEYS.contains(&key) {
+        Ok(format!("pref_{key}"))
+    } else {
+        Err(CoreError::Invalid {
+            reason: "unknown setting".into(),
+        })
+    }
+}
+
+pub fn get_pref(conn: &Connection, key: &str) -> Result<Option<String>, CoreError> {
+    let key = pref_key(key)?;
+    match conn.query_row("SELECT value FROM meta WHERE key = ?1", params![key], |r| {
+        r.get(0)
+    }) {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub fn set_pref(conn: &Connection, key: &str, value: &str) -> Result<(), CoreError> {
+    let key = pref_key(key)?;
+    if value.len() > 32 {
+        return Err(CoreError::Invalid {
+            reason: "that setting value is too long".into(),
+        });
+    }
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+    Ok(())
 }

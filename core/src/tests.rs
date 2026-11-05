@@ -2507,3 +2507,109 @@ fn the_daily_summary_counts_tasks_and_calls_out_late_ones() {
         None
     );
 }
+
+#[test]
+fn failure_after_the_swap_rolls_back_to_the_safety_copy() {
+    let fixture = Fixture::new();
+    let backup_path = fixture.backup();
+    yes_no(&fixture.core, "Made after the backup");
+    let db_path = fixture.path("goals.db");
+
+    // Take the connection out of the core, as restore_backup does.
+    let current = {
+        let mut guard = fixture.core.conn();
+        std::mem::replace(&mut *guard, Connection::open_in_memory().unwrap())
+    };
+    let (conn, result) = crate::backup::restore_with(current, &db_path, &backup_path, || {
+        Err(CoreError::Database {
+            detail: "forced failure".into(),
+        })
+    });
+    assert!(result.is_err());
+    *fixture.core.conn() = conn;
+
+    // Both goals are still there, so the pre-restore data came back.
+    assert_eq!(fixture.core.list_goals(false).unwrap().len(), 2);
+    drop(fixture.core);
+    let reopened = GoalCore::open(db_path).unwrap();
+    assert_eq!(reopened.list_goals(false).unwrap().len(), 2);
+}
+
+#[test]
+fn preview_counts_a_backup_without_changing_anything() {
+    let fixture = Fixture::new();
+    let path = fixture.backup();
+    yes_no(&fixture.core, "Only now");
+    let preview = fixture.core.preview_backup(path).unwrap();
+    assert_eq!(preview.goals, 1);
+    assert_eq!(preview.entries, 1);
+    assert_eq!(preview.newest_entry.as_deref(), Some(DAY));
+    assert_eq!(preview.schema_version, crate::db::SCHEMA_VERSION as u32);
+    let now = fixture.core.data_summary().unwrap();
+    assert_eq!(now.goals, 2);
+    assert!(!std::path::Path::new(&fixture.path("goals.db.preview")).exists());
+    assert_eq!(fixture.core.list_goals(false).unwrap().len(), 2);
+}
+
+#[test]
+fn preview_rejects_bad_files() {
+    let fixture = Fixture::new();
+    assert!(
+        fixture
+            .core
+            .preview_backup(fixture.path("missing.db"))
+            .is_err()
+    );
+    let junk = fixture.path("junk.db");
+    std::fs::write(&junk, vec![0x42; 8192]).unwrap();
+    assert!(matches!(
+        fixture.core.preview_backup(junk),
+        Err(CoreError::InvalidBackup { .. })
+    ));
+}
+
+#[test]
+fn empty_truncated_and_newer_files_get_clear_messages() {
+    let fixture = Fixture::new();
+    let empty = fixture.path("empty.db");
+    std::fs::write(&empty, b"").unwrap();
+    assert_invalid_backup(fixture.core.restore_backup(empty), "empty");
+
+    let path = fixture.backup();
+    let bytes = std::fs::read(&path).unwrap();
+    let cut = fixture.path("cut.db");
+    std::fs::write(&cut, &bytes[..bytes.len() / 2]).unwrap();
+    assert_invalid_backup(fixture.core.restore_backup(cut), "cut short");
+
+    Connection::open(&path)
+        .unwrap()
+        .pragma_update(None, "user_version", 999)
+        .unwrap();
+    assert_invalid_backup(fixture.core.restore_backup(path), "update Jarvest");
+    fixture.assert_data_unchanged();
+}
+
+#[test]
+fn theme_and_accent_travel_with_a_backup() {
+    let fixture = Fixture::new();
+    assert_eq!(fixture.core.get_pref("theme".into()).unwrap(), None);
+    fixture
+        .core
+        .set_pref("theme".into(), "DARK".into())
+        .unwrap();
+    fixture
+        .core
+        .set_pref("accent".into(), "GREEN".into())
+        .unwrap();
+    let path = fixture.backup();
+    fixture
+        .core
+        .set_pref("theme".into(), "LIGHT".into())
+        .unwrap();
+    fixture.core.restore_backup(path).unwrap();
+    assert_eq!(
+        fixture.core.get_pref("theme".into()).unwrap().as_deref(),
+        Some("DARK")
+    );
+    assert!(fixture.core.set_pref("seed".into(), "x".into()).is_err());
+}

@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::Connection;
 
+pub use backup::BackupPreview;
 pub use model::*;
 
 uniffi::setup_scaffolding!();
@@ -457,6 +458,25 @@ impl GoalCore {
         let (conn, result) = backup::restore(current, &self.db_path, &backup_path);
         *guard = conn;
         result
+    }
+
+    /// Validates a backup file and returns what it holds, without restoring it.
+    pub fn preview_backup(&self, backup_path: String) -> Result<BackupPreview, CoreError> {
+        backup::preview(&self.db_path, &backup_path)
+    }
+
+    /// The same counts for the data on the phone now, for the "Backup vs Now" table.
+    pub fn data_summary(&self) -> Result<BackupPreview, CoreError> {
+        backup::summarize(&self.conn())
+    }
+
+    /// Reads a preference stored in the database ("theme" or "accent"), so backups keep it.
+    pub fn get_pref(&self, key: String) -> Result<Option<String>, CoreError> {
+        backup::get_pref(&self.conn(), &key)
+    }
+
+    pub fn set_pref(&self, key: String, value: String) -> Result<(), CoreError> {
+        backup::set_pref(&self.conn(), &key, &value)
     }
 }
 

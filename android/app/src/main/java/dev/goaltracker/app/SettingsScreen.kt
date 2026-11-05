@@ -21,6 +21,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,7 +50,9 @@ fun SettingsScreen(controller: AppController) {
     var pickingDaily by remember { mutableStateOf(false) }
     val askNotifications = rememberNotificationPermissionRequest(controller)
     var busy by remember { mutableStateOf(false) }
-    var restoreUri by remember { mutableStateOf<Uri?>(null) }
+    var restorePreview by remember { mutableStateOf<RestorePreview?>(null) }
+    // The automatic worker may have saved a backup while the app was closed.
+    LaunchedEffect(Unit) { controller.reloadBackupDate() }
 
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/vnd.sqlite3"),
@@ -77,7 +80,16 @@ fun SettingsScreen(controller: AppController) {
         }
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        restoreUri = uri
+        if (uri != null) {
+            // Read the file first, so the dialog can show what it holds (or why it can't be used).
+            busy = true
+            scope.launch {
+                val result = withContext(Dispatchers.IO) { previewFrom(context, controller.core, uri) }
+                restorePreview = result.preview
+                result.error?.let { controller.message = it }
+                busy = false
+            }
+        }
     }
 
     Column(
@@ -180,6 +192,8 @@ fun SettingsScreen(controller: AppController) {
             }) { Text("Restore from backup") }
         }
 
+        AutoBackupSection(controller)
+
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Export logs")
             Text(
@@ -203,22 +217,20 @@ fun SettingsScreen(controller: AppController) {
             onDismiss = { pickingDaily = false },
         )
     }
-    restoreUri?.let { uri ->
-        ConfirmDialog(
-            title = "Replace all current data?",
-            body = "Everything in the app will be replaced with the contents of this backup. Files that aren't valid backups are rejected without changing anything.",
-            confirm = "Restore",
-            onConfirm = {
-                restoreUri = null
+    restorePreview?.let { preview ->
+        RestorePreviewDialog(
+            preview = preview,
+            onRestore = {
+                restorePreview = null
                 busy = true
                 scope.launch {
-                    val error = withContext(Dispatchers.IO) { restoreFrom(context, controller.core, uri) }
+                    val error = withContext(Dispatchers.IO) { restoreFrom(context, controller.core, preview.uri) }
                     controller.message = error ?: "Backup restored"
                     if (error == null) controller.refresh()
                     busy = false
                 }
             },
-            onDismiss = { restoreUri = null },
+            onDismiss = { restorePreview = null },
         )
     }
 }
