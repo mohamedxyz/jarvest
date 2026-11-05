@@ -2507,3 +2507,152 @@ fn the_daily_summary_counts_tasks_and_calls_out_late_ones() {
         None
     );
 }
+
+// Quit habits, week start, folders
+
+fn quit(core: &GoalCore, created: &str) -> String {
+    core.create_avoid_goal("No sugar".into(), String::new(), None, created.into())
+        .unwrap()
+}
+
+/// Logs (or removes) a slip on `day`.
+fn slip(core: &GoalCore, id: &str, day: &str, today: &str) -> LogResult {
+    core.toggle_check_in_on(id.into(), day.into(), today.into())
+        .unwrap()
+}
+
+#[test]
+fn a_quit_habit_counts_clean_days_and_a_slip_breaks_the_streak() {
+    let (core, _dir) = core();
+    let id = quit(&core, "2026-11-01");
+    let goal = core.get_goal(id.clone()).unwrap();
+    assert!(goal.avoid);
+    assert_eq!(
+        (goal.kind, goal.period),
+        (GoalKind::Habit, Some(Period::Day))
+    );
+    // Clean on 11-01..11-05 (today included): streak 5.
+    let stats = core.goal_stats(id.clone(), DAY.into()).unwrap().unwrap();
+    assert_eq!((stats.current_streak, stats.best_streak), (5, 5));
+    // A slip on 11-03 splits it: 11-04 and 11-05 are clean.
+    slip(&core, &id, "2026-11-03", DAY);
+    let stats = core.goal_stats(id.clone(), DAY.into()).unwrap().unwrap();
+    assert_eq!((stats.current_streak, stats.best_streak), (2, 2));
+    // Slipping today leaves a streak of zero. Undoing the slip restores it.
+    slip(&core, &id, DAY, DAY);
+    let item = core.today(DAY.into()).unwrap().remove(0);
+    assert!(item.avoid && item.logged_today && !item.complete);
+    assert_eq!(item.current_streak, 0);
+    slip(&core, &id, DAY, DAY);
+    let item = core.today(DAY.into()).unwrap().remove(0);
+    assert!(item.complete && item.current_streak == 2);
+}
+
+#[test]
+fn a_quit_habit_created_today_is_clean_and_stays_on_today() {
+    let (core, _dir) = core();
+    let id = quit(&core, DAY);
+    let item = core.today(DAY.into()).unwrap().remove(0);
+    assert!(item.complete && !item.logged_today);
+    assert_eq!(item.current_streak, 1);
+    assert_eq!(core.streak_runs(id, DAY.into()).unwrap().len(), 1);
+}
+
+#[test]
+fn a_skipped_slip_day_keeps_the_quit_streak() {
+    let (core, _dir) = core();
+    let id = quit(&core, "2026-11-01");
+    slip(&core, &id, "2026-11-03", DAY);
+    core.pause_goal(id.clone(), "2026-11-03".into(), "2026-11-03".into())
+        .unwrap();
+    let stats = core.goal_stats(id, DAY.into()).unwrap().unwrap();
+    // 11-01, 11-02, 11-04, 11-05: the skipped day is neither clean nor a break.
+    assert_eq!(stats.current_streak, 4);
+}
+
+#[test]
+fn quit_habits_never_earn_rewards_and_undo_is_clean() {
+    let (core, _dir) = core();
+    core.add_treat("Pizza".into()).unwrap();
+    let id = quit(&core, "2026-11-01");
+    assert_eq!(slip(&core, &id, "2026-11-02", DAY), LogResult::default());
+    assert_eq!(slip(&core, &id, "2026-11-02", DAY), LogResult::default());
+    assert!(core.list_draws().unwrap().is_empty());
+}
+
+#[test]
+fn quit_habits_cannot_be_logged_before_creation_or_in_the_future() {
+    let (core, _dir) = core();
+    let id = quit(&core, "2026-11-03");
+    assert!(
+        core.toggle_check_in_on(id.clone(), "2026-11-02".into(), DAY.into())
+            .is_err()
+    );
+    assert!(
+        core.toggle_check_in_on(id, "2026-11-06".into(), DAY.into())
+            .is_err()
+    );
+}
+
+#[test]
+fn upgrading_from_schema_8_adds_the_avoid_flag_and_backups_keep_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v8.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 8).unwrap();
+        conn.execute_batch(
+            "INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old', 'yes_no', '2026-01-01');",
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    assert!(!core.get_goal("g1".into()).unwrap().avoid);
+    // An exported backup restores with the flag intact.
+    let id = quit(&core, DAY);
+    let file = dir.path().join("b.sqlite").to_str().unwrap().to_string();
+    core.export_backup(file.clone()).unwrap();
+    core.delete_goal(id.clone()).unwrap();
+    core.restore_backup(file).unwrap();
+    assert!(core.get_goal(id).unwrap().avoid);
+}
+
+#[test]
+fn week_start_changes_how_weeks_are_counted_without_rewriting_history() {
+    let (core, _dir) = core();
+    assert_eq!(core.week_start(), 1);
+    // 2026-10-31 is a Saturday and 2026-11-01 a Sunday. Target: 2 days a week.
+    let id = habit(&core, "Gym", Period::Week, 2.0, "2026-10-26");
+    slip(&core, &id, "2026-10-31", "2026-11-01");
+    slip(&core, &id, "2026-11-01", "2026-11-01");
+    // Monday weeks: Saturday and Sunday are the same week, so progress is 2.
+    let item = core.today("2026-11-01".into()).unwrap().remove(0);
+    assert_eq!(item.period_progress, 2.0);
+    // Sunday weeks: Sunday starts a new week with one entry.
+    core.set_week_start(7).unwrap();
+    assert_eq!(core.week_start(), 7);
+    let item = core.today("2026-11-01".into()).unwrap().remove(0);
+    assert_eq!(item.period_progress, 1.0);
+    // The entries themselves are untouched.
+    assert_eq!(core.list_entries(id, 10).unwrap().len(), 2);
+    assert!(core.set_week_start(3).is_err());
+}
+
+#[test]
+fn folders_can_be_renamed_and_ordered() {
+    let (core, _dir) = core();
+    for (title, cat) in [("A", "Health"), ("B", "Health"), ("C", "Work")] {
+        let goal = NewGoal {
+            category: Some(cat.into()),
+            ..base(title, GoalKind::YesNo)
+        };
+        core.create_goal(goal, DAY.into()).unwrap();
+    }
+    core.set_folder_order(vec!["Work".into(), "Health".into()])
+        .unwrap();
+    core.rename_category("Health".into(), "Fitness".into())
+        .unwrap();
+    assert_eq!(core.folder_order(), ["Work", "Fitness"]);
+    assert_eq!(core.categories().unwrap(), ["Fitness", "Work"]);
+    assert!(core.rename_category("Work".into(), "  ".into()).is_err());
+}

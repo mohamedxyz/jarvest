@@ -6,7 +6,9 @@ use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use crate::CoreError;
-use crate::dates::{is_scheduled, next_start, parse_date, period_start, previous_start};
+use crate::dates::{
+    is_scheduled, next_start, parse_date, period_start_ws, previous_start, week_start,
+};
 use crate::model::*;
 use crate::rewards;
 use crate::stats;
@@ -137,6 +139,28 @@ pub fn create_goal(conn: &mut Connection, goal: NewGoal, today: &str) -> Result<
     Ok(id)
 }
 
+/// Creates a quit habit. It is always a daily habit with a target of one clean day,
+/// so the only things to choose are a name, notes and a category. See "Quit habits"
+/// in PLAN.md for the rules. Quit habits never earn rewards.
+pub fn create_avoid_goal(
+    conn: &mut Connection,
+    title: &str,
+    notes: &str,
+    category: Option<String>,
+    today: &str,
+) -> Result<String, CoreError> {
+    parse_date(today)?;
+    let title = clean_title(title)?;
+    let id = new_id();
+    conn.execute(
+        "INSERT INTO goals (id, title, notes, kind, category, period, period_target,
+                            created_date, avoid)
+         VALUES (?1, ?2, ?3, 'habit', ?4, 'day', 1, ?5, 1)",
+        params![id, title, notes.trim(), clean_optional(category), today],
+    )?;
+    Ok(id)
+}
+
 pub fn update_goal(conn: &Connection, goal_id: &str, edit: GoalEdit) -> Result<(), CoreError> {
     let title = clean_title(&edit.title)?;
     validate_deadline(&edit.deadline)?;
@@ -175,7 +199,8 @@ const GOAL_COLUMNS: &str = "id, title, notes, kind, category, period, period_tar
     (SELECT COALESCE(SUM(amount), 0) FROM entries e WHERE e.goal_id = goals.id),
     weekdays,
     (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id AND m.done_date IS NOT NULL),
-    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id)";
+    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id),
+    avoid";
 
 fn goal_from_row(row: &Row<'_>) -> rusqlite::Result<Goal> {
     let kind: GoalKind = row.get(3)?;
@@ -204,6 +229,7 @@ fn goal_from_row(row: &Row<'_>) -> rusqlite::Result<Goal> {
         weekdays: row.get(13)?,
         milestones_done: row.get(14)?,
         milestones_total: row.get(15)?,
+        avoid: row.get(16)?,
     })
 }
 
@@ -268,6 +294,57 @@ pub fn categories(conn: &Connection) -> Result<Vec<String>, CoreError> {
         .query_map([], |r| r.get(0))?
         .collect::<Result<_, _>>()?;
     Ok(names)
+}
+
+/// Renames a folder. Merging into an existing folder name is allowed.
+pub fn rename_category(conn: &Connection, from: &str, to: &str) -> Result<(), CoreError> {
+    let to = clean_title(to)?;
+    conn.execute(
+        "UPDATE goals SET category = ?2 WHERE category = ?1",
+        params![from, to],
+    )?;
+    // Keep the folder's place in the user's order.
+    let order: Vec<String> = folder_order(conn)
+        .into_iter()
+        .map(|n| if n == from { to.clone() } else { n })
+        .collect();
+    set_folder_order(conn, &order)
+}
+
+const FOLDER_ORDER_KEY: &str = "folder_order";
+
+/// Folder names in the order the user chose, one per line in `meta`.
+pub fn folder_order(conn: &Connection) -> Vec<String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![FOLDER_ORDER_KEY],
+            |r| r.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    let mut seen = std::collections::BTreeSet::new();
+    value
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.is_empty() && seen.insert(l.to_string()))
+        .map(String::from)
+        .collect()
+}
+
+pub fn set_folder_order(conn: &Connection, names: &[String]) -> Result<(), CoreError> {
+    let cleaned: Vec<&str> = names
+        .iter()
+        .map(|n| n.trim())
+        .filter(|n| !n.is_empty() && !n.contains('\n'))
+        .collect();
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        params![FOLDER_ORDER_KEY, cleaned.join("\n")],
+    )?;
+    Ok(())
 }
 
 fn loggable_goal(conn: &Connection, goal_id: &str) -> Result<Goal, CoreError> {
@@ -424,11 +501,12 @@ pub fn period_totals(
     let rows = stmt.query_map(params![goal_id], |r| {
         Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
     })?;
+    let week = week_start(conn);
     let mut totals = BTreeMap::new();
     for row in rows {
         let (date, amount) = row?;
         *totals
-            .entry(period_start(parse_date(&date)?, period))
+            .entry(period_start_ws(parse_date(&date)?, period, week))
             .or_insert(0.0) += amount;
     }
     Ok(totals)
@@ -442,9 +520,10 @@ pub fn excused_periods(
 ) -> Result<std::collections::BTreeSet<NaiveDate>, CoreError> {
     let mut stmt = conn.prepare("SELECT local_date FROM skips WHERE goal_id = ?1")?;
     let rows = stmt.query_map(params![goal_id], |r| r.get::<_, String>(0))?;
+    let week = week_start(conn);
     let mut periods = std::collections::BTreeSet::new();
     for row in rows {
-        periods.insert(period_start(parse_date(&row?)?, period));
+        periods.insert(period_start_ws(parse_date(&row?)?, period, week));
     }
     Ok(periods)
 }
@@ -519,15 +598,21 @@ fn sync_targets(
 ) -> Result<LogResult, CoreError> {
     let mut result = LogResult::default();
     let goal = &get_goal(conn, &goal.id)?; // Totals must include the change just made.
+    if goal.avoid {
+        // A quit habit's days pass without any action, so there is no moment to roll a
+        // reward and nothing to undo. Slips only change the streak.
+        return Ok(result);
+    }
 
     if goal.kind == GoalKind::YesNo {
         sync_target(conn, goal, "done", goal.done, false, today, &mut result)?;
     }
     if let (Some(period), Some(target)) = (goal.period, goal.period_target) {
         let totals = period_totals(conn, &goal.id, period)?;
-        let start = period_start(date, period);
+        let week = week_start(conn);
+        let start = period_start_ws(date, period, week);
         let met = |p: NaiveDate| totals.get(&p).is_some_and(|t| t + EPSILON >= target);
-        let creation = period_start(parse_date(&goal.created_date)?, period);
+        let creation = period_start_ws(parse_date(&goal.created_date)?, period, week);
         let mut previous = previous_start(start, period);
         // Days off don't count as missed, so look back to the last day that was due.
         while period == Period::Day && previous > creation && !is_scheduled(goal.weekdays, previous)
@@ -763,14 +848,18 @@ fn today_item(
 
     let (mut period_progress, mut period_met, mut current_streak) = (0.0, false, 0);
     if let (Some(period), Some(target)) = (goal.period, goal.period_target) {
-        let totals = period_totals(conn, &goal.id, period)?;
+        let week = week_start(conn);
+        let mut totals = period_totals(conn, &goal.id, period)?;
+        if goal.avoid {
+            totals = stats::clean_days(&totals, parse_date(&goal.created_date)?, date);
+        }
         period_progress = totals
-            .get(&period_start(date, period))
+            .get(&period_start_ws(date, period, week))
             .copied()
             .unwrap_or(0.0);
         period_met = period_progress + EPSILON >= target;
         let excused = excused_periods(conn, &goal.id, period)?;
-        current_streak = stats::period_summary(
+        current_streak = stats::period_summary_ws(
             parse_date(&goal.created_date)?,
             period,
             target,
@@ -778,11 +867,15 @@ fn today_item(
             &excused,
             goal.weekdays,
             date,
+            week,
+            goal.avoid,
         )
         .current_streak;
     }
 
     let needs_work = match goal.kind {
+        // A quit habit stays on Today all day, so a slip can be logged from it.
+        GoalKind::Habit if goal.avoid => true,
         GoalKind::YesNo => !goal.done,
         GoalKind::Habit => !period_met && is_scheduled(goal.weekdays, date),
         // A numeric goal with no targets is a plain tally, which is always open.
@@ -805,6 +898,7 @@ fn today_item(
         )
         .optional()?;
     let complete = match goal.kind {
+        GoalKind::Habit if goal.avoid => !logged_today,
         GoalKind::Habit => period_met || logged_today,
         _ => !needs_work,
     };
@@ -827,6 +921,7 @@ fn today_item(
         next_milestone,
         milestones_done: goal.milestones_done,
         milestones_total: goal.milestones_total,
+        avoid: goal.avoid,
     }))
 }
 

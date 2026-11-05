@@ -99,6 +99,40 @@ impl GoalCore {
         goals::categories(&self.conn())
     }
 
+    /// Creates a quit habit, met by not logging. Every entry on it is a slip.
+    pub fn create_avoid_goal(
+        &self,
+        title: String,
+        notes: String,
+        category: Option<String>,
+        today: String,
+    ) -> Result<String, CoreError> {
+        goals::create_avoid_goal(&mut self.conn(), &title, &notes, category, &today)
+    }
+
+    /// First day of the week: 1 = Monday, 6 = Saturday, 7 = Sunday.
+    pub fn week_start(&self) -> u8 {
+        dates::week_start(&self.conn())
+    }
+
+    pub fn set_week_start(&self, day: u8) -> Result<(), CoreError> {
+        dates::set_week_start(&self.conn(), day)
+    }
+
+    /// Renames a folder (a goal category) on every goal that uses it.
+    pub fn rename_category(&self, from: String, to: String) -> Result<(), CoreError> {
+        goals::rename_category(&self.conn(), &from, &to)
+    }
+
+    /// The order the user arranged folders in, as names.
+    pub fn folder_order(&self) -> Vec<String> {
+        goals::folder_order(&self.conn())
+    }
+
+    pub fn set_folder_order(&self, names: Vec<String>) -> Result<(), CoreError> {
+        goals::set_folder_order(&self.conn(), &names)
+    }
+
     pub fn today(&self, today: String) -> Result<Vec<TodayItem>, CoreError> {
         goals::today_items(&self.conn(), &today)
     }

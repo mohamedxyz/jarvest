@@ -6,7 +6,9 @@ use chrono::{Datelike, Days, NaiveDate};
 use rusqlite::{Connection, params};
 
 use crate::CoreError;
-use crate::dates::{is_scheduled, next_start, parse_date, period_start, previous_start};
+use crate::dates::{
+    is_scheduled, next_start, parse_date, period_start_ws, previous_start, week_start,
+};
 use crate::goals::{EPSILON, excused_periods, get_goal, list_goals, period_totals};
 use crate::model::*;
 
@@ -40,9 +42,11 @@ fn walk(
     excused: &BTreeSet<NaiveDate>,
     weekdays: Option<u8>,
     today: NaiveDate,
+    week: u8,
+    strict: bool,
 ) -> (PeriodSummary, Vec<Run>) {
-    let first = period_start(created, period);
-    let current = period_start(today, period);
+    let first = period_start_ws(created, period, week);
+    let current = period_start_ws(today, period, week);
     let mut summary = PeriodSummary::default();
     let mut runs = Vec::new();
     let mut run: Option<Run> = None;
@@ -58,7 +62,8 @@ fn walk(
             continue;
         }
         // The creation period and the unfinished current period only count if met.
-        let grace = start == first || start == current;
+        // A quit habit (`strict`) has no grace: a slip today or on day one counts at once.
+        let grace = !strict && (start == first || start == current);
         if met {
             let r = run.get_or_insert(Run {
                 first: start,
@@ -89,6 +94,40 @@ fn walk(
     (summary, runs)
 }
 
+/// Turns a quit habit's slip counts into clean-day counts: every day from `created`
+/// to `today` becomes 1.0 when nothing was logged and 0.0 when a slip was. After this
+/// the normal streak rules apply, with a target of one clean day.
+pub fn clean_days(
+    slips: &BTreeMap<NaiveDate, f64>,
+    created: NaiveDate,
+    today: NaiveDate,
+) -> BTreeMap<NaiveDate, f64> {
+    let mut clean = BTreeMap::new();
+    let mut day = created;
+    while day <= today {
+        let slipped = slips.get(&day).is_some_and(|n| *n > 0.0);
+        clean.insert(day, if slipped { 0.0 } else { 1.0 });
+        day = next_start(day, Period::Day);
+    }
+    clean
+}
+
+/// The totals a goal's streak is worked out from: logged amounts, or clean days for a
+/// quit habit.
+fn streak_totals(
+    conn: &Connection,
+    goal: &Goal,
+    period: Period,
+    today: NaiveDate,
+) -> Result<BTreeMap<NaiveDate, f64>, CoreError> {
+    let totals = period_totals(conn, &goal.id, period)?;
+    if goal.avoid {
+        return Ok(clean_days(&totals, parse_date(&goal.created_date)?, today));
+    }
+    Ok(totals)
+}
+
+#[cfg(test)]
 pub fn period_summary(
     created: NaiveDate,
     period: Period,
@@ -98,7 +137,28 @@ pub fn period_summary(
     weekdays: Option<u8>,
     today: NaiveDate,
 ) -> PeriodSummary {
-    walk(created, period, target, totals, excused, weekdays, today).0
+    period_summary_ws(
+        created, period, target, totals, excused, weekdays, today, 1, false,
+    )
+}
+
+/// Like `period_summary`, with weeks starting on `week` (Monday = 1 ... Sunday = 7).
+#[allow(clippy::too_many_arguments)]
+pub fn period_summary_ws(
+    created: NaiveDate,
+    period: Period,
+    target: f64,
+    totals: &BTreeMap<NaiveDate, f64>,
+    excused: &BTreeSet<NaiveDate>,
+    weekdays: Option<u8>,
+    today: NaiveDate,
+    week: u8,
+    strict: bool,
+) -> PeriodSummary {
+    walk(
+        created, period, target, totals, excused, weekdays, today, week, strict,
+    )
+    .0
 }
 
 /// Every run of met periods for a goal, oldest first, including the current one.
@@ -111,7 +171,8 @@ pub fn streak_runs(
     let (Some(period), Some(target)) = (goal.period, goal.period_target) else {
         return Ok(Vec::new());
     };
-    let totals = period_totals(conn, goal_id, period)?;
+    let today = parse_date(today)?;
+    let totals = streak_totals(conn, &goal, period, today)?;
     let excused = excused_periods(conn, goal_id, period)?;
     let (_, runs) = walk(
         parse_date(&goal.created_date)?,
@@ -120,7 +181,9 @@ pub fn streak_runs(
         &totals,
         &excused,
         goal.weekdays,
-        parse_date(today)?,
+        today,
+        week_start(conn),
+        goal.avoid,
     );
     Ok(runs
         .into_iter()
@@ -141,7 +204,8 @@ pub fn period_series(
     today: &str,
 ) -> Result<Vec<PeriodPoint>, CoreError> {
     let goal = get_goal(conn, goal_id)?;
-    let first = period_start(parse_date(&goal.created_date)?, period);
+    let week = week_start(conn);
+    let first = period_start_ws(parse_date(&goal.created_date)?, period, week);
     let totals = period_totals(conn, goal_id, period)?;
     let excused = excused_periods(conn, goal_id, period)?;
     let target = if goal.period == Some(period) {
@@ -149,7 +213,7 @@ pub fn period_series(
     } else {
         None
     };
-    let mut start = period_start(parse_date(today)?, period);
+    let mut start = period_start_ws(parse_date(today)?, period, week);
     let mut points = Vec::new();
     for _ in 0..count.min(366) {
         let total = totals.get(&start).copied().unwrap_or(0.0);
@@ -184,7 +248,7 @@ pub fn weekday_stats(conn: &Connection, today: &str) -> Result<Vec<WeekdayStat>,
         let (Some(Period::Day), Some(target)) = (goal.period, goal.period_target) else {
             continue;
         };
-        let totals = period_totals(conn, &goal.id, Period::Day)?;
+        let totals = streak_totals(conn, &goal, Period::Day, today)?;
         let excused = excused_periods(conn, &goal.id, Period::Day)?;
         let mut day = parse_date(&goal.created_date)?;
         while day <= today {
@@ -214,7 +278,7 @@ pub fn recap(
             reason: "A recap covers a week or a month".into(),
         });
     }
-    let mut start = period_start(parse_date(today)?, period);
+    let mut start = period_start_ws(parse_date(today)?, period, week_start(conn));
     for _ in 0..back.min(240) {
         start = previous_start(start, period);
     }
@@ -251,9 +315,9 @@ fn stats_for(
     let (Some(period), Some(target)) = (goal.period, goal.period_target) else {
         return Ok(None);
     };
-    let totals = period_totals(conn, &goal.id, period)?;
+    let totals = streak_totals(conn, goal, period, today)?;
     let excused = excused_periods(conn, &goal.id, period)?;
-    let summary = period_summary(
+    let summary = period_summary_ws(
         parse_date(&goal.created_date)?,
         period,
         target,
@@ -261,6 +325,8 @@ fn stats_for(
         &excused,
         goal.weekdays,
         today,
+        week_start(conn),
+        goal.avoid,
     );
     Ok(Some(GoalStats {
         goal_id: goal.id.clone(),
