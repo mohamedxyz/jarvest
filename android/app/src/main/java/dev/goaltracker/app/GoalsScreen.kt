@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
@@ -53,7 +54,7 @@ private const val DRAG_STEP_DP = 72
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun GoalsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
+fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String) -> Unit) {
     var archived by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     var kindFilter by rememberSaveable { mutableStateOf<GoalKind?>(null) }
@@ -64,9 +65,16 @@ fun GoalsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
     // Folder names the user has collapsed. A list, because it must survive rotation.
     var collapsed by rememberSaveable { mutableStateOf(listOf<String>()) }
     var renaming by remember { mutableStateOf<String?>(null) }
+    // Goals can be grouped by folder or by deadline. Habits only use folders.
+    var byDeadline by rememberSaveable { mutableStateOf(false) }
+    val hideDone = if (habits) controller.hideDoneHabits else controller.hideDoneGoals
 
     val allGoals = remember(controller.version, archived) {
-        controller.read(emptyList()) { listGoals(archived) }
+        controller.read(emptyList()) { listGoals(archived) }.filter { (it.kind == GoalKind.HABIT) == habits }
+    }
+    // Habits have no "finished" of their own, so they count as finished once ticked today.
+    val doneToday = remember(controller.version, controller.today) {
+        controller.read(emptyList()) { today(controller.today) }.filter { it.complete }.map { it.goalId }.toSet()
     }
     val folderOrder = remember(controller.version) { controller.read(emptyList()) { folderOrder() } }
     val categories = remember(allGoals) { allGoals.mapNotNull { it.category }.distinct() }
@@ -76,7 +84,8 @@ fun GoalsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
         (query.isBlank() || goal.title.contains(query.trim(), ignoreCase = true) ||
             goal.category?.contains(query.trim(), ignoreCase = true) == true) &&
             (kindFilter == null || goal.kind == kindFilter) &&
-            (categoryFilter == null || goal.category == categoryFilter)
+            (categoryFilter == null || goal.category == categoryFilter) &&
+            !(hideDone && !archived && (if (habits) goal.id in doneToday else goal.done))
     }
     // Folders in the user's order first, then the rest A to Z, and goals without a folder last.
     val folders = remember(allGoals, folderOrder) {
@@ -86,7 +95,7 @@ fun GoalsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
         ordered + if (allGoals.any { it.category == null }) listOf(NO_FOLDER) else emptyList()
     }
     val activeFilters = listOfNotNull(kindFilter?.let { "type" }, categoryFilter?.let { "folder" }).size +
-        if (archived) 1 else 0
+        (if (archived) 1 else 0) + (if (hideDone) 1 else 0) + (if (byDeadline && !habits) 1 else 0)
 
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -94,7 +103,7 @@ fun GoalsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
                 query,
                 { query = it },
                 Modifier.fillMaxWidth(),
-                label = { Text("Search goals") },
+                label = { Text(if (habits) "Search habits" else "Search goals") },
                 singleLine = true,
                 enabled = !reordering,
             )
@@ -114,7 +123,19 @@ fun GoalsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = !archived, onClick = { archived = false }, label = { Text("Active") })
                     FilterChip(selected = archived, onClick = { archived = true }, label = { Text("Archived") })
-                    listOf(GoalKind.HABIT to "Habits", GoalKind.NUMERIC to "Numeric", GoalKind.YES_NO to "Yes/no").forEach { (kind, label) ->
+                    FilterChip(
+                        selected = hideDone,
+                        onClick = { if (habits) controller.chooseHideDoneHabits(!hideDone) else controller.chooseHideDoneGoals(!hideDone) },
+                        label = { Text(if (habits) "Hide done today" else "Hide finished") },
+                    )
+                    if (!habits) {
+                        FilterChip(
+                            selected = byDeadline,
+                            onClick = { byDeadline = !byDeadline },
+                            label = { Text("Group by deadline") },
+                        )
+                    }
+                    (if (habits) emptyList() else listOf(GoalKind.NUMERIC to "Numeric", GoalKind.YES_NO to "Yes/no")).forEach { (kind, label) ->
                         FilterChip(
                             selected = kindFilter == kind,
                             onClick = { kindFilter = if (kindFilter == kind) null else kind },
@@ -144,13 +165,31 @@ fun GoalsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
             } else if (archived) {
                 EmptyState("Nothing archived", "Archived goals keep their history and appear here.")
             } else {
-                EmptyState("No goals yet", "Tap + to create one.")
+                if (habits) EmptyState("No habits yet", "Tap New habit to create one.") else EmptyState("No goals yet", "Tap New goal to create one.")
             }
         }
         LazyColumn(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (byDeadline && !habits && !reordering) {
+                val groups = goals.groupBy { timelineOf(it.deadline, it.done, controller.today) }.toSortedMap()
+                groups.forEach { (bucket, list) ->
+                    item(key = "timeline:${bucket.name}") { TimelineHeader(if (bucket == Timeline.NO_DATE) "No deadline" else bucket.label, list.size) }
+                    items(list.size, key = { "timeline:${bucket.name}:${list[it].id}" }) { index ->
+                        val goal = list[index]
+                        GoalCard(
+                            goal = goal,
+                            reordering = false,
+                            canMoveUp = false,
+                            canMoveDown = false,
+                            onOpen = { onOpenGoal(goal.id) },
+                            onMove = {},
+                        )
+                    }
+                }
+                return@LazyColumn
+            }
             folders.forEach { folder ->
                 val inFolder = goals.filter { (it.category ?: NO_FOLDER) == folder }
                 if (inFolder.isEmpty()) return@forEach

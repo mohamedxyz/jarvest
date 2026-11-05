@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import dev.goaltracker.core.GoalKind
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.AlertDialog
@@ -70,6 +72,7 @@ private val tabs = listOf(
     Tab("today", "Today", Icons.Filled.Today),
     Tab("tasks", "Tasks", Icons.Filled.Checklist),
     Tab("goals", "Goals", Icons.Filled.Flag),
+    Tab("habits", "Habits", Icons.Filled.Repeat),
     Tab("stats", "Stats", Icons.Filled.BarChart),
     Tab("treats", "Rewards", Icons.Filled.CardGiftcard),
 )
@@ -201,9 +204,14 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                     }
                 }
                 "goals" -> ExtendedFloatingActionButton(
-                    onClick = { push("new") },
+                    onClick = { push("newgoal") },
                     icon = { Icon(Icons.Filled.Add, null) },
                     text = { Text("New goal") },
+                )
+                "habits" -> ExtendedFloatingActionButton(
+                    onClick = { push("newhabit") },
+                    icon = { Icon(Icons.Filled.Add, null) },
+                    text = { Text("New habit") },
                 )
                 "tasks" -> ExtendedFloatingActionButton(
                     onClick = { push("newtask") },
@@ -237,7 +245,10 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                 )
                 route.startsWith("edittask/") ->
                     TaskEditorScreen(controller, taskId = route.removePrefix("edittask/"), presetGoalId = null, onDone = pop)
-                route == "goals" -> GoalsScreen(controller, onOpenGoal = { push("goal/$it") })
+                route == "goals" -> GoalsScreen(controller, habits = false, onOpenGoal = { push("goal/$it") })
+                route == "habits" -> GoalsScreen(controller, habits = true, onOpenGoal = { push("goal/$it") })
+                route == "newgoal" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.YES_NO, onDone = pop)
+                route == "newhabit" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.HABIT, onDone = pop)
                 route == "stats" -> StatsScreen(controller, onOpenGoal = { push("goal/$it") })
                 route == "treats" -> TreatsScreen(controller)
                 route == "settings" -> SettingsScreen(controller)

@@ -136,8 +136,14 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             else -> controller.read(emptyList()) { listTasks(filter, sort, controller.today) }
         }
         val tag = tagFilter
-        if (tag != null && !showTrash) base.filter { it.tag == tag } else base
+        val tagged = if (tag != null && !showTrash) base.filter { it.tag == tag } else base
+        // "Hide done" only applies to the plain lists, never to Done, Trash, Archive or search.
+        val plain = !showTrash && !showArchive && !(searching && searchText.isNotBlank())
+        if (plain && controller.hideDoneTasks && filter != TaskFilter.DONE) tagged.filter { !it.done } else tagged
     }
+    // Separators by due date only make sense when the list is sorted by due date.
+    val timeline = !showTrash && !showArchive && !(searching && searchText.isNotBlank()) &&
+        sort == TaskSort.DUE && filter != TaskFilter.DONE
     val tags = remember(controller.version) { controller.read(emptyList()) { listTags() } }
     val hint = remember(quick, controller.today) {
         if (quick.isBlank()) null else controller.read(null) { parseQuick(quick, controller.today) }
@@ -241,6 +247,11 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                             label = { Text(if (it == TaskFilter.OVERDUE && overdueCount > 0) "Overdue · $overdueCount" else it.label()) },
                         )
                     }
+                    FilterChip(
+                        selected = controller.hideDoneTasks,
+                        onClick = { controller.chooseHideDoneTasks(!controller.hideDoneTasks) },
+                        label = { Text("Hide done") },
+                    )
                 }
                 // Outside the scrolling row, so it can never scroll out of reach.
                 Column {
@@ -336,7 +347,27 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                     )
                 }
                 item { TipCard(controller, "tasks_quick_add", "Tip: write a task in one line. \"Essay tomorrow !high #uni\" sets the due date, the priority and the tag.") }
-                items(tasks, key = { it.id }) { task ->
+                if (timeline) {
+                    tasks.groupBy { timelineOf(it.due, it.done, controller.today) }.toSortedMap().forEach { (bucket, list) ->
+                        item(key = "h:${bucket.name}") { TimelineHeader(bucket.label, list.size) }
+                        items(list, key = { it.id }) { task ->
+                            TaskRow(
+                                controller,
+                                task,
+                                controller.today,
+                                selected = task.id in selected,
+                                onOpen = {
+                                    if (selected.isNotEmpty()) {
+                                        selected = if (task.id in selected) selected - task.id else selected + task.id
+                                    } else opened = task
+                                },
+                                onLongPress = { selected = selected + task.id },
+                                onCheck = { controller.toggleTaskWithUndo(task.id, task.title) },
+                            )
+                        }
+                    }
+                }
+                items(if (timeline) emptyList() else tasks, key = { it.id }) { task ->
                     when {
                         showTrash -> TrashRow(
                             task,

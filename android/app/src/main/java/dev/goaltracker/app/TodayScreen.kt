@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -46,9 +47,11 @@ fun TodayScreen(
     onAddTask: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    val items = remember(controller.version, controller.today) {
+    val allItems = remember(controller.version, controller.today) {
         controller.read(emptyList()) { today(controller.today) }
     }
+    // "Hide done" only changes what is listed. The summary line still counts everything.
+    val items = if (controller.hideDoneToday) allItems.filter { !it.complete } else allItems
     val dueTasks = remember(controller.version, controller.today) {
         controller.read(emptyList()) { dueTasks(controller.today) }
     }
@@ -59,7 +62,7 @@ fun TodayScreen(
     var openedGoal by remember { mutableStateOf<TodayItem?>(null) }
     var openedTask by remember { mutableStateOf<String?>(null) }
 
-    if (items.isEmpty() && dueTasks.isEmpty()) {
+    if (allItems.isEmpty() && dueTasks.isEmpty()) {
         if (hasGoals) {
             // Say how many goals are resting today, so an empty screen reads as good news.
             val resting = remember(controller.version) {
@@ -93,12 +96,12 @@ fun TodayScreen(
         ) {
             item {
                 // One line that answers "how am I doing today?" before the lists start.
-                val goalsDone = items.count { it.complete }
+                val goalsDone = allItems.count { it.complete }
                 Text(
                     buildList {
-                        if (items.isNotEmpty()) add("$goalsDone of ${items.size} goals done")
+                        if (allItems.isNotEmpty()) add("$goalsDone of ${allItems.size} goals done")
                         if (dueTasks.isNotEmpty()) add(countOf(dueTasks.size, "task") + " due")
-                        if (items.isNotEmpty() && goalsDone == items.size && dueTasks.isEmpty()) add("All done")
+                        if (allItems.isNotEmpty() && goalsDone == allItems.size && dueTasks.isEmpty()) add("All done")
                     }.joinToString(" · "),
                     style = MaterialTheme.typography.titleMedium,
                 )
@@ -142,10 +145,14 @@ fun TodayScreen(
                     }
                 }
             }
-            if (items.isNotEmpty()) {
+            if (allItems.isNotEmpty()) {
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         SectionTitle("Goals")
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { controller.chooseHideDoneToday(!controller.hideDoneToday) }) {
+                            Text(if (controller.hideDoneToday) "Show done" else "Hide done")
+                        }
                         if (items.any { it.kind == GoalKind.NUMERIC }) {
                             InfoHint("Counter", "On a number goal, use - and + to count as you go. Nothing is saved until you press Submit, which logs the count as one entry. Exact lets you type an amount, such as 2.5.")
                         }

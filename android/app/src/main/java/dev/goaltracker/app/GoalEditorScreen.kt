@@ -72,7 +72,7 @@ private val dayChips = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> Unit) {
+fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> Unit, startKind: GoalKind = GoalKind.HABIT) {
     val existing = remember(goalId) { goalId?.let { id -> controller.read(null) { getGoal(id) } } }
     val categories = remember { controller.read(emptyList()) { categories() } }
 
@@ -81,7 +81,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
     var category by rememberSaveable { mutableStateOf(existing?.category ?: "") }
     var unit by rememberSaveable { mutableStateOf(existing?.unit ?: "") }
     var deadline by rememberSaveable { mutableStateOf(existing?.deadline) }
-    var kind by rememberSaveable { mutableStateOf(GoalKind.HABIT) }
+    var kind by rememberSaveable { mutableStateOf(startKind) }
     // A quit habit is a daily habit met by not slipping. It has no targets to set.
     var quit by rememberSaveable { mutableStateOf(false) }
     // Step two of the form: folder, deadline, reminder, notes and milestones.

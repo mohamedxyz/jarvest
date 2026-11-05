@@ -139,6 +139,15 @@ class AppController(private val app: GoalTrackerApp) {
         private set
     var compactTaskRows by mutableStateOf(prefs.getBoolean("task_compact", false))
         private set
+    // "Hide finished" switches, one per screen. They only hide things in the list, never delete.
+    var hideDoneTasks by mutableStateOf(prefs.getBoolean("hide_done_tasks", false))
+    var hideDoneGoals by mutableStateOf(prefs.getBoolean("hide_done_goals", false))
+    var hideDoneHabits by mutableStateOf(prefs.getBoolean("hide_done_habits", false))
+    var hideDoneToday by mutableStateOf(prefs.getBoolean("hide_done_today", false))
+    fun chooseHideDoneTasks(on: Boolean) { hideDoneTasks = on; prefs.edit().putBoolean("hide_done_tasks", on).apply() }
+    fun chooseHideDoneGoals(on: Boolean) { hideDoneGoals = on; prefs.edit().putBoolean("hide_done_goals", on).apply() }
+    fun chooseHideDoneHabits(on: Boolean) { hideDoneHabits = on; prefs.edit().putBoolean("hide_done_habits", on).apply() }
+    fun chooseHideDoneToday(on: Boolean) { hideDoneToday = on; prefs.edit().putBoolean("hide_done_today", on).apply() }
     var groupTasksByTag by mutableStateOf(prefs.getBoolean("task_group_tags", false))
         private set
     /** Ask before moving a task to the trash. Off by default, because Undo is always offered. */
