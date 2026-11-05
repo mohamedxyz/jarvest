@@ -1,0 +1,18 @@
+# Rust
+core/target/
+
+# Gradle / Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+.idea/
+*.iml
+
+# Signing secrets: never share or commit these
+*.jks
+*.keystore
+android/keystore.properties
+.kotlin/
+*.apk
+.claude/

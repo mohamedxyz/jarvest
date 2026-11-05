@@ -1,0 +1,674 @@
+//! Goals, entries, milestones, and keeping completed targets in step with them.
+
+use std::collections::BTreeMap;
+
+use chrono::NaiveDate;
+use rusqlite::{Connection, OptionalExtension, Row, params};
+
+use crate::CoreError;
+use crate::dates::{next_start, parse_date, period_start, previous_start};
+use crate::model::*;
+use crate::rewards;
+use crate::stats;
+
+/// Tolerance for summed decimal amounts, such as 0.1 + 0.2 against a target of 0.3.
+pub const EPSILON: f64 = 1e-9;
+
+pub fn invalid(reason: impl Into<String>) -> CoreError {
+    CoreError::Invalid {
+        reason: reason.into(),
+    }
+}
+
+fn new_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+fn clean_optional(value: Option<String>) -> Option<String> {
+    value
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+fn clean_title(title: &str) -> Result<String, CoreError> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(invalid("A title is required"));
+    }
+    Ok(title.to_string())
+}
+
+fn validate_deadline(deadline: &Option<String>) -> Result<(), CoreError> {
+    if let Some(deadline) = deadline {
+        parse_date(deadline)?;
+    }
+    Ok(())
+}
+
+fn validate_targets(goal: &NewGoal) -> Result<(), CoreError> {
+    let positive = |value: Option<f64>| value.is_none_or(|v| v.is_finite() && v > 0.0);
+    if !positive(goal.period_target) || !positive(goal.total_target) {
+        return Err(invalid("Targets must be greater than zero"));
+    }
+    if goal.period.is_some() != goal.period_target.is_some() {
+        return Err(invalid("A period and its target must be set together"));
+    }
+    match goal.kind {
+        GoalKind::YesNo => {
+            if goal.period.is_some() || goal.total_target.is_some() {
+                return Err(invalid("Yes/no goals can't have targets"));
+            }
+        }
+        GoalKind::Habit => {
+            if goal.total_target.is_some() {
+                return Err(invalid("Habits can't have a total target"));
+            }
+            let (Some(period), Some(target)) = (goal.period, goal.period_target) else {
+                return Err(invalid("Habits need a target for each period"));
+            };
+            // Habits allow one check-in per day, so the target must be reachable
+            // in every period. February sets the limit for months.
+            let max = match period {
+                Period::Day => 1.0,
+                Period::Week => 7.0,
+                Period::Month => 28.0,
+            };
+            if target.fract() != 0.0 || target > max {
+                return Err(invalid(format!(
+                    "Habit target must be a whole number up to {max}"
+                )));
+            }
+        }
+        GoalKind::Numeric => {}
+    }
+    Ok(())
+}
+
+pub fn create_goal(conn: &mut Connection, goal: NewGoal, today: &str) -> Result<String, CoreError> {
+    parse_date(today)?;
+    let title = clean_title(&goal.title)?;
+    validate_targets(&goal)?;
+    validate_deadline(&goal.deadline)?;
+    let milestones = goal
+        .milestones
+        .iter()
+        .map(|m| clean_title(m))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let id = new_id();
+    let tx = conn.transaction()?;
+    tx.execute(
+        "INSERT INTO goals (id, title, notes, kind, category, period, period_target, total_target,
+                            unit, deadline, created_date)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            id,
+            title,
+            goal.notes.trim(),
+            goal.kind.as_sql(),
+            clean_optional(goal.category),
+            goal.period.map(Period::as_sql),
+            goal.period_target,
+            goal.total_target,
+            clean_optional(goal.unit),
+            goal.deadline,
+            today,
+        ],
+    )?;
+    for (position, title) in milestones.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO milestones (id, goal_id, title, position) VALUES (?1, ?2, ?3, ?4)",
+            params![new_id(), id, title, position as i64],
+        )?;
+    }
+    tx.commit()?;
+    Ok(id)
+}
+
+pub fn update_goal(conn: &Connection, goal_id: &str, edit: GoalEdit) -> Result<(), CoreError> {
+    let title = clean_title(&edit.title)?;
+    validate_deadline(&edit.deadline)?;
+    let changed = conn.execute(
+        "UPDATE goals SET title = ?2, notes = ?3, category = ?4, unit = ?5, deadline = ?6 WHERE id = ?1",
+        params![
+            goal_id,
+            title,
+            edit.notes.trim(),
+            clean_optional(edit.category),
+            clean_optional(edit.unit),
+            edit.deadline,
+        ],
+    )?;
+    if changed == 0 {
+        return Err(invalid("That goal no longer exists"));
+    }
+    Ok(())
+}
+
+pub fn set_archived(conn: &Connection, goal_id: &str, archived: bool) -> Result<(), CoreError> {
+    conn.execute(
+        "UPDATE goals SET archived = ?2 WHERE id = ?1",
+        params![goal_id, archived],
+    )?;
+    Ok(())
+}
+
+pub fn delete_goal(conn: &Connection, goal_id: &str) -> Result<(), CoreError> {
+    conn.execute("DELETE FROM goals WHERE id = ?1", params![goal_id])?;
+    Ok(())
+}
+
+const GOAL_COLUMNS: &str = "id, title, notes, kind, category, period, period_target, total_target,
+    unit, deadline, created_date, archived,
+    (SELECT COALESCE(SUM(amount), 0) FROM entries e WHERE e.goal_id = goals.id)";
+
+fn goal_from_row(row: &Row<'_>) -> rusqlite::Result<Goal> {
+    let kind: GoalKind = row.get(3)?;
+    let total_target: Option<f64> = row.get(7)?;
+    let total_logged: f64 = row.get(12)?;
+    let done = match kind {
+        GoalKind::YesNo => total_logged > 0.0,
+        GoalKind::Numeric => total_target.is_some_and(|t| total_logged + EPSILON >= t),
+        GoalKind::Habit => false,
+    };
+    Ok(Goal {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        notes: row.get(2)?,
+        kind,
+        category: row.get(4)?,
+        period: row.get(5)?,
+        period_target: row.get(6)?,
+        total_target,
+        unit: row.get(8)?,
+        deadline: row.get(9)?,
+        created_date: row.get(10)?,
+        archived: row.get(11)?,
+        total_logged,
+        done,
+    })
+}
+
+pub fn get_goal(conn: &Connection, goal_id: &str) -> Result<Goal, CoreError> {
+    conn.query_row(
+        &format!("SELECT {GOAL_COLUMNS} FROM goals WHERE id = ?1"),
+        params![goal_id],
+        goal_from_row,
+    )
+    .optional()?
+    .ok_or_else(|| invalid("That goal no longer exists"))
+}
+
+pub fn list_goals(conn: &Connection, archived: bool) -> Result<Vec<Goal>, CoreError> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {GOAL_COLUMNS} FROM goals WHERE archived = ?1
+         ORDER BY category IS NULL, category COLLATE NOCASE, created_date, rowid"
+    ))?;
+    let goals = stmt
+        .query_map(params![archived], goal_from_row)?
+        .collect::<Result<_, _>>()?;
+    Ok(goals)
+}
+
+pub fn categories(conn: &Connection) -> Result<Vec<String>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT category FROM goals WHERE category IS NOT NULL ORDER BY category COLLATE NOCASE",
+    )?;
+    let names = stmt
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(names)
+}
+
+fn loggable_goal(conn: &Connection, goal_id: &str) -> Result<Goal, CoreError> {
+    let goal = get_goal(conn, goal_id)?;
+    if goal.archived {
+        return Err(invalid("Restore this goal before logging it"));
+    }
+    Ok(goal)
+}
+
+fn insert_entry(
+    conn: &Connection,
+    goal: &Goal,
+    date: &str,
+    amount: f64,
+    single_per_day: bool,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "INSERT INTO entries (id, goal_id, local_date, amount, single_per_day, seq)
+         VALUES (?1, ?2, ?3, ?4, ?5, (SELECT COALESCE(MAX(seq), 0) + 1 FROM entries))",
+        params![new_id(), goal.id, date, amount, single_per_day],
+    )?;
+    Ok(())
+}
+
+/// Ticks a yes/no goal or habit, or removes the tick if it's already there.
+pub fn toggle_check_in(
+    conn: &mut Connection,
+    goal_id: &str,
+    today: &str,
+) -> Result<LogResult, CoreError> {
+    let date = parse_date(today)?;
+    let tx = conn.transaction()?;
+    let goal = loggable_goal(&tx, goal_id)?;
+    // A yes/no tick can be undone on a later day. A habit's tick belongs to one day.
+    let existing: Option<String> = match goal.kind {
+        GoalKind::Numeric => return Err(invalid("Numeric goals log an amount")),
+        GoalKind::YesNo => tx
+            .query_row(
+                "SELECT local_date FROM entries WHERE goal_id = ?1",
+                params![goal_id],
+                |r| r.get(0),
+            )
+            .optional()?,
+        GoalKind::Habit => tx
+            .query_row(
+                "SELECT local_date FROM entries WHERE goal_id = ?1 AND local_date = ?2",
+                params![goal_id, today],
+                |r| r.get(0),
+            )
+            .optional()?,
+    };
+    let result = match existing {
+        Some(logged) => {
+            tx.execute(
+                "DELETE FROM entries WHERE goal_id = ?1 AND local_date = ?2",
+                params![goal_id, logged],
+            )?;
+            sync_targets(&tx, &goal, parse_date(&logged)?, today)?
+        }
+        None => {
+            insert_entry(&tx, &goal, today, 1.0, true)?;
+            sync_targets(&tx, &goal, date, today)?
+        }
+    };
+    tx.commit()?;
+    Ok(result)
+}
+
+pub fn log_amount(
+    conn: &mut Connection,
+    goal_id: &str,
+    amount: f64,
+    today: &str,
+) -> Result<LogResult, CoreError> {
+    let date = parse_date(today)?;
+    if !amount.is_finite() || amount <= 0.0 {
+        return Err(invalid("Enter an amount greater than zero"));
+    }
+    let tx = conn.transaction()?;
+    let goal = loggable_goal(&tx, goal_id)?;
+    if goal.kind != GoalKind::Numeric {
+        return Err(invalid("Only numeric goals log an amount"));
+    }
+    insert_entry(&tx, &goal, today, amount, false)?;
+    let result = sync_targets(&tx, &goal, date, today)?;
+    tx.commit()?;
+    Ok(result)
+}
+
+pub fn delete_entry(conn: &mut Connection, entry_id: &str, today: &str) -> Result<(), CoreError> {
+    parse_date(today)?;
+    let tx = conn.transaction()?;
+    let found: Option<(String, String)> = tx
+        .query_row(
+            "SELECT goal_id, local_date FROM entries WHERE id = ?1",
+            params![entry_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((goal_id, logged)) = found else {
+        return Ok(());
+    };
+    tx.execute("DELETE FROM entries WHERE id = ?1", params![entry_id])?;
+    let goal = get_goal(&tx, &goal_id)?;
+    sync_targets(&tx, &goal, parse_date(&logged)?, today)?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn list_entries(conn: &Connection, goal_id: &str, limit: u32) -> Result<Vec<Entry>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, goal_id, local_date, amount FROM entries WHERE goal_id = ?1
+         ORDER BY local_date DESC, seq DESC LIMIT ?2",
+    )?;
+    let entries = stmt
+        .query_map(params![goal_id, limit], |r| {
+            Ok(Entry {
+                id: r.get(0)?,
+                goal_id: r.get(1)?,
+                local_date: r.get(2)?,
+                amount: r.get(3)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(entries)
+}
+
+/// Total logged per period, keyed by the period's first day.
+pub fn period_totals(
+    conn: &Connection,
+    goal_id: &str,
+    period: Period,
+) -> Result<BTreeMap<NaiveDate, f64>, CoreError> {
+    let mut stmt = conn.prepare("SELECT local_date, amount FROM entries WHERE goal_id = ?1")?;
+    let rows = stmt.query_map(params![goal_id], |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?))
+    })?;
+    let mut totals = BTreeMap::new();
+    for row in rows {
+        let (date, amount) = row?;
+        *totals
+            .entry(period_start(parse_date(&date)?, period))
+            .or_insert(0.0) += amount;
+    }
+    Ok(totals)
+}
+
+/// Records targets that are now met and removes targets that no longer are.
+/// `date` is the logged day that changed, which decides which period to check.
+fn sync_targets(
+    conn: &Connection,
+    goal: &Goal,
+    date: NaiveDate,
+    today: &str,
+) -> Result<LogResult, CoreError> {
+    let mut result = LogResult::default();
+    let goal = &get_goal(conn, &goal.id)?; // Totals must include the change just made.
+
+    if goal.kind == GoalKind::YesNo {
+        sync_target(conn, goal, "done", goal.done, false, today, &mut result)?;
+    }
+    if let (Some(period), Some(target)) = (goal.period, goal.period_target) {
+        let totals = period_totals(conn, &goal.id, period)?;
+        let start = period_start(date, period);
+        let met = |p: NaiveDate| totals.get(&p).is_some_and(|t| t + EPSILON >= target);
+        let previous = previous_start(start, period);
+        let creation = period_start(parse_date(&goal.created_date)?, period);
+        let comeback = previous > creation && !met(previous);
+        sync_target(
+            conn,
+            goal,
+            &format!("p:{start}"),
+            met(start),
+            comeback,
+            today,
+            &mut result,
+        )?;
+    }
+    if let Some(target) = goal.total_target {
+        let met = goal.total_logged + EPSILON >= target;
+        sync_target(conn, goal, "total", met, false, today, &mut result)?;
+    }
+    Ok(result)
+}
+
+fn sync_target(
+    conn: &Connection,
+    goal: &Goal,
+    key: &str,
+    met: bool,
+    comeback: bool,
+    today: &str,
+    result: &mut LogResult,
+) -> Result<(), CoreError> {
+    let recorded: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM target_completions WHERE goal_id = ?1 AND target_key = ?2)",
+        params![goal.id, key],
+        |r| r.get(0),
+    )?;
+    if met && !recorded {
+        result.jar_empty |= rewards::complete_target(conn, &goal.id, key, comeback, today)?;
+    } else if !met && recorded {
+        // Removing the completion also removes any reward it earned.
+        conn.execute(
+            "DELETE FROM target_completions WHERE goal_id = ?1 AND target_key = ?2",
+            params![goal.id, key],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn list_milestones(conn: &Connection, goal_id: &str) -> Result<Vec<Milestone>, CoreError> {
+    let mut stmt = conn.prepare(
+        "SELECT id, goal_id, title, done_date FROM milestones WHERE goal_id = ?1 ORDER BY position",
+    )?;
+    let milestones = stmt
+        .query_map(params![goal_id], |r| {
+            Ok(Milestone {
+                id: r.get(0)?,
+                goal_id: r.get(1)?,
+                title: r.get(2)?,
+                done_date: r.get(3)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(milestones)
+}
+
+pub fn add_milestone(conn: &Connection, goal_id: &str, title: &str) -> Result<(), CoreError> {
+    let title = clean_title(title)?;
+    get_goal(conn, goal_id)?;
+    conn.execute(
+        "INSERT INTO milestones (id, goal_id, title, position)
+         VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position), -1) + 1 FROM milestones WHERE goal_id = ?2))",
+        params![new_id(), goal_id, title],
+    )?;
+    Ok(())
+}
+
+fn milestone_goal(conn: &Connection, milestone_id: &str) -> Result<Option<String>, CoreError> {
+    Ok(conn
+        .query_row(
+            "SELECT goal_id FROM milestones WHERE id = ?1",
+            params![milestone_id],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
+pub fn toggle_milestone(
+    conn: &mut Connection,
+    milestone_id: &str,
+    today: &str,
+) -> Result<LogResult, CoreError> {
+    parse_date(today)?;
+    let tx = conn.transaction()?;
+    let Some(goal_id) = milestone_goal(&tx, milestone_id)? else {
+        return Err(invalid("That milestone no longer exists"));
+    };
+    let goal = loggable_goal(&tx, &goal_id)?;
+    let done: Option<String> = tx.query_row(
+        "SELECT done_date FROM milestones WHERE id = ?1",
+        params![milestone_id],
+        |r| r.get(0),
+    )?;
+    let done_date = if done.is_some() { None } else { Some(today) };
+    tx.execute(
+        "UPDATE milestones SET done_date = ?2 WHERE id = ?1",
+        params![milestone_id, done_date],
+    )?;
+    let mut result = LogResult::default();
+    sync_target(
+        &tx,
+        &goal,
+        &format!("m:{milestone_id}"),
+        done.is_none(),
+        false,
+        today,
+        &mut result,
+    )?;
+    tx.commit()?;
+    Ok(result)
+}
+
+pub fn delete_milestone(conn: &mut Connection, milestone_id: &str) -> Result<(), CoreError> {
+    let tx = conn.transaction()?;
+    if let Some(goal_id) = milestone_goal(&tx, milestone_id)? {
+        tx.execute(
+            "DELETE FROM target_completions WHERE goal_id = ?1 AND target_key = ?2",
+            params![goal_id, format!("m:{milestone_id}")],
+        )?;
+        tx.execute(
+            "DELETE FROM milestones WHERE id = ?1",
+            params![milestone_id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Moves a milestone one place earlier or later in its goal's order.
+pub fn move_milestone(
+    conn: &mut Connection,
+    milestone_id: &str,
+    earlier: bool,
+) -> Result<(), CoreError> {
+    let tx = conn.transaction()?;
+    let Some(goal_id) = milestone_goal(&tx, milestone_id)? else {
+        return Ok(());
+    };
+    let ids: Vec<String> = {
+        let mut stmt =
+            tx.prepare("SELECT id FROM milestones WHERE goal_id = ?1 ORDER BY position")?;
+        stmt.query_map(params![goal_id], |r| r.get(0))?
+            .collect::<Result<_, _>>()?
+    };
+    let index = ids.iter().position(|id| id == milestone_id);
+    let other = index.and_then(|i| {
+        if earlier {
+            i.checked_sub(1)
+        } else {
+            Some(i + 1)
+        }
+    });
+    if let (Some(index), Some(other)) = (index, other)
+        && other < ids.len()
+    {
+        let mut order = ids;
+        order.swap(index, other);
+        for (position, id) in order.iter().enumerate() {
+            tx.execute(
+                "UPDATE milestones SET position = ?2 WHERE id = ?1",
+                params![id, position as i64],
+            )?;
+        }
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn today_items(conn: &Connection, today: &str) -> Result<Vec<TodayItem>, CoreError> {
+    let date = parse_date(today)?;
+    // Order never depends on progress, so cards don't move while being ticked.
+    let mut items = Vec::new();
+    for goal in list_goals(conn, false)? {
+        if let Some(item) = today_item(conn, &goal, date, today)? {
+            items.push(item);
+        }
+    }
+    Ok(items)
+}
+
+fn today_item(
+    conn: &Connection,
+    goal: &Goal,
+    date: NaiveDate,
+    today: &str,
+) -> Result<Option<TodayItem>, CoreError> {
+    let logged_today: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM entries WHERE goal_id = ?1 AND local_date = ?2)",
+        params![goal.id, today],
+        |r| r.get(0),
+    )?;
+
+    let (mut period_progress, mut period_met, mut current_streak) = (0.0, false, 0);
+    if let (Some(period), Some(target)) = (goal.period, goal.period_target) {
+        let totals = period_totals(conn, &goal.id, period)?;
+        period_progress = totals
+            .get(&period_start(date, period))
+            .copied()
+            .unwrap_or(0.0);
+        period_met = period_progress + EPSILON >= target;
+        current_streak = stats::period_summary(
+            parse_date(&goal.created_date)?,
+            period,
+            target,
+            &totals,
+            date,
+        )
+        .current_streak;
+    }
+
+    let needs_work = match goal.kind {
+        GoalKind::YesNo => !goal.done,
+        GoalKind::Habit => !period_met,
+        // A numeric goal with no targets is a plain tally, which is always open.
+        GoalKind::Numeric => !goal.done && (goal.period.is_none() || !period_met),
+    };
+    if !needs_work && !logged_today {
+        return Ok(None);
+    }
+
+    let next_milestone = conn
+        .query_row(
+            "SELECT title FROM milestones WHERE goal_id = ?1 AND done_date IS NULL ORDER BY position LIMIT 1",
+            params![goal.id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let complete = match goal.kind {
+        GoalKind::Habit => period_met || logged_today,
+        _ => !needs_work,
+    };
+    Ok(Some(TodayItem {
+        goal_id: goal.id.clone(),
+        title: goal.title.clone(),
+        kind: goal.kind,
+        category: goal.category.clone(),
+        unit: goal.unit.clone(),
+        logged_today,
+        period: goal.period,
+        period_progress,
+        period_target: goal.period_target,
+        total_progress: goal.total_logged,
+        total_target: goal.total_target,
+        complete,
+        deadline: goal.deadline.clone(),
+        overdue: !goal.done && goal.deadline.as_deref().is_some_and(|d| d < today),
+        current_streak,
+        next_milestone,
+    }))
+}
+
+/// One day per step in `from..=to`, for one goal or all active goals.
+pub fn heatmap(
+    conn: &Connection,
+    goal_id: Option<&str>,
+    from: &str,
+    to: &str,
+) -> Result<Vec<HeatmapDay>, CoreError> {
+    let (start, end) = (parse_date(from)?, parse_date(to)?);
+    if start > end || (end - start).num_days() > 800 {
+        return Err(invalid("Choose a date range of up to 800 days"));
+    }
+    let mut stmt = conn.prepare(
+        "SELECT e.local_date, COUNT(*) FROM entries e JOIN goals g ON g.id = e.goal_id
+         WHERE e.local_date BETWEEN ?2 AND ?3
+           AND (?1 IS NOT NULL AND e.goal_id = ?1 OR ?1 IS NULL AND g.archived = 0)
+         GROUP BY e.local_date",
+    )?;
+    let counts: BTreeMap<String, u32> = stmt
+        .query_map(params![goal_id, from, to], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let mut days = Vec::new();
+    let mut day = start;
+    while day <= end {
+        let date = day.to_string();
+        let count = counts.get(&date).copied().unwrap_or(0);
+        days.push(HeatmapDay { date, count });
+        day = next_start(day, Period::Day);
+    }
+    Ok(days)
+}

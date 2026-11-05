@@ -1,0 +1,4 @@
+[bindings.kotlin]
+package_name = "dev.goaltracker.core"
+# Generates the memory cleanup path that checks the Android version at runtime.
+android = true
