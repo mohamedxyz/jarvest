@@ -12,12 +12,28 @@ fn count(conn: &Connection, sql: &str) -> Result<u32, CoreError> {
 }
 
 pub fn badges(conn: &Connection, today: &str) -> Result<Vec<Badge>, CoreError> {
-    let entries = count(conn, "SELECT COUNT(*) FROM entries")?;
-    let targets = count(conn, "SELECT COUNT(*) FROM target_completions")?;
-    let draws = count(conn, "SELECT COUNT(*) FROM reward_draws")?;
+    // Goals in the trash don't count, so a badge can't depend on something hidden.
+    let entries = count(
+        conn,
+        "SELECT COUNT(*) FROM entries e JOIN goals g ON g.id = e.goal_id
+         WHERE g.deleted_date IS NULL",
+    )?;
+    let targets = count(
+        conn,
+        "SELECT COUNT(*) FROM target_completions c JOIN goals g ON g.id = c.goal_id
+         WHERE g.deleted_date IS NULL",
+    )?;
+    let draws = count(
+        conn,
+        "SELECT COUNT(*) FROM reward_draws d
+         JOIN target_completions c ON c.id = d.completion_id
+         JOIN goals g ON g.id = c.goal_id
+         WHERE g.deleted_date IS NULL",
+    )?;
     let finished = count(
         conn,
-        "SELECT COUNT(*) FROM target_completions WHERE target_key IN ('done', 'total')",
+        "SELECT COUNT(*) FROM target_completions c JOIN goals g ON g.id = c.goal_id
+         WHERE g.deleted_date IS NULL AND c.target_key IN ('done', 'total')",
     )?;
     let best_streak = stats::overview(conn, today)?
         .goals

@@ -294,6 +294,35 @@ pub struct Recap {
     pub goals_logged: u32,
     /// Targets completed on days inside the range.
     pub targets_met: u32,
+    /// Tasks finished on days inside the range (milestone tasks are left out: the
+    /// milestone is what counts).
+    pub tasks_done: u32,
+    /// Tasks that were due inside the range, are past due, and are still not done.
+    pub tasks_missed: u32,
+    /// The first few of those, oldest due date first.
+    pub missed_tasks: Vec<MissedTask>,
+}
+
+/// A task that was due in a report's range and was never finished.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MissedTask {
+    pub id: String,
+    pub title: String,
+    pub due: String,
+}
+
+/// A goal in the trash. Restoring it brings back its history and rewards.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TrashedGoal {
+    pub id: String,
+    pub title: String,
+    pub kind: GoalKind,
+    pub category: Option<String>,
+    pub deleted_date: String,
+    /// Days before it is removed for good (0 when it is due to go).
+    pub days_left: u32,
+    /// How many check-ins it holds, so the screen can say what would be lost.
+    pub entries: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

@@ -54,7 +54,7 @@ pub fn goal_reminder(conn: &Connection, goal_id: &str) -> Result<Option<u16>, Co
 pub fn list_reminders(conn: &Connection) -> Result<Vec<Reminder>, CoreError> {
     let mut stmt = conn.prepare(
         "SELECT r.goal_id, g.title, r.minutes FROM reminders r JOIN goals g ON g.id = r.goal_id
-         WHERE g.archived = 0 ORDER BY r.minutes, g.title COLLATE NOCASE",
+         WHERE g.archived = 0 AND g.deleted_date IS NULL ORDER BY r.minutes, g.title COLLATE NOCASE",
     )?;
     let list = stmt
         .query_map([], |r| {
@@ -153,5 +153,66 @@ pub fn reminder_text(
             }
             Some(format!("{} left today: {text}", counts.join(" and ")))
         }
+    })
+}
+
+const EVENING_KEY: &str = "evening_reminder_minutes";
+
+/// The optional second reminder of the day, for a last check-in. Its time is stored
+/// like the daily one, and a damaged value means "off".
+pub fn evening_reminder(conn: &Connection) -> Result<Option<u16>, CoreError> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![EVENING_KEY],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(value
+        .and_then(|v| v.parse::<u16>().ok())
+        .filter(|m| *m <= LAST_MINUTE))
+}
+
+pub fn set_evening_reminder(conn: &Connection, minutes: Option<u16>) -> Result<(), CoreError> {
+    match minutes {
+        Some(minutes) => {
+            check(minutes)?;
+            conn.execute(
+                "INSERT INTO meta (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![EVENING_KEY, minutes.to_string()],
+            )?;
+        }
+        None => {
+            conn.execute("DELETE FROM meta WHERE key = ?1", params![EVENING_KEY])?;
+        }
+    }
+    Ok(())
+}
+
+/// "2 goals and 1 task left today", or `None` when nothing is left (so no notification).
+/// Goals in the trash never count, because `today_items` skips them.
+pub fn evening_text(conn: &Connection, today: &str) -> Result<Option<String>, CoreError> {
+    let goals = today_items(conn, today)?
+        .into_iter()
+        .filter(|item| !item.complete)
+        .count();
+    let tasks = crate::tasks::due_tasks(conn, today)?.len();
+    let plural = |n: usize, one: &str| {
+        if n == 1 {
+            format!("1 {one}")
+        } else {
+            format!("{n} {one}s")
+        }
+    };
+    Ok(match (goals, tasks) {
+        (0, 0) => None,
+        (g, 0) => Some(format!("{} left today", plural(g, "goal"))),
+        (0, t) => Some(format!("{} left today", plural(t, "task"))),
+        (g, t) => Some(format!(
+            "{} and {} left today",
+            plural(g, "goal"),
+            plural(t, "task")
+        )),
     })
 }
