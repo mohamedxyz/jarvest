@@ -33,7 +33,10 @@ class GoalTrackerApp : Application() {
 
     fun refreshWidgets() {
         widgetDataChanged()
-        scope.launch { TodayWidget().updateAll(this@GoalTrackerApp) }
+        scope.launch {
+            TodayWidget().updateAll(this@GoalTrackerApp)
+            StreakWidget().updateAll(this@GoalTrackerApp)
+        }
     }
 }
 

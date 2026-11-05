@@ -49,6 +49,27 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
+private data class Template(
+    val title: String,
+    val kind: GoalKind,
+    val period: Period?,
+    val periodTarget: String,
+    val totalTarget: String = "",
+    val unit: String = "",
+    val category: String = "",
+)
+
+private val templates = listOf(
+    Template("Read", GoalKind.HABIT, Period.DAY, "1", category = "Learning"),
+    Template("Exercise", GoalKind.HABIT, Period.WEEK, "3", category = "Health"),
+    Template("Meditate", GoalKind.HABIT, Period.DAY, "1", category = "Health"),
+    Template("Drink water", GoalKind.NUMERIC, Period.DAY, "8", unit = "glasses", category = "Health"),
+    Template("Study", GoalKind.HABIT, Period.WEEK, "5", category = "Learning"),
+    Template("Save money", GoalKind.NUMERIC, null, "", totalTarget = "1000", unit = "$", category = "Money"),
+)
+
+private val dayChips = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> Unit) {
@@ -64,6 +85,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
     var period by rememberSaveable { mutableStateOf<Period?>(Period.WEEK) }
     var periodTarget by rememberSaveable { mutableStateOf("3") }
     var totalTarget by rememberSaveable { mutableStateOf("") }
+    var weekdays by rememberSaveable { mutableStateOf(setOf(0, 1, 2, 3, 4, 5, 6)) }
     val milestones = remember { mutableStateListOf<String>() }
     var milestoneText by rememberSaveable { mutableStateOf("") }
     var pickingDate by remember { mutableStateOf(false) }
@@ -76,6 +98,21 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
         OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Title") }, singleLine = true)
 
         if (existing == null) {
+            SectionTitle("Quick start")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                templates.forEach { template ->
+                    SuggestionChip(onClick = {
+                        title = template.title
+                        kind = template.kind
+                        period = template.period
+                        periodTarget = template.periodTarget
+                        totalTarget = template.totalTarget
+                        unit = template.unit
+                        category = template.category
+                        weekdays = setOf(0, 1, 2, 3, 4, 5, 6)
+                    }, label = { Text(template.title) })
+                }
+            }
             SectionTitle("Type")
             val kinds = listOf(GoalKind.HABIT to "Habit", GoalKind.NUMERIC to "Numeric", GoalKind.YES_NO to "Yes/no")
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -126,6 +163,25 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
+                }
+                if (kind == GoalKind.HABIT && period == Period.DAY) {
+                    Text("Days", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        dayChips.forEachIndexed { index, label ->
+                            FilterChip(
+                                selected = index in weekdays,
+                                onClick = { weekdays = if (index in weekdays) weekdays - index else weekdays + index },
+                                label = { Text(label) },
+                            )
+                        }
+                    }
+                    if (weekdays.isEmpty()) {
+                        Text(
+                            "Pick at least one day.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
                 if (kind == GoalKind.NUMERIC) {
                     OutlinedTextField(
@@ -191,7 +247,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
 
         // Pinned, so saving never requires scrolling past the whole form.
         Button(
-            enabled = title.isNotBlank(),
+            enabled = title.isNotBlank() && (existing != null || kind != GoalKind.HABIT || period != Period.DAY || weekdays.isNotEmpty()),
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             onClick = {
                 val saved = if (existing != null) {
@@ -199,7 +255,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                         updateGoal(existing.id, GoalEdit(title, notes, category.ifBlank { null }, unit.ifBlank { null }, deadline))
                     }
                 } else {
-                    saveNew(controller, title, notes, kind, category, period, periodTarget, totalTarget, unit, deadline, milestones.toList() + listOfNotNull(milestoneText.takeIf { it.isNotBlank() }))
+                    saveNew(controller, title, notes, kind, category, period, periodTarget, totalTarget, unit, deadline, weekdays, milestones.toList() + listOfNotNull(milestoneText.takeIf { it.isNotBlank() }))
                 }
                 if (saved) onDone()
             },
@@ -235,6 +291,7 @@ private fun saveNew(
     totalTarget: String,
     unit: String,
     deadline: String?,
+    weekdays: Set<Int>,
     milestones: List<String>,
 ): Boolean {
     val usesPeriod = kind != GoalKind.YES_NO && period != null
@@ -259,6 +316,8 @@ private fun saveNew(
                 period = if (usesPeriod) period else null,
                 periodTarget = parsedPeriodTarget,
                 totalTarget = parsedTotal,
+                weekdays = weekdays.takeIf { kind == GoalKind.HABIT && period == Period.DAY && it.size < 7 }
+                    ?.sumOf { 1 shl it }?.toUByte(),
                 unit = if (kind == GoalKind.NUMERIC) unit.ifBlank { null } else null,
                 deadline = deadline,
                 milestones = milestones,

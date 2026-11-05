@@ -8,7 +8,12 @@ use crate::CoreError;
 pub const APPLICATION_ID: i32 = 0x474F_414C;
 
 /// One entry per schema version. Never edit a released migration: append one.
-const MIGRATIONS: &[&str] = &[include_str!("sql/001_init.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("sql/001_init.sql"),
+    include_str!("sql/002_skips.sql"),
+    include_str!("sql/003_weekdays.sql"),
+    include_str!("sql/004_goal_order.sql"),
+];
 
 pub const SCHEMA_VERSION: i32 = MIGRATIONS.len() as i32;
 

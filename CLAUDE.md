@@ -26,4 +26,5 @@ Android goal/habit tracker. Rust core (rules, stats, rewards, SQLite, backup) + 
 - Reward rolls are deterministic: `SHA-256(install_seed, goal_id, target_key)`; completions unique per `(goal, target_key)`. Undo must remove targets no longer satisfied and their rewards.
 - Backups are untrusted input: restore validates application ID, schema version, `integrity_check`, and rejects triggers/views before atomic swap.
 - Migrations: never edit a released `core/src/sql/NNN_*.sql`. Add a new numbered file and append it to `MIGRATIONS` in `core/src/db.rs` (`SCHEMA_VERSION` derives from its length).
+- Schema is at version 4 (skips, weekdays, goal order). Weekday masks use Monday = 1 up to Sunday = 64; all seven days is stored as NULL.
 - Versioning an update: bump `versionCode`/`versionName` in `android/app/build.gradle.kts`.

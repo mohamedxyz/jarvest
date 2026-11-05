@@ -1,6 +1,8 @@
 package dev.goaltracker.app
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -9,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,11 +29,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TreatsScreen(controller: AppController) {
     val treats = remember(controller.version) { controller.read(emptyList()) { listTreats() } }
     val draws = remember(controller.version) { controller.read(emptyList()) { listDraws() } }
     val enabled = remember(controller.version) { controller.read(true) { rewardsEnabled() } }
+    val badges = remember(controller.version, controller.today) { controller.read(emptyList()) { badges(controller.today) } }
     var newTreat by rememberSaveable { mutableStateOf("") }
 
     Column(
@@ -68,6 +73,13 @@ fun TreatsScreen(controller: AppController) {
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SectionTitle("Treats you've won")
+            if (draws.isNotEmpty()) {
+                Text(
+                    "${draws.size} won, ${draws.count { it.redeemedDate != null }} enjoyed",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (draws.isEmpty()) Text("None yet. Keep hitting your targets!", style = MaterialTheme.typography.bodyMedium)
             draws.forEach { draw ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -88,6 +100,24 @@ fun TreatsScreen(controller: AppController) {
             if (draws.isNotEmpty()) {
                 Text("Tick a treat once you've enjoyed it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("Badges (${badges.count { it.earned }} of ${badges.size})")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                badges.forEach { badge ->
+                    AssistChip(
+                        onClick = {},
+                        label = { Text(if (badge.earned) badge.title else "${badge.title} (locked)") },
+                        enabled = badge.earned,
+                    )
+                }
+            }
+            Text(
+                badges.filter { !it.earned }.take(3).joinToString("\n") { "${it.title}: ${it.description}" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

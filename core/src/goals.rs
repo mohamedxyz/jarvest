@@ -6,7 +6,7 @@ use chrono::NaiveDate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use crate::CoreError;
-use crate::dates::{next_start, parse_date, period_start, previous_start};
+use crate::dates::{is_scheduled, next_start, parse_date, period_start, previous_start};
 use crate::model::*;
 use crate::rewards;
 use crate::stats;
@@ -52,6 +52,14 @@ fn validate_targets(goal: &NewGoal) -> Result<(), CoreError> {
     }
     if goal.period.is_some() != goal.period_target.is_some() {
         return Err(invalid("A period and its target must be set together"));
+    }
+    if let Some(mask) = goal.weekdays {
+        if goal.kind != GoalKind::Habit || goal.period != Some(Period::Day) {
+            return Err(invalid("Weekdays only apply to daily habits"));
+        }
+        if !(1..=127).contains(&mask) {
+            return Err(invalid("Choose at least one weekday"));
+        }
     }
     match goal.kind {
         GoalKind::YesNo => {
@@ -99,8 +107,8 @@ pub fn create_goal(conn: &mut Connection, goal: NewGoal, today: &str) -> Result<
     let tx = conn.transaction()?;
     tx.execute(
         "INSERT INTO goals (id, title, notes, kind, category, period, period_target, total_target,
-                            unit, deadline, created_date)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                            unit, deadline, created_date, weekdays)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             id,
             title,
@@ -113,6 +121,8 @@ pub fn create_goal(conn: &mut Connection, goal: NewGoal, today: &str) -> Result<
             clean_optional(goal.unit),
             goal.deadline,
             today,
+            // Every day is the same as no schedule.
+            goal.weekdays.filter(|mask| *mask != 127),
         ],
     )?;
     for (position, title) in milestones.iter().enumerate() {
@@ -160,7 +170,10 @@ pub fn delete_goal(conn: &Connection, goal_id: &str) -> Result<(), CoreError> {
 
 const GOAL_COLUMNS: &str = "id, title, notes, kind, category, period, period_target, total_target,
     unit, deadline, created_date, archived,
-    (SELECT COALESCE(SUM(amount), 0) FROM entries e WHERE e.goal_id = goals.id)";
+    (SELECT COALESCE(SUM(amount), 0) FROM entries e WHERE e.goal_id = goals.id),
+    weekdays,
+    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id AND m.done_date IS NOT NULL),
+    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id)";
 
 fn goal_from_row(row: &Row<'_>) -> rusqlite::Result<Goal> {
     let kind: GoalKind = row.get(3)?;
@@ -186,6 +199,9 @@ fn goal_from_row(row: &Row<'_>) -> rusqlite::Result<Goal> {
         archived: row.get(11)?,
         total_logged,
         done,
+        weekdays: row.get(13)?,
+        milestones_done: row.get(14)?,
+        milestones_total: row.get(15)?,
     })
 }
 
@@ -202,12 +218,44 @@ pub fn get_goal(conn: &Connection, goal_id: &str) -> Result<Goal, CoreError> {
 pub fn list_goals(conn: &Connection, archived: bool) -> Result<Vec<Goal>, CoreError> {
     let mut stmt = conn.prepare(&format!(
         "SELECT {GOAL_COLUMNS} FROM goals WHERE archived = ?1
-         ORDER BY category IS NULL, category COLLATE NOCASE, created_date, rowid"
+         ORDER BY category IS NULL, category COLLATE NOCASE, position, created_date, rowid"
     ))?;
     let goals = stmt
         .query_map(params![archived], goal_from_row)?
         .collect::<Result<_, _>>()?;
     Ok(goals)
+}
+
+/// Moves a goal one place up or down among the goals in its category.
+pub fn move_goal(conn: &mut Connection, goal_id: &str, earlier: bool) -> Result<(), CoreError> {
+    let tx = conn.transaction()?;
+    let goal = get_goal(&tx, goal_id)?;
+    let neighbours: Vec<String> = list_goals(&tx, goal.archived)?
+        .into_iter()
+        .filter(|g| g.category == goal.category)
+        .map(|g| g.id)
+        .collect();
+    let Some(index) = neighbours.iter().position(|id| id == goal_id) else {
+        return Ok(());
+    };
+    let other = if earlier {
+        index.checked_sub(1)
+    } else {
+        Some(index + 1)
+    };
+    let mut order = neighbours;
+    if let Some(other) = other.filter(|o| *o < order.len()) {
+        order.swap(index, other);
+    }
+    // Renumber the whole group so earlier ties can't undo the move.
+    for (position, id) in order.iter().enumerate() {
+        tx.execute(
+            "UPDATE goals SET position = ?2 WHERE id = ?1",
+            params![id, position as i64],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 pub fn categories(conn: &Connection) -> Result<Vec<String>, CoreError> {
@@ -243,15 +291,30 @@ fn insert_entry(
     Ok(())
 }
 
-/// Ticks a yes/no goal or habit, or removes the tick if it's already there.
+/// Checks that `day` can be logged: not in the future and not before the goal began.
+fn check_log_day(goal: &Goal, day: NaiveDate, today: NaiveDate) -> Result<(), CoreError> {
+    if day > today {
+        return Err(invalid("You can't log a day that hasn't happened yet"));
+    }
+    if day < parse_date(&goal.created_date)? {
+        return Err(invalid("You can't log a day before the goal was created"));
+    }
+    Ok(())
+}
+
+/// Ticks a yes/no goal or habit on `day`, or removes the tick if it's already there.
+/// `day` is today for a normal tick, or an earlier day when filling in a missed one.
 pub fn toggle_check_in(
     conn: &mut Connection,
     goal_id: &str,
+    day: &str,
     today: &str,
 ) -> Result<LogResult, CoreError> {
-    let date = parse_date(today)?;
+    let date = parse_date(day)?;
+    let today_date = parse_date(today)?;
     let tx = conn.transaction()?;
     let goal = loggable_goal(&tx, goal_id)?;
+    check_log_day(&goal, date, today_date)?;
     // A yes/no tick can be undone on a later day. A habit's tick belongs to one day.
     let existing: Option<String> = match goal.kind {
         GoalKind::Numeric => return Err(invalid("Numeric goals log an amount")),
@@ -265,7 +328,7 @@ pub fn toggle_check_in(
         GoalKind::Habit => tx
             .query_row(
                 "SELECT local_date FROM entries WHERE goal_id = ?1 AND local_date = ?2",
-                params![goal_id, today],
+                params![goal_id, day],
                 |r| r.get(0),
             )
             .optional()?,
@@ -279,7 +342,7 @@ pub fn toggle_check_in(
             sync_targets(&tx, &goal, parse_date(&logged)?, today)?
         }
         None => {
-            insert_entry(&tx, &goal, today, 1.0, true)?;
+            insert_entry(&tx, &goal, day, 1.0, true)?;
             sync_targets(&tx, &goal, date, today)?
         }
     };
@@ -291,9 +354,11 @@ pub fn log_amount(
     conn: &mut Connection,
     goal_id: &str,
     amount: f64,
+    day: &str,
     today: &str,
 ) -> Result<LogResult, CoreError> {
-    let date = parse_date(today)?;
+    let date = parse_date(day)?;
+    let today_date = parse_date(today)?;
     if !amount.is_finite() || amount <= 0.0 {
         return Err(invalid("Enter an amount greater than zero"));
     }
@@ -302,7 +367,8 @@ pub fn log_amount(
     if goal.kind != GoalKind::Numeric {
         return Err(invalid("Only numeric goals log an amount"));
     }
-    insert_entry(&tx, &goal, today, amount, false)?;
+    check_log_day(&goal, date, today_date)?;
+    insert_entry(&tx, &goal, day, amount, false)?;
     let result = sync_targets(&tx, &goal, date, today)?;
     tx.commit()?;
     Ok(result)
@@ -366,6 +432,81 @@ pub fn period_totals(
     Ok(totals)
 }
 
+/// Periods (by first day) that contain a skipped day.
+pub fn excused_periods(
+    conn: &Connection,
+    goal_id: &str,
+    period: Period,
+) -> Result<std::collections::BTreeSet<NaiveDate>, CoreError> {
+    let mut stmt = conn.prepare("SELECT local_date FROM skips WHERE goal_id = ?1")?;
+    let rows = stmt.query_map(params![goal_id], |r| r.get::<_, String>(0))?;
+    let mut periods = std::collections::BTreeSet::new();
+    for row in rows {
+        periods.insert(period_start(parse_date(&row?)?, period));
+    }
+    Ok(periods)
+}
+
+/// Longest pause that can be set in one go.
+const MAX_PAUSE_DAYS: i64 = 366;
+
+/// Marks every day from `from` to `to` (inclusive) as skipped. A pause can reach into
+/// the future, such as a holiday, but can't start before the goal was created.
+pub fn pause_goal(
+    conn: &mut Connection,
+    goal_id: &str,
+    from: &str,
+    to: &str,
+) -> Result<(), CoreError> {
+    let (start, end) = (parse_date(from)?, parse_date(to)?);
+    if end < start {
+        return Err(invalid("The pause must end on or after the day it starts"));
+    }
+    if (end - start).num_days() >= MAX_PAUSE_DAYS {
+        return Err(invalid("A pause can last at most a year"));
+    }
+    let tx = conn.transaction()?;
+    let goal = get_goal(&tx, goal_id)?;
+    if start < parse_date(&goal.created_date)? {
+        return Err(invalid("You can't pause days before the goal was created"));
+    }
+    let mut day = start;
+    while day <= end {
+        tx.execute(
+            "INSERT OR IGNORE INTO skips (goal_id, local_date) VALUES (?1, ?2)",
+            params![goal_id, day.to_string()],
+        )?;
+        day = day.succ_opt().expect("date in range");
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+/// Removes skipped days from `from` to `to` (inclusive).
+pub fn unpause_goal(
+    conn: &Connection,
+    goal_id: &str,
+    from: &str,
+    to: &str,
+) -> Result<(), CoreError> {
+    let (start, end) = (parse_date(from)?, parse_date(to)?);
+    conn.execute(
+        "DELETE FROM skips WHERE goal_id = ?1 AND local_date BETWEEN ?2 AND ?3",
+        params![goal_id, start.to_string(), end.to_string()],
+    )?;
+    Ok(())
+}
+
+/// Skipped days for a goal, oldest first.
+pub fn skipped_days(conn: &Connection, goal_id: &str) -> Result<Vec<String>, CoreError> {
+    let mut stmt =
+        conn.prepare("SELECT local_date FROM skips WHERE goal_id = ?1 ORDER BY local_date")?;
+    let days = stmt
+        .query_map(params![goal_id], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(days)
+}
+
 /// Records targets that are now met and removes targets that no longer are.
 /// `date` is the logged day that changed, which decides which period to check.
 fn sync_targets(
@@ -384,8 +525,13 @@ fn sync_targets(
         let totals = period_totals(conn, &goal.id, period)?;
         let start = period_start(date, period);
         let met = |p: NaiveDate| totals.get(&p).is_some_and(|t| t + EPSILON >= target);
-        let previous = previous_start(start, period);
         let creation = period_start(parse_date(&goal.created_date)?, period);
+        let mut previous = previous_start(start, period);
+        // Days off don't count as missed, so look back to the last day that was due.
+        while period == Period::Day && previous > creation && !is_scheduled(goal.weekdays, previous)
+        {
+            previous = previous_start(previous, period);
+        }
         let comeback = previous > creation && !met(previous);
         sync_target(
             conn,
@@ -591,11 +737,14 @@ fn today_item(
             .copied()
             .unwrap_or(0.0);
         period_met = period_progress + EPSILON >= target;
+        let excused = excused_periods(conn, &goal.id, period)?;
         current_streak = stats::period_summary(
             parse_date(&goal.created_date)?,
             period,
             target,
             &totals,
+            &excused,
+            goal.weekdays,
             date,
         )
         .current_streak;
@@ -603,11 +752,16 @@ fn today_item(
 
     let needs_work = match goal.kind {
         GoalKind::YesNo => !goal.done,
-        GoalKind::Habit => !period_met,
+        GoalKind::Habit => !period_met && is_scheduled(goal.weekdays, date),
         // A numeric goal with no targets is a plain tally, which is always open.
         GoalKind::Numeric => !goal.done && (goal.period.is_none() || !period_met),
     };
-    if !needs_work && !logged_today {
+    let skipped_today: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM skips WHERE goal_id = ?1 AND local_date = ?2)",
+        params![goal.id, today],
+        |r| r.get(0),
+    )?;
+    if (!needs_work || skipped_today) && !logged_today {
         return Ok(None);
     }
 
@@ -639,6 +793,8 @@ fn today_item(
         overdue: !goal.done && goal.deadline.as_deref().is_some_and(|d| d < today),
         current_streak,
         next_milestone,
+        milestones_done: goal.milestones_done,
+        milestones_total: goal.milestones_total,
     }))
 }
 

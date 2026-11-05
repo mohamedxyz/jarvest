@@ -17,13 +17,21 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +41,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.goaltracker.core.GoalStats
 import dev.goaltracker.core.HeatmapDay
+import dev.goaltracker.core.Period
+import dev.goaltracker.core.Recap
+import dev.goaltracker.core.WeekdayStat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -60,6 +71,27 @@ fun StatsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Activity")
             Heatmap(controller, goalId = null)
+        }
+        RecapCard(controller)
+        WeekdayCard(controller)
+        if (goals.map { it.category }.distinct().size > 1) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionTitle("By category")
+                goals.groupBy { it.category ?: "No category" }.entries
+                    .map { (name, group) -> Triple(name, group.sumOf { it.met.toInt() }.toUInt(), group.sumOf { it.eligible.toInt() }.toUInt()) }
+                    .sortedByDescending { (_, met, eligible) -> if (eligible == 0u) -1.0 else met.toDouble() / eligible.toDouble() }
+                    .forEach { (name, met, eligible) ->
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                                    Text(percent(met, eligible), style = MaterialTheme.typography.titleMedium)
+                                }
+                                CompletionBar(met, eligible)
+                            }
+                        }
+                    }
+            }
         }
         if (goals.isEmpty()) {
             EmptyState("No repeating targets yet", "Streaks and completion rates appear for habits and goals with a daily, weekly, or monthly target.")
@@ -224,3 +256,89 @@ fun Heatmap(controller: AppController, goalId: String?) {
 
 private fun dayLabel(day: HeatmapDay): String =
     "${LocalDate.parse(day.date).format(DateTimeFormatter.ofPattern("EEE, MMM d"))}: ${countOf(day.count.toInt(), "log")}"
+
+@Composable
+private fun RecapCard(controller: AppController) {
+    var period by rememberSaveable { mutableStateOf(Period.WEEK) }
+    var back by rememberSaveable { mutableIntStateOf(0) }
+    val recap = remember(controller.version, controller.today, period, back) {
+        controller.read(null) { recap(period, back.toUInt(), controller.today) }
+    }
+    val before = remember(controller.version, controller.today, period, back) {
+        controller.read(null) { recap(period, (back + 1).toUInt(), controller.today) }
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionTitle("Summary", Modifier.weight(1f))
+                FilterChip(period == Period.WEEK, { period = Period.WEEK; back = 0 }, label = { Text("Week") })
+                FilterChip(period == Period.MONTH, { period = Period.MONTH; back = 0 }, label = { Text("Month") })
+            }
+            if (recap != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { back++ }) { Icon(Icons.Filled.ChevronLeft, "Earlier ${period.noun()}") }
+                    Text(rangeLabel(recap), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                    IconButton(enabled = back > 0, onClick = { back-- }) { Icon(Icons.Filled.ChevronRight, "Later ${period.noun()}") }
+                }
+                Text(
+                    "${countOf(recap.entries.toInt(), "log")} on ${countOf(recap.activeDays.toInt(), "day")} " +
+                        "across ${countOf(recap.goalsLogged.toInt(), "goal")}. " +
+                        "${countOf(recap.targetsMet.toInt(), "target")} met.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (before != null) {
+                    val diff = recap.entries.toInt() - before.entries.toInt()
+                    val word = when {
+                        diff > 0 -> "$diff more logs than the ${period.noun()} before"
+                        diff < 0 -> "${-diff} fewer logs than the ${period.noun()} before"
+                        else -> "Same number of logs as the ${period.noun()} before"
+                    }
+                    Text(word, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+private fun rangeLabel(recap: Recap): String {
+    val start = LocalDate.parse(recap.start)
+    val end = LocalDate.parse(recap.end)
+    val short = DateTimeFormatter.ofPattern("MMM d")
+    return if (start.month == end.month && start.dayOfMonth == 1) start.format(DateTimeFormatter.ofPattern("MMMM yyyy"))
+    else "${start.format(short)} to ${end.format(short)}"
+}
+
+@Composable
+private fun WeekdayCard(controller: AppController) {
+    val stats = remember(controller.version, controller.today) {
+        controller.read(emptyList()) { weekdayStats(controller.today) }
+    }
+    if (stats.all { it.eligible == 0u }) return
+    val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    fun rate(s: WeekdayStat) = s.met.toDouble() / s.eligible.toDouble()
+    val ranked = stats.filter { it.eligible >= 2u }.sortedBy { rate(it) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("Best and worst days")
+            stats.forEach { s ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(names[s.weekday.toInt()], Modifier.width(36.dp), style = MaterialTheme.typography.labelLarge)
+                    Box(Modifier.weight(1f)) { CompletionBar(s.met, s.eligible) }
+                    Text(percent(s.met, s.eligible), Modifier.width(44.dp), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (ranked.size >= 2 && rate(ranked.first()) < rate(ranked.last())) {
+                Text(
+                    "Strongest: ${names[ranked.last().weekday.toInt()]}. Weakest: ${names[ranked.first().weekday.toInt()]}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                "Daily goals only. Days off and skipped days are left out.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}

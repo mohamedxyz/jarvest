@@ -17,6 +17,12 @@ pub fn parse_date(value: &str) -> Result<NaiveDate, CoreError> {
 }
 
 /// The first day of the period containing `date`. Weeks start on Monday.
+/// True if a daily habit with this weekday bitmask (Monday = 1) is due on `date`.
+/// No mask means every day.
+pub fn is_scheduled(weekdays: Option<u8>, date: NaiveDate) -> bool {
+    weekdays.is_none_or(|mask| mask & (1 << date.weekday().num_days_from_monday()) != 0)
+}
+
 pub fn period_start(date: NaiveDate, period: Period) -> NaiveDate {
     match period {
         Period::Day => date,

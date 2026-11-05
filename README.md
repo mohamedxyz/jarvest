@@ -8,12 +8,16 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
 
 ## Features
 
-- **Three goal types:** habits (such as 3 times a week), numeric goals (such as
-  5 km a day or 300 pages in total), and one-off yes/no goals
+- **Three goal types:** habits (such as 3 times a week, or only on chosen weekdays),
+  numeric goals (such as 5 km a day or 300 pages in total), and one-off yes/no goals
+- **Missed a day?** Log past days, skip a day, or pause a goal without losing the streak
 - **Organizing:** categories, deadlines, ordered milestones, and an archive
-- **Today screen and home screen widget** for logging in one tap
-- **Stats:** activity heatmap, completion rates, and streaks
-- **Reward jar:** add your own treats, then draw them at random when you hit targets
+- **Today screen and home screen widgets** for logging in one tap
+- **Stats:** heatmap, line charts, weekly and monthly summaries, best and worst weekdays,
+  category comparison, completion rates, and streak history
+- **Reward jar:** add your own treats, draw them at random when you hit targets, and earn badges
+- **Also:** search and filter, reorder goals, quick-start templates, light, dark, and
+  accent themes, a streaks widget, and CSV export
 - **Backup:** everything saves to a single SQLite file that you can restore later
 
 ## Project layout
@@ -111,6 +115,14 @@ cd android
 **4. Testers install it** by opening the file on their phone. Android asks them to
 allow installs from that source the first time. It runs on Android 8 or newer, on
 64-bit phones.
+
+**To build releases on GitHub,** add three repository secrets under **Settings >
+Secrets and variables > Actions**: `ANDROID_KEYSTORE_BASE64` (the output of
+`base64 -w0 android/release.keystore`), `ANDROID_KEYSTORE_PASSWORD` (the
+`storePassword` line in `android/keystore.properties`), and optionally
+`ANDROID_KEY_ALIAS` (default `goaltracker`). Then push a tag that matches
+`versionName`, such as `git tag v0.2.0 && git push origin v0.2.0`. The workflow runs
+the tests, builds the signed APK, and attaches it to a GitHub release.
 
 **To ship an update,** increase `versionCode` and `versionName` in
 `android/app/build.gradle.kts`, then build again.

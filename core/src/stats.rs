@@ -1,13 +1,13 @@
 //! Streaks and completion rates. See "Streaks and completion rates" in PLAN.md.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use chrono::NaiveDate;
-use rusqlite::Connection;
+use chrono::{Datelike, Days, NaiveDate};
+use rusqlite::{Connection, params};
 
 use crate::CoreError;
-use crate::dates::{next_start, parse_date, period_start};
-use crate::goals::{EPSILON, get_goal, list_goals, period_totals};
+use crate::dates::{is_scheduled, next_start, parse_date, period_start, previous_start};
+use crate::goals::{EPSILON, excused_periods, get_goal, list_goals, period_totals};
 use crate::model::*;
 
 /// How many recent eligible periods a completion rate covers.
@@ -21,41 +21,219 @@ pub struct PeriodSummary {
     pub eligible: u32,
 }
 
-pub fn period_summary(
+/// One run of consecutive met periods, as period start dates plus the count.
+struct Run {
+    first: NaiveDate,
+    last: NaiveDate,
+    length: u32,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn walk(
     created: NaiveDate,
     period: Period,
     target: f64,
     totals: &BTreeMap<NaiveDate, f64>,
+    excused: &BTreeSet<NaiveDate>,
+    weekdays: Option<u8>,
     today: NaiveDate,
-) -> PeriodSummary {
+) -> (PeriodSummary, Vec<Run>) {
     let first = period_start(created, period);
     let current = period_start(today, period);
     let mut summary = PeriodSummary::default();
-    let mut run = 0;
+    let mut runs = Vec::new();
+    let mut run: Option<Run> = None;
     let mut eligible_results = Vec::new();
 
     let mut start = first;
     while start <= current {
         let met = totals.get(&start).is_some_and(|t| t + EPSILON >= target);
+        // A period with a skipped day is excused when unmet: it keeps the streak and
+        // is left out of the rate. A daily habit's days off are never missed either.
+        if !met && (excused.contains(&start) || !is_scheduled(weekdays, start)) {
+            start = next_start(start, period);
+            continue;
+        }
         // The creation period and the unfinished current period only count if met.
         let grace = start == first || start == current;
         if met {
-            run += 1;
-            summary.best_streak = summary.best_streak.max(run);
+            let r = run.get_or_insert(Run {
+                first: start,
+                last: start,
+                length: 0,
+            });
+            r.last = start;
+            r.length += 1;
+            summary.best_streak = summary.best_streak.max(r.length);
         } else if !grace {
-            run = 0;
+            runs.extend(run.take());
         }
         if met || !grace {
             eligible_results.push(met);
         }
         start = next_start(start, period);
     }
+    summary.current_streak = run.as_ref().map_or(0, |r| r.length);
+    runs.extend(run);
 
     let window = &eligible_results[eligible_results.len().saturating_sub(RATE_WINDOW)..];
-    summary.current_streak = run;
     summary.eligible = window.len() as u32;
     summary.met = window.iter().filter(|met| **met).count() as u32;
-    summary
+    (summary, runs)
+}
+
+pub fn period_summary(
+    created: NaiveDate,
+    period: Period,
+    target: f64,
+    totals: &BTreeMap<NaiveDate, f64>,
+    excused: &BTreeSet<NaiveDate>,
+    weekdays: Option<u8>,
+    today: NaiveDate,
+) -> PeriodSummary {
+    walk(created, period, target, totals, excused, weekdays, today).0
+}
+
+/// Every run of met periods for a goal, oldest first, including the current one.
+pub fn streak_runs(
+    conn: &Connection,
+    goal_id: &str,
+    today: &str,
+) -> Result<Vec<StreakRun>, CoreError> {
+    let goal = get_goal(conn, goal_id)?;
+    let (Some(period), Some(target)) = (goal.period, goal.period_target) else {
+        return Ok(Vec::new());
+    };
+    let totals = period_totals(conn, goal_id, period)?;
+    let excused = excused_periods(conn, goal_id, period)?;
+    let (_, runs) = walk(
+        parse_date(&goal.created_date)?,
+        period,
+        target,
+        &totals,
+        &excused,
+        goal.weekdays,
+        parse_date(today)?,
+    );
+    Ok(runs
+        .into_iter()
+        .map(|r| StreakRun {
+            start: r.first.to_string(),
+            end: (next_start(r.last, period) - Days::new(1)).to_string(),
+            length: r.length,
+        })
+        .collect())
+}
+
+/// The last `count` periods of size `period`, oldest first, never before the goal began.
+pub fn period_series(
+    conn: &Connection,
+    goal_id: &str,
+    period: Period,
+    count: u32,
+    today: &str,
+) -> Result<Vec<PeriodPoint>, CoreError> {
+    let goal = get_goal(conn, goal_id)?;
+    let first = period_start(parse_date(&goal.created_date)?, period);
+    let totals = period_totals(conn, goal_id, period)?;
+    let excused = excused_periods(conn, goal_id, period)?;
+    let target = if goal.period == Some(period) {
+        goal.period_target
+    } else {
+        None
+    };
+    let mut start = period_start(parse_date(today)?, period);
+    let mut points = Vec::new();
+    for _ in 0..count.min(366) {
+        let total = totals.get(&start).copied().unwrap_or(0.0);
+        let met = target.is_some_and(|t| total + EPSILON >= t);
+        points.push(PeriodPoint {
+            start: start.to_string(),
+            total,
+            target,
+            met,
+            excused: !met && excused.contains(&start),
+        });
+        if start <= first {
+            break;
+        }
+        start = previous_start(start, period);
+    }
+    points.reverse();
+    Ok(points)
+}
+
+/// Share of due days met, per weekday, across active daily goals.
+pub fn weekday_stats(conn: &Connection, today: &str) -> Result<Vec<WeekdayStat>, CoreError> {
+    let today = parse_date(today)?;
+    let mut stats: Vec<WeekdayStat> = (0..7)
+        .map(|weekday| WeekdayStat {
+            weekday,
+            met: 0,
+            eligible: 0,
+        })
+        .collect();
+    for goal in list_goals(conn, false)? {
+        let (Some(Period::Day), Some(target)) = (goal.period, goal.period_target) else {
+            continue;
+        };
+        let totals = period_totals(conn, &goal.id, Period::Day)?;
+        let excused = excused_periods(conn, &goal.id, Period::Day)?;
+        let mut day = parse_date(&goal.created_date)?;
+        while day <= today {
+            let met = totals.get(&day).is_some_and(|t| t + EPSILON >= target);
+            let due = is_scheduled(goal.weekdays, day) && !excused.contains(&day);
+            // Today is still open, so it only counts once met.
+            if met || (due && day < today) {
+                let entry = &mut stats[day.weekday().num_days_from_monday() as usize];
+                entry.eligible += 1;
+                entry.met += u32::from(met);
+            }
+            day = next_start(day, Period::Day);
+        }
+    }
+    Ok(stats)
+}
+
+/// Activity in the week or month that is `back` periods before the current one.
+pub fn recap(
+    conn: &Connection,
+    period: Period,
+    back: u32,
+    today: &str,
+) -> Result<Recap, CoreError> {
+    if period == Period::Day {
+        return Err(CoreError::Invalid {
+            reason: "A recap covers a week or a month".into(),
+        });
+    }
+    let mut start = period_start(parse_date(today)?, period);
+    for _ in 0..back.min(240) {
+        start = previous_start(start, period);
+    }
+    let end = next_start(start, period) - Days::new(1);
+    let (from, to) = (start.to_string(), end.to_string());
+    let (entries, active_days, goals_logged) = conn.query_row(
+        "SELECT COUNT(*), COUNT(DISTINCT e.local_date), COUNT(DISTINCT e.goal_id)
+         FROM entries e JOIN goals g ON g.id = e.goal_id
+         WHERE g.archived = 0 AND e.local_date BETWEEN ?1 AND ?2",
+        params![from, to],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )?;
+    let targets_met = conn.query_row(
+        "SELECT COUNT(*) FROM target_completions t JOIN goals g ON g.id = t.goal_id
+         WHERE g.archived = 0 AND t.local_date BETWEEN ?1 AND ?2",
+        params![from, to],
+        |r| r.get(0),
+    )?;
+    Ok(Recap {
+        start: from,
+        end: to,
+        entries,
+        active_days,
+        goals_logged,
+        targets_met,
+    })
 }
 
 fn stats_for(
@@ -67,16 +245,20 @@ fn stats_for(
         return Ok(None);
     };
     let totals = period_totals(conn, &goal.id, period)?;
+    let excused = excused_periods(conn, &goal.id, period)?;
     let summary = period_summary(
         parse_date(&goal.created_date)?,
         period,
         target,
         &totals,
+        &excused,
+        goal.weekdays,
         today,
     );
     Ok(Some(GoalStats {
         goal_id: goal.id.clone(),
         title: goal.title.clone(),
+        category: goal.category.clone(),
         period,
         current_streak: summary.current_streak,
         best_streak: summary.best_streak,
@@ -128,7 +310,15 @@ mod tests {
         today: &str,
     ) -> PeriodSummary {
         let totals = met.iter().map(|(s, v)| (d(s), *v)).collect();
-        period_summary(d(created), period, target, &totals, d(today))
+        period_summary(
+            d(created),
+            period,
+            target,
+            &totals,
+            &BTreeSet::new(),
+            None,
+            d(today),
+        )
     }
 
     #[test]
@@ -232,5 +422,55 @@ mod tests {
             "2024-03-31",
         );
         assert_eq!((s.current_streak, s.met, s.eligible), (3, 3, 3));
+    }
+
+    #[test]
+    fn excused_unmet_period_keeps_the_streak_and_leaves_the_rate() {
+        // Met 11-01, 11-02 and 11-04; 11-03 is missed; today is 11-05 (unfinished).
+        let totals = [
+            ("2026-11-01", 1.0),
+            ("2026-11-02", 1.0),
+            ("2026-11-04", 1.0),
+        ]
+        .iter()
+        .map(|(s, v)| (d(s), *v))
+        .collect();
+        let run = |excused: &BTreeSet<NaiveDate>| {
+            period_summary(
+                d("2026-11-01"),
+                Period::Day,
+                1.0,
+                &totals,
+                excused,
+                None,
+                d("2026-11-05"),
+            )
+        };
+        let excused = run(&BTreeSet::from([d("2026-11-03")]));
+        assert_eq!(
+            (excused.current_streak, excused.eligible, excused.met),
+            (3, 3, 3)
+        );
+        let plain = run(&BTreeSet::new());
+        assert_eq!((plain.current_streak, plain.eligible, plain.met), (1, 4, 3));
+    }
+
+    #[test]
+    fn a_met_period_still_counts_when_it_has_a_skipped_day() {
+        let totals = [("2026-11-03", 1.0)]
+            .iter()
+            .map(|(s, v)| (d(s), *v))
+            .collect();
+        let excused = BTreeSet::from([d("2026-11-03")]);
+        let s = period_summary(
+            d("2026-11-01"),
+            Period::Day,
+            1.0,
+            &totals,
+            &excused,
+            None,
+            d("2026-11-03"),
+        );
+        assert_eq!((s.met, s.current_streak), (1, 1));
     }
 }

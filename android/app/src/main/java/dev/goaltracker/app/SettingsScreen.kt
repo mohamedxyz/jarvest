@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -34,6 +37,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(controller: AppController) {
     val context = LocalContext.current.applicationContext
@@ -54,6 +58,18 @@ fun SettingsScreen(controller: AppController) {
             }
         }
     }
+    val csvExporter = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv"),
+    ) { uri ->
+        if (uri != null) {
+            busy = true
+            scope.launch {
+                val error = withContext(Dispatchers.IO) { exportCsvTo(context, controller.core, uri) }
+                controller.message = error ?: "Logs exported"
+                busy = false
+            }
+        }
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         restoreUri = uri
     }
@@ -62,6 +78,20 @@ fun SettingsScreen(controller: AppController) {
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("Appearance")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ThemeMode.entries.forEach { mode ->
+                    FilterChip(controller.themeMode == mode, { controller.chooseTheme(mode) }, label = { Text(mode.label) })
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Accent.entries.forEach { choice ->
+                    FilterChip(controller.accent == choice, { controller.chooseAccent(choice) }, label = { Text(choice.label) })
+                }
+            }
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1f)) {
                 SectionTitle("Rewards")
@@ -82,11 +112,23 @@ fun SettingsScreen(controller: AppController) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
-                exporter.launch("goal-tracker-backup-${controller.today}.sqlite")
+                exporter.launch("jarvest-backup-${controller.today}.sqlite")
             }) { Text("Save backup") }
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 importer.launch(arrayOf("*/*"))
             }) { Text("Restore from backup") }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("Export logs")
+            Text(
+                "Save every log as a CSV file that opens in a spreadsheet. This is for reading your data, not for restoring it.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                csvExporter.launch("jarvest-logs-${controller.today}.csv")
+            }) { Text("Export to CSV") }
         }
     }
 
@@ -139,6 +181,23 @@ private fun restoreFrom(context: Context, core: GoalCore, uri: Uri): String? {
         e.userMessage()
     } catch (_: IOException) {
         "That file couldn't be read."
+    } finally {
+        temp.delete()
+    }
+}
+
+/** Returns an error message, or null on success. */
+private fun exportCsvTo(context: Context, core: GoalCore, uri: Uri): String? {
+    val temp = File(context.cacheDir, "export.csv")
+    return try {
+        core.exportCsv(temp.path)
+        val output = context.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("no output")
+        output.use { out -> temp.inputStream().use { it.copyTo(out) } }
+        null
+    } catch (e: CoreException) {
+        e.userMessage()
+    } catch (_: IOException) {
+        "The file couldn't be saved to that location."
     } finally {
         temp.delete()
     }

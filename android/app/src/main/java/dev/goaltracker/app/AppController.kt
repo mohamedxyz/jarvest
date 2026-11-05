@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -28,6 +29,26 @@ class AppController(private val app: GoalTrackerApp) {
     var pendingDraw by mutableStateOf<RewardDraw?>(null)
         private set
     var showJarPrompt by mutableStateOf(false)
+
+    private val prefs = app.getSharedPreferences("ui", Context.MODE_PRIVATE)
+
+    var themeMode by mutableStateOf(readEnum("theme", ThemeMode.SYSTEM))
+        private set
+    var accent by mutableStateOf(readEnum("accent", Accent.BLUE))
+        private set
+
+    fun chooseTheme(mode: ThemeMode) {
+        themeMode = mode
+        prefs.edit().putString("theme", mode.name).apply()
+    }
+
+    fun chooseAccent(choice: Accent) {
+        accent = choice
+        prefs.edit().putString("accent", choice.name).apply()
+    }
+
+    private inline fun <reified E : Enum<E>> readEnum(key: String, default: E): E =
+        enumValues<E>().firstOrNull { it.name == prefs.getString(key, null) } ?: default
 
     // One prompt per app session is enough of a nudge.
     private var jarPromptUsed = false

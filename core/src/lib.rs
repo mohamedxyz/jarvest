@@ -4,8 +4,10 @@
 //! local date from the caller, and each change runs in a single transaction.
 
 mod backup;
+mod badges;
 mod dates;
 mod db;
+mod export;
 mod goals;
 mod model;
 mod rewards;
@@ -101,7 +103,17 @@ impl GoalCore {
     // Logging
 
     pub fn toggle_check_in(&self, goal_id: String, today: String) -> Result<LogResult, CoreError> {
-        goals::toggle_check_in(&mut self.conn(), &goal_id, &today)
+        goals::toggle_check_in(&mut self.conn(), &goal_id, &today, &today)
+    }
+
+    /// Like `toggle_check_in`, for an earlier `day` that was missed.
+    pub fn toggle_check_in_on(
+        &self,
+        goal_id: String,
+        day: String,
+        today: String,
+    ) -> Result<LogResult, CoreError> {
+        goals::toggle_check_in(&mut self.conn(), &goal_id, &day, &today)
     }
 
     pub fn log_amount(
@@ -110,7 +122,18 @@ impl GoalCore {
         amount: f64,
         today: String,
     ) -> Result<LogResult, CoreError> {
-        goals::log_amount(&mut self.conn(), &goal_id, amount, &today)
+        goals::log_amount(&mut self.conn(), &goal_id, amount, &today, &today)
+    }
+
+    /// Like `log_amount`, for an earlier `day` that was missed.
+    pub fn log_amount_on(
+        &self,
+        goal_id: String,
+        amount: f64,
+        day: String,
+        today: String,
+    ) -> Result<LogResult, CoreError> {
+        goals::log_amount(&mut self.conn(), &goal_id, amount, &day, &today)
     }
 
     pub fn delete_entry(&self, entry_id: String, today: String) -> Result<(), CoreError> {
@@ -119,6 +142,26 @@ impl GoalCore {
 
     pub fn list_entries(&self, goal_id: String, limit: u32) -> Result<Vec<Entry>, CoreError> {
         goals::list_entries(&self.conn(), &goal_id, limit)
+    }
+
+    // Skipping and pausing
+
+    /// Skips one day: an unmet period containing it keeps the streak.
+    pub fn skip_day(&self, goal_id: String, day: String) -> Result<(), CoreError> {
+        goals::pause_goal(&mut self.conn(), &goal_id, &day, &day)
+    }
+
+    /// Skips every day from `from` to `to`, such as for a holiday.
+    pub fn pause_goal(&self, goal_id: String, from: String, to: String) -> Result<(), CoreError> {
+        goals::pause_goal(&mut self.conn(), &goal_id, &from, &to)
+    }
+
+    pub fn unpause_goal(&self, goal_id: String, from: String, to: String) -> Result<(), CoreError> {
+        goals::unpause_goal(&self.conn(), &goal_id, &from, &to)
+    }
+
+    pub fn skipped_days(&self, goal_id: String) -> Result<Vec<String>, CoreError> {
+        goals::skipped_days(&self.conn(), &goal_id)
     }
 
     // Milestones
@@ -206,6 +249,48 @@ impl GoalCore {
 
     pub fn toggle_redeemed(&self, draw_id: String, today: String) -> Result<(), CoreError> {
         rewards::toggle_redeemed(&self.conn(), &draw_id, &today)
+    }
+
+    // Ordering
+
+    /// Moves a goal one place earlier or later among goals in its category.
+    pub fn move_goal(&self, goal_id: String, earlier: bool) -> Result<(), CoreError> {
+        goals::move_goal(&mut self.conn(), &goal_id, earlier)
+    }
+
+    // Insights
+
+    pub fn period_series(
+        &self,
+        goal_id: String,
+        period: Period,
+        count: u32,
+        today: String,
+    ) -> Result<Vec<PeriodPoint>, CoreError> {
+        stats::period_series(&self.conn(), &goal_id, period, count, &today)
+    }
+
+    pub fn streak_runs(&self, goal_id: String, today: String) -> Result<Vec<StreakRun>, CoreError> {
+        stats::streak_runs(&self.conn(), &goal_id, &today)
+    }
+
+    pub fn weekday_stats(&self, today: String) -> Result<Vec<WeekdayStat>, CoreError> {
+        stats::weekday_stats(&self.conn(), &today)
+    }
+
+    /// Activity in the week or month `back` periods before the current one.
+    pub fn recap(&self, period: Period, back: u32, today: String) -> Result<Recap, CoreError> {
+        stats::recap(&self.conn(), period, back, &today)
+    }
+
+    pub fn badges(&self, today: String) -> Result<Vec<Badge>, CoreError> {
+        badges::badges(&self.conn(), &today)
+    }
+
+    // Export
+
+    pub fn export_csv(&self, dest_path: String) -> Result<(), CoreError> {
+        export::export_csv(&self.conn(), &dest_path)
     }
 
     // Backup

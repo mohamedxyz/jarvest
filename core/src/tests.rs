@@ -22,6 +22,7 @@ fn base(title: &str, kind: GoalKind) -> NewGoal {
         unit: None,
         deadline: None,
         milestones: vec![],
+        weekdays: None,
     }
 }
 
@@ -791,4 +792,452 @@ fn failed_restore_leaves_a_working_database() {
     let id = yes_no(&fixture.core, "Still works");
     tick(&fixture.core, &id, DAY);
     assert!(fixture.core.get_goal(id).unwrap().done);
+}
+
+// Logging past days
+
+#[test]
+fn past_days_can_be_logged_but_not_future_or_pre_creation_days() {
+    let (core, _dir) = core();
+    // DAY is 2026-11-05; the habit starts on 2026-11-01.
+    let id = habit(&core, "Read", Period::Day, 1.0, "2026-11-01");
+    core.toggle_check_in_on(id.clone(), "2026-11-03".into(), DAY.into())
+        .unwrap();
+    let entries = core.list_entries(id.clone(), 10).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].local_date, "2026-11-03");
+
+    assert!(
+        core.toggle_check_in_on(id.clone(), "2026-11-06".into(), DAY.into())
+            .is_err()
+    );
+    assert!(
+        core.toggle_check_in_on(id.clone(), "2026-10-31".into(), DAY.into())
+            .is_err()
+    );
+    let run = numeric(&core, None, Some(10.0));
+    assert!(
+        core.log_amount_on(run.clone(), 2.0, "2026-11-06".into(), DAY.into())
+            .is_err()
+    );
+    core.log_amount_on(run, 2.0, "2026-11-05".into(), DAY.into())
+        .unwrap();
+}
+
+#[test]
+fn backfilled_check_in_toggles_off_and_does_not_touch_today() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Day, 1.0, "2026-11-01");
+    let past = "2026-11-03";
+    core.toggle_check_in_on(id.clone(), past.into(), DAY.into())
+        .unwrap();
+    // Same day again removes it (one check-in per day).
+    core.toggle_check_in_on(id.clone(), past.into(), DAY.into())
+        .unwrap();
+    assert!(core.list_entries(id.clone(), 10).unwrap().is_empty());
+    // Today stays unticked after a backfill.
+    core.toggle_check_in_on(id.clone(), past.into(), DAY.into())
+        .unwrap();
+    let item = core
+        .today(DAY.into())
+        .unwrap()
+        .into_iter()
+        .find(|i| i.goal_id == id)
+        .unwrap();
+    assert!(!item.logged_today);
+}
+
+#[test]
+fn backfilled_log_completes_that_period_and_earns_a_reward_once() {
+    let (core, _dir) = core();
+    core.add_treat("Coffee".into()).unwrap();
+    let id = habit(&core, "Read", Period::Day, 1.0, "2026-11-01");
+    core.toggle_check_in_on(id.clone(), "2026-11-03".into(), DAY.into())
+        .unwrap();
+    assert_eq!(completions(&core), 1);
+    let key: String = core
+        .conn()
+        .query_row("SELECT target_key FROM target_completions", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(key, "p:2026-11-03");
+
+    // Undo then redo gives the same outcome, so re-logging can't re-roll.
+    let outcome = |core: &GoalCore| -> String {
+        core.conn()
+            .query_row("SELECT outcome FROM target_completions", [], |r| r.get(0))
+            .unwrap()
+    };
+    let first = outcome(&core);
+    core.toggle_check_in_on(id.clone(), "2026-11-03".into(), DAY.into())
+        .unwrap();
+    assert_eq!(completions(&core), 0);
+    core.toggle_check_in_on(id, "2026-11-03".into(), DAY.into())
+        .unwrap();
+    assert_eq!(outcome(&core), first);
+}
+
+#[test]
+fn backfilling_a_yes_no_goal_ticks_that_day() {
+    let (core, _dir) = core();
+    let id = yes_no(&core, "Send email");
+    core.toggle_check_in_on(id.clone(), DAY.into(), DAY.into())
+        .unwrap();
+    assert!(core.get_goal(id).unwrap().done);
+}
+
+// Skipping and pausing
+
+#[test]
+fn skipped_day_keeps_the_streak_and_hides_the_goal_from_today() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Day, 1.0, "2026-11-01");
+    tick(&core, &id, "2026-11-01");
+    tick(&core, &id, "2026-11-02");
+    core.skip_day(id.clone(), "2026-11-03".into()).unwrap();
+    tick(&core, &id, "2026-11-04");
+    let stats = core
+        .goal_stats(id.clone(), "2026-11-04".into())
+        .unwrap()
+        .unwrap();
+    assert_eq!(stats.current_streak, 3);
+    // A skipped day disappears from Today unless something was logged on it.
+    core.skip_day(id.clone(), "2026-11-05".into()).unwrap();
+    assert!(!titles(&core, "2026-11-05").contains(&"Read".to_string()));
+    core.unpause_goal(id.clone(), "2026-11-05".into(), "2026-11-05".into())
+        .unwrap();
+    assert!(titles(&core, "2026-11-05").contains(&"Read".to_string()));
+}
+
+#[test]
+fn pause_covers_a_range_and_validates_it() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Week, 3.0, "2026-11-02");
+    core.pause_goal(id.clone(), "2026-11-09".into(), "2026-11-15".into())
+        .unwrap();
+    assert_eq!(core.skipped_days(id.clone()).unwrap().len(), 7);
+    // Pausing again changes nothing.
+    core.pause_goal(id.clone(), "2026-11-10".into(), "2026-11-11".into())
+        .unwrap();
+    assert_eq!(core.skipped_days(id.clone()).unwrap().len(), 7);
+    assert!(
+        core.pause_goal(id.clone(), "2026-11-15".into(), "2026-11-09".into())
+            .is_err()
+    );
+    assert!(
+        core.pause_goal(id.clone(), "2026-10-01".into(), "2026-10-05".into())
+            .is_err()
+    );
+    // A week with 3 missed check-ins would normally reset the streak.
+    for day in ["2026-11-02", "2026-11-03", "2026-11-04"] {
+        tick(&core, &id, day);
+    }
+    let stats = core.goal_stats(id, "2026-11-23".into()).unwrap().unwrap();
+    // 11-09 week excused; 11-16 week missed and over, so the streak resets.
+    assert_eq!(stats.current_streak, 0);
+    assert_eq!(stats.best_streak, 1);
+}
+
+#[test]
+fn skipped_days_survive_backup_and_restore() {
+    let fixture = Fixture::new();
+    let id = habit(&fixture.core, "Read", Period::Day, 1.0, "2026-11-01");
+    fixture
+        .core
+        .skip_day(id.clone(), "2026-11-03".into())
+        .unwrap();
+    let path = fixture.backup();
+    fixture
+        .core
+        .unpause_goal(id.clone(), "2026-11-03".into(), "2026-11-03".into())
+        .unwrap();
+    fixture.core.restore_backup(path).unwrap();
+    assert_eq!(fixture.core.skipped_days(id).unwrap(), vec!["2026-11-03"]);
+}
+
+// Weekday schedules
+
+/// A daily habit due on Monday, Wednesday and Friday. 2026-11-02 is a Monday.
+fn mwf(core: &GoalCore) -> String {
+    let goal = NewGoal {
+        period: Some(Period::Day),
+        period_target: Some(1.0),
+        weekdays: Some(0b0010101),
+        ..base("Gym", GoalKind::Habit)
+    };
+    core.create_goal(goal, "2026-11-02".into()).unwrap()
+}
+
+#[test]
+fn weekdays_are_only_allowed_on_daily_habits_and_must_be_valid() {
+    let (core, _dir) = core();
+    let bad = [
+        NewGoal {
+            weekdays: Some(1),
+            ..base("Task", GoalKind::YesNo)
+        },
+        NewGoal {
+            period: Some(Period::Week),
+            period_target: Some(3.0),
+            weekdays: Some(1),
+            ..base("Weekly", GoalKind::Habit)
+        },
+        NewGoal {
+            period: Some(Period::Day),
+            period_target: Some(1.0),
+            weekdays: Some(0),
+            ..base("Never", GoalKind::Habit)
+        },
+        NewGoal {
+            period: Some(Period::Day),
+            period_target: Some(1.0),
+            weekdays: Some(128),
+            ..base("Bad bit", GoalKind::Habit)
+        },
+    ];
+    for goal in bad {
+        assert!(core.create_goal(goal, DAY.into()).is_err());
+    }
+}
+
+#[test]
+fn every_day_is_stored_as_no_schedule() {
+    let (core, _dir) = core();
+    let goal = NewGoal {
+        period: Some(Period::Day),
+        period_target: Some(1.0),
+        weekdays: Some(127),
+        ..base("Daily", GoalKind::Habit)
+    };
+    let id = core.create_goal(goal, DAY.into()).unwrap();
+    assert_eq!(core.get_goal(id).unwrap().weekdays, None);
+}
+
+#[test]
+fn days_off_do_not_show_on_today_or_break_the_streak() {
+    let (core, _dir) = core();
+    let id = mwf(&core);
+    // Mon 11-02 due, Tue 11-03 off, Wed 11-04 due.
+    assert!(titles(&core, "2026-11-02").contains(&"Gym".to_string()));
+    assert!(!titles(&core, "2026-11-03").contains(&"Gym".to_string()));
+    tick(&core, &id, "2026-11-02");
+    tick(&core, &id, "2026-11-04");
+    let stats = core
+        .goal_stats(id.clone(), "2026-11-04".into())
+        .unwrap()
+        .unwrap();
+    assert_eq!(stats.current_streak, 2);
+    // Missing Friday 11-06 breaks it once Saturday arrives, but the weekend does not.
+    let stats = core
+        .goal_stats(id.clone(), "2026-11-09".into())
+        .unwrap()
+        .unwrap();
+    assert_eq!(stats.current_streak, 0);
+    tick(&core, &id, "2026-11-06");
+    let stats = core.goal_stats(id, "2026-11-08".into()).unwrap().unwrap();
+    assert_eq!(stats.current_streak, 3);
+}
+
+#[test]
+fn comeback_looks_past_days_off_to_the_last_due_day() {
+    let (core, _dir) = core();
+    core.add_treat("Coffee".into()).unwrap();
+    let id = mwf(&core);
+    // Nine misses in a row make the next completion draw, so it shows its flag.
+    let force_pity = |n: u32| {
+        let conn = core.conn();
+        for i in 0..9 {
+            conn.execute(
+                "INSERT INTO target_completions (id, goal_id, target_key, local_date, outcome, seq)
+                 VALUES (?1, ?2, ?3, '2026-01-01', 'none', ?4)",
+                rusqlite::params![format!("f{n}{i}"), id, format!("f{n}{i}"), 1000 * n + i],
+            )
+            .unwrap();
+        }
+    };
+    // Tuesday is a day off, so Wednesday does not follow a missed day.
+    force_pity(1);
+    tick(&core, &id, "2026-11-04");
+    assert!(!last_comeback_flag(&core));
+    // Friday 11-06 is missed. The weekend is off, so Monday follows Friday's miss.
+    force_pity(2);
+    tick(&core, &id, "2026-11-09");
+    assert!(last_comeback_flag(&core));
+}
+
+// Insights, badges, ordering, export
+
+#[test]
+fn period_series_lists_recent_periods_oldest_first() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Week, 2.0, "2026-10-19");
+    tick(&core, &id, "2026-10-26");
+    tick(&core, &id, "2026-10-27");
+    tick(&core, &id, "2026-11-03");
+    let series = core
+        .period_series(id.clone(), Period::Week, 4, "2026-11-05".into())
+        .unwrap();
+    let starts: Vec<_> = series.iter().map(|p| p.start.as_str()).collect();
+    assert_eq!(starts, ["2026-10-19", "2026-10-26", "2026-11-02"]);
+    assert_eq!(series[1].total, 2.0);
+    assert!(series[1].met && !series[2].met);
+    assert_eq!(series[1].target, Some(2.0));
+    // A different period size has no target.
+    let days = core
+        .period_series(id, Period::Month, 2, "2026-11-05".into())
+        .unwrap();
+    assert_eq!(days[0].target, None);
+}
+
+#[test]
+fn streak_runs_list_past_and_current_runs() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Day, 1.0, "2026-11-01");
+    for day in ["2026-11-01", "2026-11-02", "2026-11-04", "2026-11-05"] {
+        tick(&core, &id, day);
+    }
+    let runs = core.streak_runs(id, "2026-11-05".into()).unwrap();
+    assert_eq!(runs.len(), 2);
+    assert_eq!(
+        (runs[0].start.as_str(), runs[0].end.as_str(), runs[0].length),
+        ("2026-11-01", "2026-11-02", 2)
+    );
+    assert_eq!((runs[1].start.as_str(), runs[1].length), ("2026-11-04", 2));
+}
+
+#[test]
+fn weekday_stats_count_due_days_by_weekday() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Day, 1.0, "2026-11-02");
+    tick(&core, &id, "2026-11-02"); // Monday met
+    // Tuesday missed, Wednesday met, today (Thursday 11-05) still open.
+    tick(&core, &id, "2026-11-04");
+    let stats = core.weekday_stats("2026-11-05".into()).unwrap();
+    assert_eq!((stats[0].met, stats[0].eligible), (1, 1));
+    assert_eq!((stats[1].met, stats[1].eligible), (0, 1));
+    assert_eq!((stats[2].met, stats[2].eligible), (1, 1));
+    assert_eq!(stats[3].eligible, 0);
+}
+
+#[test]
+fn recap_counts_activity_in_a_week_and_rejects_days() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Day, 1.0, "2026-10-26");
+    tick(&core, &id, "2026-10-28");
+    tick(&core, &id, "2026-11-03");
+    tick(&core, &id, "2026-11-04");
+    let this_week = core.recap(Period::Week, 0, "2026-11-05".into()).unwrap();
+    assert_eq!(this_week.start, "2026-11-02");
+    assert_eq!(this_week.end, "2026-11-08");
+    assert_eq!(
+        (
+            this_week.entries,
+            this_week.active_days,
+            this_week.goals_logged
+        ),
+        (2, 2, 1)
+    );
+    let last_week = core.recap(Period::Week, 1, "2026-11-05".into()).unwrap();
+    assert_eq!(last_week.entries, 1);
+    assert!(core.recap(Period::Day, 0, DAY.into()).is_err());
+}
+
+#[test]
+fn badges_follow_the_data_including_undo() {
+    let (core, _dir) = core();
+    let earned = |core: &GoalCore, id: &str| {
+        core.badges(DAY.into())
+            .unwrap()
+            .iter()
+            .find(|b| b.id == id)
+            .unwrap()
+            .earned
+    };
+    assert!(!earned(&core, "first_log"));
+    let id = yes_no(&core, "Task");
+    tick(&core, &id, DAY);
+    assert!(earned(&core, "first_log") && earned(&core, "finished_1"));
+    tick(&core, &id, DAY); // undo
+    assert!(!earned(&core, "first_log") && !earned(&core, "finished_1"));
+}
+
+#[test]
+fn goals_can_be_reordered_within_a_category() {
+    let (core, _dir) = core();
+    let a = yes_no(&core, "A");
+    let b = yes_no(&core, "B");
+    let c = yes_no(&core, "C");
+    let order = |core: &GoalCore| -> Vec<String> {
+        core.list_goals(false)
+            .unwrap()
+            .into_iter()
+            .map(|g| g.title)
+            .collect()
+    };
+    assert_eq!(order(&core), ["A", "B", "C"]);
+    core.move_goal(c.clone(), true).unwrap();
+    assert_eq!(order(&core), ["A", "C", "B"]);
+    core.move_goal(a.clone(), false).unwrap();
+    assert_eq!(order(&core), ["C", "A", "B"]);
+    // Moving past either end changes nothing.
+    core.move_goal(c, true).unwrap();
+    core.move_goal(b, false).unwrap();
+    assert_eq!(order(&core), ["C", "A", "B"]);
+}
+
+#[test]
+fn milestone_progress_is_reported_on_goals_and_today() {
+    let (core, _dir) = core();
+    let goal = NewGoal {
+        milestones: vec!["Lec 1".into(), "Lec 2".into(), "Lec 3".into()],
+        ..base("Prep quiz", GoalKind::YesNo)
+    };
+    let id = core.create_goal(goal, DAY.into()).unwrap();
+    let ms = core.list_milestones(id.clone()).unwrap();
+    core.toggle_milestone(ms[0].id.clone(), DAY.into()).unwrap();
+    let g = core.get_goal(id).unwrap();
+    assert_eq!((g.milestones_done, g.milestones_total), (1, 3));
+    let item = &core.today(DAY.into()).unwrap()[0];
+    assert_eq!((item.milestones_done, item.milestones_total), (1, 3));
+}
+
+#[test]
+fn csv_export_quotes_text_and_defuses_formulas() {
+    let (core, dir) = core();
+    let goal = NewGoal {
+        title: "=Run, fast".into(),
+        category: Some("Health".into()),
+        unit: Some("km".into()),
+        ..base("x", GoalKind::Numeric)
+    };
+    let id = core.create_goal(goal, DAY.into()).unwrap();
+    core.log_amount(id, 2.5, DAY.into()).unwrap();
+    let path = dir.path().join("out.csv").to_str().unwrap().to_string();
+    core.export_csv(path.clone()).unwrap();
+    let text = std::fs::read_to_string(path).unwrap();
+    assert_eq!(
+        text,
+        "date,goal,category,kind,amount,unit\n2026-11-05,\"'=Run, fast\",Health,numeric,2.5,km\n"
+    );
+}
+
+#[test]
+fn a_version_one_database_upgrades_and_keeps_its_data() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("old.db").to_str().unwrap().to_string();
+    {
+        let mut conn = Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 1).unwrap();
+        conn.execute(
+            "INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old', 'yes_no', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    let goal = core.get_goal("g1".into()).unwrap();
+    assert_eq!((goal.title.as_str(), goal.weekdays), ("Old", None));
+    core.skip_day("g1".into(), "2026-01-02".into()).unwrap();
+    core.move_goal("g1".into(), true).unwrap();
 }

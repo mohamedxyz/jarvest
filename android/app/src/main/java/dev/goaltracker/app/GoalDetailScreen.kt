@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.goaltracker.core.Entry
 import dev.goaltracker.core.GoalKind
+import dev.goaltracker.core.Period
+import java.time.LocalDate
 
 @Composable
 fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String) -> Unit, onClose: () -> Unit) {
@@ -40,6 +42,19 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
     val milestones = remember(controller.version, goalId) { controller.read(emptyList()) { listMilestones(goalId) } }
     val entries = remember(controller.version, goalId) { controller.read(emptyList()) { listEntries(goalId, 20u) } }
 
+    val chartPeriod = goal.period ?: Period.WEEK
+    val series = remember(controller.version, controller.today, goalId) {
+        controller.read(emptyList()) { periodSeries(goalId, chartPeriod, 12u, controller.today) }
+    }
+    val runs = remember(controller.version, controller.today, goalId) {
+        controller.read(emptyList()) { streakRuns(goalId, controller.today) }
+    }
+    val skipped = remember(controller.version, goalId) { controller.read(emptyList()) { skippedDays(goalId) } }
+    val upcomingSkips = skipped.count { it >= controller.today }
+
+    var pickingPastDay by remember { mutableStateOf(false) }
+    var pastDay by remember { mutableStateOf<String?>(null) }
+    var pickingPause by remember { mutableStateOf(false) }
     var newMilestone by remember { mutableStateOf("") }
     var logging by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -80,7 +95,60 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
             }
         }
 
+        if (!goal.archived) {
+            OutlinedButton(onClick = { pickingPastDay = true }, Modifier.fillMaxWidth()) { Text("Log a past day") }
+            if (goal.period != null) {
+                val skippedToday = controller.today in skipped
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = {
+                            controller.act {
+                                if (skippedToday) unpauseGoal(goalId, controller.today, controller.today)
+                                else skipDay(goalId, controller.today)
+                            }
+                        },
+                        Modifier.weight(1f),
+                    ) { Text(if (skippedToday) "Unskip today" else "Skip today") }
+                    OutlinedButton(onClick = { pickingPause = true }, Modifier.weight(1f)) { Text("Pause days") }
+                }
+                if (upcomingSkips > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "${countOf(upcomingSkips, "skipped day")} from today on. Skipped periods keep your streak.",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(onClick = {
+                            val end = LocalDate.parse(controller.today).plusDays(400).toString()
+                            controller.act { unpauseGoal(goalId, controller.today, end) }
+                        }) { Text("Resume") }
+                    }
+                }
+            }
+        }
+
         stats?.let { StreakTiles(it) }
+
+        if (goal.kind != GoalKind.YES_NO) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionTitle("Progress")
+                PeriodChart(series, chartPeriod, goal.unit)
+            }
+        }
+
+        if (runs.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                SectionTitle("Streak history")
+                runs.reversed().forEach { run ->
+                    val noun = chartPeriod.noun()
+                    Text(
+                        "${countOf(run.length.toInt(), noun)} · ${formatDate(run.start)} to ${formatDate(run.end)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
+        }
 
         if (goal.kind != GoalKind.YES_NO) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -144,6 +212,42 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
         }
     }
 
+    if (pickingPastDay) {
+        DayPickerDialog(
+            min = goal.createdDate,
+            max = controller.today,
+            onPick = { day ->
+                pickingPastDay = false
+                if (goal.kind == GoalKind.NUMERIC) {
+                    pastDay = day
+                } else if (controller.log { toggleCheckInOn(goalId, day, controller.today) }) {
+                    controller.message = "Updated ${formatDate(day)}"
+                }
+            },
+            onDismiss = { pickingPastDay = false },
+        )
+    }
+    pastDay?.let { day ->
+        LogAmountDialog(
+            title = "${goal.title} on ${formatDate(day)}",
+            unit = goal.unit,
+            onLog = { amount ->
+                if (controller.log { logAmountOn(goalId, amount, day, controller.today) }) pastDay = null
+            },
+            onDismiss = { pastDay = null },
+        )
+    }
+    if (pickingPause) {
+        RangePickerDialog(
+            min = goal.createdDate,
+            max = LocalDate.parse(controller.today).plusDays(365).toString(),
+            onPick = { from, to ->
+                pickingPause = false
+                controller.act { pauseGoal(goalId, from, to) }
+            },
+            onDismiss = { pickingPause = false },
+        )
+    }
     if (logging) {
         LogAmountDialog(
             title = goal.title,

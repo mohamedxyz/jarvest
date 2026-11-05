@@ -96,6 +96,7 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
                     OR (deadline IS NOT NULL AND date(deadline) IS NOT deadline))
              + (SELECT COUNT(*) FROM entries WHERE date(local_date) IS NOT local_date)
              + (SELECT COUNT(*) FROM target_completions WHERE date(local_date) IS NOT local_date)
+             + (SELECT COUNT(*) FROM skips WHERE date(local_date) IS NOT local_date)
              + (SELECT COUNT(*) FROM milestones WHERE done_date IS NOT NULL AND date(done_date) IS NOT done_date)",
             [],
             |r| r.get(0),

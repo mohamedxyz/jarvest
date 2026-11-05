@@ -74,7 +74,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            GoalTrackerTheme { AppRoot(controller) }
+            GoalTrackerTheme(controller.themeMode, controller.accent) { AppRoot(controller) }
         }
     }
 

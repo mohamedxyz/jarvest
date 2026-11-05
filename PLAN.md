@@ -163,3 +163,66 @@ and rules. Each was still checked on an emulator in order.
 - Glance depends on an old WorkManager that crashes under current R8, so the app
   pins a newer one. Always smoke test release builds, not just debug builds.
 - Nothing requires `sudo`.
+
+# V0.2.0 plan
+
+Rule changes come first because streaks, stats, and rewards depend on them. Each
+step ends with `cargo test` passing. Every schema change is a new numbered file in
+`core/src/sql/` that is added to `MIGRATIONS` in `core/src/db.rs`.
+
+## Decisions
+
+- A skipped or paused day keeps the streak alive. Skipped periods are left out of
+  completion rates.
+- Logs for past days can complete targets and earn rewards.
+- Sub-goals are not built. Ordered milestones cover "Prep quiz > Lec 1, Lec 2".
+
+## Step 1: Rules (Rust, migration 002)
+
+1. **Log past days.** `toggle_check_in` and `log_amount` take the day to log, next
+   to today's date. Reject future dates and dates before the goal's creation date.
+   `sync_targets` already takes the changed day separately from today, so
+   completions and `comeback` follow the logged day. The yes/no tick lookup must use
+   that day. Reward rolls already hash `(seed, goal_id, target_key)`, so a
+   backfilled target rolls the same result as a live one. The pity counter orders
+   by completion `seq`, so a backfill counts as the newest roll. Add tests for
+   undo, re-log, and backfill across a period boundary.
+2. **Skip day and pause.** A new `skips (goal_id, local_date)` table. Pausing a
+   goal writes a range of skip days. An unmet period that contains a skipped day is
+   excused: it neither breaks the streak nor counts in the completion rate. A met
+   period still counts normally. Update `period_summary` in `core/src/stats.rs`.
+3. **Specific weekdays.** A nullable `weekdays` bitmask column on `goals`, usable
+   by day-period habits only. Days outside the mask are not eligible, so they don't
+   break streaks and don't appear on Today. Like kind and period, the mask can't be
+   edited after creation.
+
+## Step 2: Insight (Rust queries, then Stats screen)
+
+- Line chart data: per-period totals for a goal (reuse `period_totals`), and
+  completion rate per period.
+- Weekly and monthly summary: periods met and missed, entries logged.
+- Best and worst weekdays: share of eligible days met, per weekday.
+- Goal comparison: rates by goal and by category.
+- Streak history: `best_streak` already exists in `GoalStats`; show it, plus a list
+  of past streaks.
+- Milestone progress on goal cards ("3 of 8"): check whether the card shows it
+  already.
+
+## Step 3: Rewards
+
+- Reward history: `list_draws` already exists; add a screen section.
+- Badges: derived from existing data (streak lengths, check-in counts), so no new
+  table is needed. Compute them on read.
+
+## Step 4: App polish (Kotlin, mostly independent)
+
+Dark mode and themes (`Theme.kt`, `SettingsScreen.kt`), goal templates, search and
+filter, reorder goals (needs a `position` column, migration), more widgets
+(`TodayWidget.kt` pattern), CSV export (written to a file chosen with the file
+picker, like backup).
+
+## Release
+
+Bump `versionCode` to 2 and `versionName` to `0.2.0` in
+`android/app/build.gradle.kts`. Smoke test the release build on an emulator or phone,
+and test upgrading an install made from 0.1.0 so the migrations run on real data.

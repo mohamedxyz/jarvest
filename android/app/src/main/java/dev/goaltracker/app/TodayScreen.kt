@@ -97,7 +97,7 @@ private fun TodayCard(item: TodayItem, onOpen: () -> Unit, onCheck: () -> Unit, 
                 }
                 progressFraction(item)?.let { LinearProgressIndicator({ it }, Modifier.fillMaxWidth()) }
                 item.nextMilestone?.let {
-                    Text("Next: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${item.milestonesDone} of ${item.milestonesTotal} done · Next: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val period = item.period
                 if (item.currentStreak > 0u && period != null) {

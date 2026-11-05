@@ -24,7 +24,7 @@ class QuickLogActivity : ComponentActivity() {
             return
         }
         setContent {
-            GoalTrackerTheme {
+            GoalTrackerTheme(app.controller.themeMode, app.controller.accent) {
                 LogAmountDialog(
                     title = goal.title,
                     unit = goal.unit,
