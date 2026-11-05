@@ -34,13 +34,24 @@ import dev.goaltracker.core.Period
 import java.time.LocalDate
 
 @Composable
-fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String) -> Unit, onClose: () -> Unit) {
+fun GoalDetailScreen(
+    controller: AppController,
+    goalId: String,
+    onEdit: (String) -> Unit,
+    onAddTask: (String) -> Unit,
+    onEditTask: (String) -> Unit,
+    onClose: () -> Unit,
+) {
     val goal = remember(controller.version, goalId) { controller.read(null) { getGoal(goalId) } } ?: return
     val stats = remember(controller.version, controller.today, goalId) {
         controller.read(null) { goalStats(goalId, controller.today) }
     }
     val milestones = remember(controller.version, goalId) { controller.read(emptyList()) { listMilestones(goalId) } }
     val entries = remember(controller.version, goalId) { controller.read(emptyList()) { listEntries(goalId, 20u) } }
+    val linkedTasks = remember(controller.version, controller.today, goalId) {
+        controller.read(emptyList()) { listGoalTasks(goalId, controller.today) }
+    }
+    var milestoneToDelete by remember { mutableStateOf<dev.goaltracker.core.Milestone?>(null) }
 
     val chartPeriod = goal.period ?: Period.WEEK
     val series = remember(controller.version, controller.today, goalId) {
@@ -170,6 +181,35 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle("Tasks for this goal")
+                InfoHint(
+                    "Tasks for a goal",
+                    "These are to-dos you linked to this goal. Finishing one only ticks it off here: it does not log the goal and does not earn a treat. " +
+                        "Milestones below are different. Ticking a milestone counts as a target.",
+                )
+            }
+            if (linkedTasks.isNotEmpty()) {
+                Text(
+                    "${linkedTasks.count { it.done }} of ${linkedTasks.size} done",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            linkedTasks.forEach { task ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(task.done, { controller.toggleTaskWithUndo(task.id, task.title) })
+                    TextButton(onClick = { onEditTask(task.id) }, Modifier.weight(1f)) {
+                        Text(task.title, Modifier.fillMaxWidth(), textDecoration = if (task.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null)
+                    }
+                }
+            }
+            if (!goal.archived) {
+                OutlinedButton(onClick = { onAddTask(goalId) }) { Text("Add a task for this goal") }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SectionTitle("Milestones")
             milestones.forEachIndexed { index, milestone ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -185,7 +225,7 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
                     IconButton(enabled = index < milestones.lastIndex, onClick = { controller.act { moveMilestone(milestone.id, false) } }) {
                         Icon(Icons.Filled.KeyboardArrowDown, "Move ${milestone.title} down")
                     }
-                    IconButton(onClick = { controller.act { deleteMilestone(milestone.id) } }) {
+                    IconButton(onClick = { milestoneToDelete = milestone }) {
                         Icon(Icons.Filled.Close, "Delete ${milestone.title}")
                     }
                 }
@@ -273,7 +313,9 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
     if (confirmDelete) {
         ConfirmDialog(
             title = "Delete this goal?",
-            body = "\"${goal.title}\" and all of its history and rewards will be permanently deleted. To keep the history, archive it instead.",
+            body = "\"${goal.title}\" and all of its history and rewards will be permanently deleted. " +
+                (if (linkedTasks.isNotEmpty()) "Its ${countOf(linkedTasks.size, "task")} will stay in your Tasks tab, unlinked. " else "") +
+                "To keep the history, archive it instead.",
             confirm = "Delete",
             onConfirm = {
                 confirmDelete = false
@@ -281,6 +323,18 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
                 controller.act { deleteGoal(goalId) }
             },
             onDismiss = { confirmDelete = false },
+        )
+    }
+    milestoneToDelete?.let { milestone ->
+        ConfirmDialog(
+            title = "Delete this milestone?",
+            body = "\"${milestone.title}\" will be removed. If you already ticked it, the treat it earned is removed too.",
+            confirm = "Delete",
+            onConfirm = {
+                milestoneToDelete = null
+                controller.act { deleteMilestone(milestone.id) }
+            },
+            onDismiss = { milestoneToDelete = null },
         )
     }
     entryToDelete?.let { entry ->

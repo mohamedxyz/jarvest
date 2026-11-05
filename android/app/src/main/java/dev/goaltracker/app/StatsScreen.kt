@@ -61,11 +61,18 @@ fun StatsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         val goals = overview?.goals.orEmpty()
+        val momentum = remember(controller.version, controller.today) {
+            controller.read(null) { momentum(controller.today) }
+        }
         if (overview != null && overview.eligible > 0u) {
-            val best = goals.maxOf { it.bestStreak }
+            momentum?.let { MomentumBanner(it) }
+            // Streak lengths count different units, so the best one is named with its unit and goal.
+            val best = goals.maxByOrNull { it.bestStreak }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatTile("Targets met", percent(overview.met, overview.eligible), "${overview.met} of ${overview.eligible} recent", Modifier.weight(1f))
-                StatTile("Best streak", best.toString(), "across all goals", Modifier.weight(1f))
+                StatTile("Targets met", percent(overview.met, overview.eligible), "${overview.met} of ${overview.eligible} recent periods", Modifier.weight(1f))
+                if (best != null) {
+                    StatTile("Best streak", countOf(best.bestStreak.toInt(), best.period.noun()), best.title, Modifier.weight(1f))
+                }
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -137,6 +144,7 @@ private fun GoalStatsCard(stats: GoalStats, onClick: () -> Unit) {
                 Text(percent(stats.met, stats.eligible), style = MaterialTheme.typography.titleMedium)
             }
             CompletionBar(stats.met, stats.eligible)
+            TrendChip(goalTrend(stats))
             Text(
                 "${stats.met} of the last ${countOf(stats.eligible.toInt(), noun)} · " +
                     "streak ${stats.currentStreak}, best ${stats.bestStreak}",
@@ -287,13 +295,17 @@ private fun RecapCard(controller: AppController) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (before != null) {
-                    val diff = recap.entries.toInt() - before.entries.toInt()
-                    val word = when {
-                        diff > 0 -> "$diff more logs than the ${period.noun()} before"
-                        diff < 0 -> "${-diff} fewer logs than the ${period.noun()} before"
-                        else -> "Same number of logs as the ${period.noun()} before"
+                    val previous = if (back == 0) "last ${period.noun()}" else "the ${period.noun()} before"
+                    DeltaRow("Logs", recap.entries.toInt(), before.entries.toInt(), previous)
+                    DeltaRow("Active days", recap.activeDays.toInt(), before.activeDays.toInt(), previous)
+                    DeltaRow("Targets met", recap.targetsMet.toInt(), before.targetsMet.toInt(), previous)
+                    if (back == 0) {
+                        Text(
+                            "This ${period.noun()} isn't over yet, so these numbers can still rise.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    Text(word, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

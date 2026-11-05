@@ -79,6 +79,27 @@ fun InfoHint(title: String, text: String) {
     }
 }
 
+/** Warns, for as long as it is true, that meeting targets earns nothing because the jar is empty. */
+@Composable
+fun EmptyJarBanner(controller: AppController, onAddTreat: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val progress = remember(controller.version) { controller.read(null) { rewardProgress() } } ?: return
+    if (!progress.enabled || progress.treatsInJar > 0u) return
+    Card(
+        modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Your treat jar is empty, so targets you meet now win nothing. Add a treat to start winning.",
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            if (onAddTreat != null) TextButton(onClick = onAddTreat) { Text("Add") }
+        }
+    }
+}
+
 /** One label and value line inside an [InfoSheet]. */
 @Composable
 fun InfoRow(label: String, value: String) {

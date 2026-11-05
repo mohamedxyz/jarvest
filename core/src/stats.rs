@@ -19,6 +19,9 @@ pub struct PeriodSummary {
     pub best_streak: u32,
     pub met: u32,
     pub eligible: u32,
+    /// The same counts for the window just before the last `RATE_WINDOW` periods.
+    pub prev_met: u32,
+    pub prev_eligible: u32,
 }
 
 /// One run of consecutive met periods, as period start dates plus the count.
@@ -79,6 +82,10 @@ fn walk(
     let window = &eligible_results[eligible_results.len().saturating_sub(RATE_WINDOW)..];
     summary.eligible = window.len() as u32;
     summary.met = window.iter().filter(|met| **met).count() as u32;
+    let before = eligible_results.len().saturating_sub(RATE_WINDOW);
+    let prev = &eligible_results[before.saturating_sub(RATE_WINDOW)..before];
+    summary.prev_eligible = prev.len() as u32;
+    summary.prev_met = prev.iter().filter(|met| **met).count() as u32;
     (summary, runs)
 }
 
@@ -264,6 +271,8 @@ fn stats_for(
         best_streak: summary.best_streak,
         met: summary.met,
         eligible: summary.eligible,
+        prev_met: summary.prev_met,
+        prev_eligible: summary.prev_eligible,
     }))
 }
 
@@ -287,10 +296,99 @@ pub fn overview(conn: &Connection, today: &str) -> Result<StatsOverview, CoreErr
     }
     let met = goals.iter().map(|g| g.met).sum();
     let eligible = goals.iter().map(|g| g.eligible).sum();
+    let prev_met = goals.iter().map(|g| g.prev_met).sum();
+    let prev_eligible = goals.iter().map(|g| g.prev_eligible).sum();
     Ok(StatsOverview {
         goals,
         met,
         eligible,
+        prev_met,
+        prev_eligible,
+    })
+}
+
+/// A goal's rate change in percentage points, or None without enough history.
+fn goal_change(g: &GoalStats) -> Option<f64> {
+    (g.eligible >= MIN_PERIODS && g.prev_eligible >= MIN_PERIODS).then(|| {
+        f64::from(g.met) * 100.0 / f64::from(g.eligible)
+            - f64::from(g.prev_met) * 100.0 / f64::from(g.prev_eligible)
+    })
+}
+
+/// At least this many periods in each window before a verdict is given.
+const MIN_PERIODS: u32 = 3;
+/// A change of this many percentage points or more counts as advancing or slipping.
+const CHANGE_POINTS: f64 = 5.0;
+
+/// Whether the user is advancing or slipping: targets met in the recent window
+/// compared with the window before it, across all active goals.
+pub fn momentum(conn: &Connection, today: &str) -> Result<Momentum, CoreError> {
+    let overview = overview(conn, today)?;
+    let compared = "Your last 12 periods on each goal, compared with the 12 before. \
+                    Skipped days are left out."
+        .to_string();
+    if overview.eligible < MIN_PERIODS || overview.prev_eligible < MIN_PERIODS {
+        return Ok(Momentum {
+            status: MomentumStatus::NotEnoughData,
+            change_points: 0,
+            rate_percent: 0,
+            prev_rate_percent: 0,
+            reason: "Not enough history yet. Keep logging and a verdict will appear.".into(),
+            compared,
+        });
+    }
+    let rate = f64::from(overview.met) * 100.0 / f64::from(overview.eligible);
+    let prev = f64::from(overview.prev_met) * 100.0 / f64::from(overview.prev_eligible);
+    let change = rate - prev;
+    // Rounded on purpose, so the numbers on screen always add up.
+    let (rate_percent, prev_rate_percent) = (rate.round() as u32, prev.round() as u32);
+    let status = if change >= CHANGE_POINTS - 1e-9 {
+        MomentumStatus::Advancing
+    } else if change <= -CHANGE_POINTS + 1e-9 {
+        MomentumStatus::Slipping
+    } else {
+        MomentumStatus::Steady
+    };
+    let mut reason = match status {
+        MomentumStatus::Advancing => {
+            format!("Targets met {rate_percent}%, up from {prev_rate_percent}%.")
+        }
+        MomentumStatus::Slipping => {
+            format!("Targets met {rate_percent}%, down from {prev_rate_percent}%.")
+        }
+        _ => {
+            format!("Targets met {rate_percent}%, about the same as before ({prev_rate_percent}%).")
+        }
+    };
+    // Name the goal that moved the most in the same direction as the verdict.
+    let mover = overview
+        .goals
+        .iter()
+        .filter_map(|g| goal_change(g).map(|c| (g, c)))
+        .filter(|(_, c)| match status {
+            MomentumStatus::Slipping => *c <= -15.0,
+            MomentumStatus::Advancing => *c >= 15.0,
+            _ => false,
+        })
+        .min_by(|a, b| match status {
+            MomentumStatus::Slipping => a.1.total_cmp(&b.1),
+            _ => b.1.total_cmp(&a.1),
+        });
+    if let Some((goal, _)) = mover {
+        let verb = if status == MomentumStatus::Slipping {
+            "Biggest drop"
+        } else {
+            "Biggest gain"
+        };
+        reason.push_str(&format!(" {verb}: {}.", goal.title));
+    }
+    Ok(Momentum {
+        status,
+        change_points: change.round() as i32,
+        rate_percent,
+        prev_rate_percent,
+        reason,
+        compared,
     })
 }
 

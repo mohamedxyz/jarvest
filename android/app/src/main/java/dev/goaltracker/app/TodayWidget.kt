@@ -62,7 +62,14 @@ class TodayWidget : GlanceAppWidget() {
                     emptyList()
                 }
             }
-            GlanceTheme { WidgetContent(items) }
+            val tasksDue = remember(dataVersion, today) {
+                try {
+                    app.core.dueTasks(today).size
+                } catch (_: CoreException) {
+                    0
+                }
+            }
+            GlanceTheme { WidgetContent(items, tasksDue) }
         }
     }
 }
@@ -70,17 +77,27 @@ class TodayWidget : GlanceAppWidget() {
 private val goalIdKey = ActionParameters.Key<String>(QuickLogActivity.EXTRA_GOAL_ID)
 
 @Composable
-private fun WidgetContent(items: List<TodayItem>) {
+private fun WidgetContent(items: List<TodayItem>, tasksDue: Int) {
     Column(
         GlanceModifier.fillMaxSize().background(GlanceTheme.colors.widgetBackground).cornerRadius(16.dp).padding(12.dp),
     ) {
         Text(
-            "Today",
+            "Today" + if (items.isNotEmpty()) ": ${items.count { it.complete }} of ${items.size} done" else "",
             modifier = GlanceModifier.fillMaxWidth().padding(bottom = 4.dp).clickable(actionStartActivity<MainActivity>()),
             style = TextStyle(fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurface),
         )
+        if (tasksDue > 0) {
+            Text(
+                "${if (tasksDue == 1) "1 task" else "$tasksDue tasks"} due. Tap to open.",
+                modifier = GlanceModifier.fillMaxWidth().padding(bottom = 4.dp).clickable(actionStartActivity<MainActivity>()),
+                style = TextStyle(color = GlanceTheme.colors.primary),
+            )
+        }
         if (items.isEmpty()) {
-            Text("You're all caught up", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant))
+            Text(
+                if (tasksDue > 0) "No goals are due." else "You're all caught up",
+                style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant),
+            )
         } else {
             LazyColumn {
                 items(items, itemId = { it.goalId.hashCode().toLong() }) { item -> WidgetRow(item) }
@@ -97,7 +114,11 @@ private fun WidgetRow(item: TodayItem) {
             GlanceModifier.fillMaxWidth().padding(vertical = 10.dp).clickable(actionStartActivity<QuickLogActivity>(params)),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("+  ${item.title}", style = TextStyle(color = GlanceTheme.colors.onSurface), maxLines = 1)
+            Text(
+                "+  ${item.title}" + (progressLine(item)?.let { " ($it)" } ?: ""),
+                style = TextStyle(color = GlanceTheme.colors.onSurface),
+                maxLines = 1,
+            )
         }
     } else {
         CheckBox(

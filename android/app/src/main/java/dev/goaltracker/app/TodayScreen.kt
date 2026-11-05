@@ -41,6 +41,9 @@ fun TodayScreen(
     onEditGoal: (String) -> Unit,
     onEditTask: (String) -> Unit,
     onOpenTasks: () -> Unit,
+    onOpenRewards: () -> Unit,
+    onAddGoal: () -> Unit,
+    onAddTask: () -> Unit,
 ) {
     val items = remember(controller.version, controller.today) {
         controller.read(emptyList()) { today(controller.today) }
@@ -61,10 +64,13 @@ fun TodayScreen(
         } else {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 EmptyState(
-                    "Add your first goal",
-                    "A goal is something you track over time, such as a habit or a number to reach. For one-off to-dos, use the Tasks tab.",
+                    "Nothing here yet",
+                    "A goal is something you track over time, such as a habit or a number to reach. A task is a one-off to-do.",
                 )
-                Button(onClick = onOpenTasks) { Text("Go to Tasks") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onAddGoal) { Text("Add a goal") }
+                    OutlinedButton(onClick = onAddTask) { Text("Add a task") }
+                }
             }
         }
     } else {
@@ -74,11 +80,24 @@ fun TodayScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item {
+                // One line that answers "how am I doing today?" before the lists start.
+                val goalsDone = items.count { it.complete }
+                Text(
+                    buildList {
+                        if (items.isNotEmpty()) add("$goalsDone of ${items.size} goals done")
+                        if (dueTasks.isNotEmpty()) add(countOf(dueTasks.size, "task") + " due")
+                    }.joinToString(" · "),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+            item { EmptyJarBanner(controller, onAddTreat = onOpenRewards) }
+            item {
                 TipCard(controller, "today_cards", "Tap a card to see its details. Tick the box to log it for today.")
             }
             if (dueTasks.isNotEmpty()) {
                 item { SectionTitle("Tasks due") }
-                items(dueTasks, key = { "task-${it.id}" }) { task ->
+                // The three most urgent. The rest are one tap away, so goals are not buried.
+                items(dueTasks.take(3), key = { "task-${it.id}" }) { task ->
                     Card(Modifier.fillMaxWidth().clickable { openedTask = task.id }) {
                         Row(
                             Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
@@ -94,17 +113,25 @@ fun TodayScreen(
                                     )
                                 }
                             }
-                            Checkbox(checked = false, onCheckedChange = {
-                                val result = controller.change { toggleTask(task.id, controller.today) }
-                                result?.nextDue?.let { controller.message = "Next \"${task.title}\" is due ${formatDate(it)}." }
-                            })
+                            Checkbox(checked = false, onCheckedChange = { controller.toggleTaskWithUndo(task.id, task.title) })
                         }
                     }
                 }
-                item { TextButton(onClick = onOpenTasks) { Text("See all tasks") } }
+                item {
+                    TextButton(onClick = onOpenTasks) {
+                        Text(if (dueTasks.size > 3) "${dueTasks.size - 3} more due. See all tasks" else "See all tasks")
+                    }
+                }
             }
             if (items.isNotEmpty()) {
-                item { SectionTitle("Goals") }
+                item {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        SectionTitle("Goals")
+                        if (items.any { it.kind == GoalKind.NUMERIC }) {
+                            InfoHint("Counter", "On a number goal, use - and + to count as you go. Nothing is saved until you press Submit, which logs the count as one entry. Exact lets you type an amount, such as 2.5.")
+                        }
+                    }
+                }
             }
             items(items, key = { it.goalId }) { item ->
                 TodayCard(
@@ -182,7 +209,6 @@ private fun TodayCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CounterControl(count, onCount, onSubmit)
                         TextButton(onClick = onLog) { Text("Exact") }
-                        InfoHint("Counter", "Use - and + to count as you go, then press Submit to log the count as one entry. Exact lets you type an amount, such as 2.5.")
                     }
                 }
                 val deadline = item.deadline
@@ -197,7 +223,7 @@ private fun TodayCard(
     }
 }
 
-private fun progressLine(item: TodayItem): String? {
+internal fun progressLine(item: TodayItem): String? {
     val period = item.period
     val periodTarget = item.periodTarget
     val totalTarget = item.totalTarget

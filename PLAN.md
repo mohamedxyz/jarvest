@@ -283,3 +283,44 @@ real reboot.
 
 Task calendar and focus timer, tasks in the widget, a details sheet on the Goals list,
 Arabic quick add, and hints on the Treats screen.
+
+# V0.5.0 plan
+
+## Tasks linked to goals
+
+- `tasks.goal_id` (migration 007, `ON DELETE SET NULL`). The link only groups tasks on the goal's
+  page with a progress count. Finishing a linked task never logs the goal, earns a reward, or
+  changes stats. Milestones are unchanged and still count as targets.
+- A task can keep its link to a goal that was archived later. A new link needs an active goal.
+
+## Rewards made visible (rules unchanged)
+
+- Odds (1 in 5, 2 in 5 after a comeback), the pity rule (a treat within 10 targets), and undo are
+  exactly as in V1.
+- `reward_progress()` gives the countdown: `guaranteed_in` is how many more targets until a treat is
+  certain (1 means the next one). `LogResult` now says `no_treat`, `drew`, and `treats_removed`, so the
+  app can tell the user what happened to every target and to every undo.
+- An empty jar is shown as a banner on Today and Rewards for as long as it is true.
+
+## Stats that show direction
+
+- `GoalStats` and `StatsOverview` carry `prev_met` and `prev_eligible`: the 12 eligible periods before
+  the 12 already counted. Skipped periods are excluded from both windows.
+- `momentum(today)` compares the two windows across active goals. A move of 5 percentage points or
+  more is Advancing or Slipping. Fewer than 3 eligible periods in either window gives Not enough data.
+  The reason names the goal that moved most (15 points or more).
+- Stats opens with the verdict. Trend chips show on a goal only when it moved 5 points or more.
+  Summary compares logs, active days, and targets met with the period before. The streaks widget shows
+  the verdict as words.
+
+## UX fixes from the critique
+
+Labelled add buttons (Add menu on Today), Rewards tab name, a "done today" line, at most three tasks
+on Today, Undo after every task tick, confirm before removing a treat or milestone, pinned and
+disabled task save button, quick-add chips and a warning for unknown `!priority` words, "Not saved yet"
+on the counter, the Today widget shows task count and progress, the best streak names its unit and goal.
+
+## Not done yet
+
+Collapsing the Goals filters and the goal editor, larger heatmap tap targets, "empty trash", days left
+on trash rows, and a different icon for priority than for the Goals tab.

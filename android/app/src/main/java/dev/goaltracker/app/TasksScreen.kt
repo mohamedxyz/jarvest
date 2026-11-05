@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -132,24 +133,41 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                     parsed.tag?.let { "#$it" },
                 )
                 if (bits.isNotEmpty()) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Adds:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        bits.forEach { AssistChip(onClick = {}, label = { Text(it) }) }
+                    }
+                }
+                // A word like !hgh isn't understood and would stay in the title, so say so.
+                val unknown = parsed.title.split(" ").firstOrNull { it.startsWith("!") && it.length > 1 }
+                if (unknown != null) {
                     Text(
-                        "${parsed.title}  ·  ${bits.joinToString("  ·  ")}",
-                        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        "\"$unknown\" isn't a priority. Use !high, !med or !low.",
+                        Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
-            Row(
-                Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TaskFilter.entries.forEach {
-                    FilterChip(selected = filter == it, onClick = { filter = it }, label = { Text(it.label()) })
+            Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f).horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TaskFilter.entries.forEach {
+                        FilterChip(selected = filter == it, onClick = { filter = it }, label = { Text(it.label()) })
+                    }
                 }
+                // Outside the scrolling row, so it can never scroll out of reach.
                 Column {
-                    IconButton(onClick = { sortMenu = true }) { Icon(Icons.AutoMirrored.Filled.Sort, "Sort: ${sort.label()}") }
+                    TextButton(onClick = { sortMenu = true }) {
+                        Icon(Icons.AutoMirrored.Filled.Sort, null, Modifier.size(18.dp))
+                        Text(" ${sort.label()}")
+                    }
                     DropdownMenu(sortMenu, { sortMenu = false }) {
                         TaskSort.entries.forEach {
                             DropdownMenuItem(
@@ -167,7 +185,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                if (showTrash) "Trash (removed after 30 days)" else "Sorted by ${sort.label().lowercase()}",
+                if (showTrash) "Trash: tasks are removed for good after 30 days" else "${tasks.size} ${if (tasks.size == 1) "task" else "tasks"}",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -195,10 +213,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                             task,
                             controller.today,
                             onOpen = { opened = task },
-                            onCheck = {
-                                val result = controller.change { toggleTask(task.id, controller.today) }
-                                result?.nextDue?.let { controller.message = "Next \"${task.title}\" is due ${formatDate(it)}." }
-                            },
+                            onCheck = { controller.toggleTaskWithUndo(task.id, task.title) },
                         )
                     }
                 }
@@ -234,7 +249,14 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
                     color = if (task.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Filled.Flag, "${task.priority.label()} priority", Modifier.size(14.dp), tint = priorityColor(task.priority))
+                    if (task.priority != Priority.MED) {
+                        Icon(Icons.Filled.Flag, null, Modifier.size(14.dp), tint = priorityColor(task.priority))
+                        Text(
+                            task.priority.label(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = priorityColor(task.priority),
+                        )
+                    }
                     task.due?.let {
                         Text(
                             dueLabel(it, today),
@@ -242,6 +264,7 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
                             color = if (task.overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    task.goalTitle?.let { Text("→ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     task.tag?.let { Text("#$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     if (task.repeat != null) {
                         Icon(Icons.Outlined.Repeat, "Repeats", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)

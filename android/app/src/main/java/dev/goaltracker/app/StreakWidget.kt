@@ -54,13 +54,20 @@ class StreakWidget : GlanceAppWidget() {
                     emptyList()
                 }
             }
-            GlanceTheme { StreakContent(streaks) }
+            val momentum = remember(dataVersion, today) {
+                try {
+                    app.core.momentum(today)
+                } catch (_: CoreException) {
+                    null
+                }
+            }
+            GlanceTheme { StreakContent(streaks, momentum?.let { momentumShort(it) }) }
         }
     }
 }
 
 @Composable
-private fun StreakContent(streaks: List<GoalStats>) {
+private fun StreakContent(streaks: List<GoalStats>, status: String?) {
     Column(
         GlanceModifier.fillMaxSize().background(GlanceTheme.colors.widgetBackground).cornerRadius(16.dp).padding(12.dp)
             .clickable(actionStartActivity<MainActivity>()),
@@ -70,6 +77,14 @@ private fun StreakContent(streaks: List<GoalStats>) {
             modifier = GlanceModifier.fillMaxWidth().padding(bottom = 4.dp),
             style = TextStyle(fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurface),
         )
+        // The same verdict as the Stats screen, in words, so it never depends on color.
+        status?.let {
+            Text(
+                it,
+                modifier = GlanceModifier.fillMaxWidth().padding(bottom = 4.dp),
+                style = TextStyle(fontWeight = FontWeight.Medium, color = GlanceTheme.colors.primary),
+            )
+        }
         if (streaks.isEmpty()) {
             Text("No streaks yet. Hit a target to start one.", style = TextStyle(color = GlanceTheme.colors.onSurfaceVariant))
         } else {

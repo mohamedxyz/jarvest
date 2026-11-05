@@ -120,6 +120,7 @@ impl GoalCore {
             tag: parsed.tag,
             repeat: None,
             items: vec![],
+            goal_id: None,
         };
         tasks::create_task(&mut self.conn(), task, &today)
     }
@@ -161,6 +162,11 @@ impl GoalCore {
         today: String,
     ) -> Result<Vec<Task>, CoreError> {
         tasks::list_tasks(&self.conn(), filter, sort, &today)
+    }
+
+    /// Tasks linked to one goal, open first. They only group there: finishing one never logs the goal.
+    pub fn list_goal_tasks(&self, goal_id: String, today: String) -> Result<Vec<Task>, CoreError> {
+        tasks::list_goal_tasks(&self.conn(), &goal_id, &today)
     }
 
     pub fn list_trash(&self, today: String) -> Result<Vec<Task>, CoreError> {
@@ -289,6 +295,11 @@ impl GoalCore {
         stats::overview(&self.conn(), &today)
     }
 
+    /// Whether the user is advancing or slipping, with the numbers behind it.
+    pub fn momentum(&self, today: String) -> Result<Momentum, CoreError> {
+        stats::momentum(&self.conn(), &today)
+    }
+
     pub fn goal_stats(
         &self,
         goal_id: String,
@@ -314,6 +325,11 @@ impl GoalCore {
 
     pub fn set_rewards_enabled(&self, enabled: bool) -> Result<(), CoreError> {
         rewards::set_enabled(&self.conn(), enabled)
+    }
+
+    /// How close the next treat is, for the meter on the Treats screen.
+    pub fn reward_progress(&self) -> Result<RewardProgress, CoreError> {
+        rewards::progress(&self.conn())
     }
 
     pub fn add_treat(&self, title: String) -> Result<(), CoreError> {

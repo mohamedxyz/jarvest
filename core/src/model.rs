@@ -158,6 +158,10 @@ pub struct GoalStats {
     /// Periods met, out of `eligible`, within the last 12 eligible periods.
     pub met: u32,
     pub eligible: u32,
+    /// The same count for the 12 eligible periods before those. Skipped periods are
+    /// left out of both, so a holiday never reads as a decline.
+    pub prev_met: u32,
+    pub prev_eligible: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -165,6 +169,33 @@ pub struct StatsOverview {
     pub goals: Vec<GoalStats>,
     pub met: u32,
     pub eligible: u32,
+    pub prev_met: u32,
+    pub prev_eligible: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MomentumStatus {
+    /// Targets are being met more often than before.
+    Advancing,
+    Steady,
+    /// Targets are being met less often than before.
+    Slipping,
+    /// Too little history to compare.
+    NotEnoughData,
+}
+
+/// A plain verdict on whether the user is advancing or falling behind.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Momentum {
+    pub status: MomentumStatus,
+    /// Percentage points between the recent and the previous window.
+    pub change_points: i32,
+    pub rate_percent: u32,
+    pub prev_rate_percent: u32,
+    /// One sentence with the numbers behind the verdict.
+    pub reason: String,
+    /// What was compared, so "compared to what?" always has an answer.
+    pub compared: String,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -196,6 +227,25 @@ pub struct RewardDraw {
 pub struct LogResult {
     /// A target was completed while the jar had no treats in it.
     pub jar_empty: bool,
+    /// Targets that rolled for a treat and won nothing this time.
+    pub no_treat: u32,
+    /// Treats won by this action. The app reveals them separately.
+    pub drew: u32,
+    /// Treats removed because this action undid a target that had won them.
+    pub treats_removed: u32,
+}
+
+/// Where the user stands with the reward jar, for the meter on the Treats screen.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct RewardProgress {
+    pub enabled: bool,
+    pub treats_in_jar: u32,
+    /// Targets met since the last treat that won nothing.
+    pub misses_since_draw: u32,
+    /// The next treat is guaranteed within this many targets (1 means the next one).
+    pub guaranteed_in: u32,
+    pub base_percent: u32,
+    pub comeback_percent: u32,
 }
 
 /// One period of a goal's history, for charts. `start` is the period's first day.
@@ -360,6 +410,9 @@ pub struct Task {
     pub overdue: bool,
     pub items_done: u32,
     pub items_total: u32,
+    /// The goal this task belongs to. Only groups tasks: it never logs the goal.
+    pub goal_id: Option<String>,
+    pub goal_title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -372,6 +425,7 @@ pub struct NewTask {
     pub repeat: Option<Repeat>,
     /// Checklist lines, in order.
     pub items: Vec<String>,
+    pub goal_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -382,6 +436,7 @@ pub struct TaskEdit {
     pub priority: Priority,
     pub tag: Option<String>,
     pub repeat: Option<Repeat>,
+    pub goal_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

@@ -63,15 +63,49 @@ fn roll(seed: &str, goal_id: &str, target_key: &str) -> (u64, u64) {
     (first % ROLL_RANGE, second)
 }
 
-/// Records a completed target and maybe draws a treat. Returns true if the jar was
-/// empty, which tells the app to suggest adding a treat.
+/// What happened when a target was completed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    RewardsOff,
+    /// There was nothing in the jar to win.
+    JarEmpty,
+    Draw,
+    /// It rolled and won nothing this time.
+    NoTreat,
+}
+
+fn misses_since_draw(conn: &Connection) -> Result<u32, CoreError> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM target_completions WHERE outcome = 'none' AND seq > (
+             SELECT COALESCE(MAX(seq), 0) FROM target_completions WHERE outcome = 'draw')",
+        [],
+        |r| r.get(0),
+    )?)
+}
+
+pub fn progress(conn: &Connection) -> Result<RewardProgress, CoreError> {
+    let misses = misses_since_draw(conn)?;
+    let treats: u32 = conn.query_row("SELECT COUNT(*) FROM treats WHERE removed = 0", [], |r| {
+        r.get(0)
+    })?;
+    Ok(RewardProgress {
+        enabled: enabled(conn)?,
+        treats_in_jar: treats,
+        misses_since_draw: misses,
+        guaranteed_in: PITY_ROLLS.saturating_sub(misses).max(1),
+        base_percent: (BASE_THRESHOLD * 100 / ROLL_RANGE) as u32,
+        comeback_percent: (COMEBACK_THRESHOLD * 100 / ROLL_RANGE) as u32,
+    })
+}
+
+/// Records a completed target and maybe draws a treat.
 pub fn complete_target(
     conn: &Connection,
     goal_id: &str,
     target_key: &str,
     comeback: bool,
     today: &str,
-) -> Result<bool, CoreError> {
+) -> Result<Outcome, CoreError> {
     let completion_id = uuid::Uuid::new_v4().to_string();
     let treats: Vec<String> = {
         let mut stmt = conn.prepare("SELECT id FROM treats WHERE removed = 0 ORDER BY seq")?;
@@ -91,12 +125,7 @@ pub fn complete_target(
         } else {
             BASE_THRESHOLD
         };
-        let misses: u32 = conn.query_row(
-            "SELECT COUNT(*) FROM target_completions WHERE outcome = 'none' AND seq > (
-                 SELECT COALESCE(MAX(seq), 0) FROM target_completions WHERE outcome = 'draw')",
-            [],
-            |r| r.get(0),
-        )?;
+        let misses = misses_since_draw(conn)?;
         if value < threshold || misses + 1 >= PITY_ROLLS {
             draw = Some(treats[(treat_roll % treats.len() as u64) as usize].clone());
             "draw"
@@ -123,7 +152,12 @@ pub fn complete_target(
             ],
         )?;
     }
-    Ok(outcome == "jar_empty")
+    Ok(match outcome {
+        "rewards_off" => Outcome::RewardsOff,
+        "jar_empty" => Outcome::JarEmpty,
+        "draw" => Outcome::Draw,
+        _ => Outcome::NoTreat,
+    })
 }
 
 pub fn add_treat(conn: &Connection, title: &str) -> Result<(), CoreError> {

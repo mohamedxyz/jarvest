@@ -13,14 +13,18 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
 - **Missed a day?** Log past days, skip a day, or pause a goal without losing the streak
 - **Tasks:** a separate Tasks tab for one-off to-dos with due dates, priority, a tag, notes,
   a checklist, and repeating. Type `Essay tomorrow !high #uni` to fill in the date, priority,
-  and tag. Deleted tasks wait in the trash for 30 days, and tasks never affect rewards or stats
+  and tag. A task can be linked to a goal and shows on that goal's page with its progress. Deleted
+  tasks wait in the trash for 30 days, and tasks never affect rewards or stats
 - **Clearer screens:** tap a goal on Today for a details sheet, "?" buttons explain terms such as
   skip and pause, and short tips appear once (Settings > Appearance > Show tips again)
 - **Organizing:** categories, deadlines, ordered milestones, and an archive
 - **Today screen and home screen widgets** for logging in one tap
 - **Stats:** heatmap, line charts, weekly and monthly summaries, best and worst weekdays,
   category comparison, completion rates, and streak history
-- **Reward jar:** add your own treats, draw them at random when you hit targets, and earn badges
+- **Reward jar:** add your own treats, draw them at random when you hit targets, and earn badges.
+  A countdown shows how close the guaranteed treat is, and every target tells you if it won one
+- **Advancing or slipping:** Stats opens with a plain verdict (Advancing, Steady, or Slipping) with
+  the numbers behind it, trend arrows per goal and per week, and the same verdict on the streaks widget
 - **Reminders:** an optional daily summary of what is still due, plus an optional time
   per goal. A reminder stays silent if the goal is already done, skipped, or off today.
   Alarms are inexact, so they can arrive a few minutes late

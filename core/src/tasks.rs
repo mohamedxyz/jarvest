@@ -1,5 +1,6 @@
 //! Tasks: to-do items with a due date, priority, tag, checklist and optional repeat.
-//! They are separate from goals, so they never earn rewards or change stats.
+//! A task may be linked to a goal, which only groups it there. Tasks never log a
+//! goal, earn rewards, or change stats.
 
 use chrono::{Datelike, Days, Months, NaiveDate, Weekday};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -15,7 +16,9 @@ pub const TRASH_DAYS: u64 = 30;
 const TASK_COLUMNS: &str = "t.id, t.title, t.notes, t.due, t.priority, t.tag, t.repeat,
     t.created_date, t.done_date,
     (SELECT COUNT(*) FROM task_items i WHERE i.task_id = t.id AND i.done = 1),
-    (SELECT COUNT(*) FROM task_items i WHERE i.task_id = t.id)";
+    (SELECT COUNT(*) FROM task_items i WHERE i.task_id = t.id),
+    t.goal_id,
+    (SELECT g.title FROM goals g WHERE g.id = t.goal_id)";
 
 fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
     let due: Option<String> = row.get(3)?;
@@ -37,6 +40,8 @@ fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
         overdue,
         items_done: row.get(9)?,
         items_total: row.get(10)?,
+        goal_id: row.get(11)?,
+        goal_title: row.get(12)?,
     })
 }
 
@@ -45,6 +50,23 @@ fn clean_tag(tag: Option<String>) -> Result<Option<String>, CoreError> {
     match tag.filter(|t| !t.is_empty()) {
         Some(t) if t.chars().count() > 40 => Err(invalid("A tag can have at most 40 characters")),
         other => Ok(other),
+    }
+}
+
+/// A task can only be linked to a goal that exists and is not archived.
+fn check_goal(conn: &Connection, goal_id: &Option<String>) -> Result<(), CoreError> {
+    let Some(goal_id) = goal_id else {
+        return Ok(());
+    };
+    let usable: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM goals WHERE id = ?1 AND archived = 0)",
+        [goal_id],
+        |r| r.get(0),
+    )?;
+    if usable {
+        Ok(())
+    } else {
+        Err(invalid("Pick a goal that exists and isn't archived"))
     }
 }
 
@@ -60,6 +82,7 @@ pub fn create_task(conn: &mut Connection, task: NewTask, today: &str) -> Result<
     let title = clean_title(&task.title)?;
     validate_due(&task.due)?;
     let tag = clean_tag(task.tag)?;
+    check_goal(conn, &task.goal_id)?;
     let items = task
         .items
         .iter()
@@ -68,8 +91,8 @@ pub fn create_task(conn: &mut Connection, task: NewTask, today: &str) -> Result<
     let id = new_id();
     let tx = conn.transaction()?;
     tx.execute(
-        "INSERT INTO tasks (id, title, notes, due, priority, tag, repeat, created_date)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO tasks (id, title, notes, due, priority, tag, repeat, created_date, goal_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             id,
             title,
@@ -78,7 +101,8 @@ pub fn create_task(conn: &mut Connection, task: NewTask, today: &str) -> Result<
             task.priority.as_sql(),
             tag,
             task.repeat.map(Repeat::as_sql),
-            today
+            today,
+            task.goal_id
         ],
     )?;
     for (position, text) in items.iter().enumerate() {
@@ -95,8 +119,17 @@ pub fn update_task(conn: &Connection, task_id: &str, edit: TaskEdit) -> Result<(
     let title = clean_title(&edit.title)?;
     validate_due(&edit.due)?;
     let tag = clean_tag(edit.tag)?;
+    // Keeping the link to a goal that was archived since is fine. Picking a new one is checked.
+    let current: Option<Option<String>> = conn
+        .query_row("SELECT goal_id FROM tasks WHERE id = ?1", [task_id], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    if current.flatten() != edit.goal_id {
+        check_goal(conn, &edit.goal_id)?;
+    }
     let changed = conn.execute(
-        "UPDATE tasks SET title = ?2, notes = ?3, due = ?4, priority = ?5, tag = ?6, repeat = ?7
+        "UPDATE tasks SET title = ?2, notes = ?3, due = ?4, priority = ?5, tag = ?6, repeat = ?7, goal_id = ?8
          WHERE id = ?1 AND deleted_date IS NULL",
         params![
             task_id,
@@ -105,7 +138,8 @@ pub fn update_task(conn: &Connection, task_id: &str, edit: TaskEdit) -> Result<(
             edit.due,
             edit.priority.as_sql(),
             tag,
-            edit.repeat.map(Repeat::as_sql)
+            edit.repeat.map(Repeat::as_sql),
+            edit.goal_id
         ],
     )?;
     if changed == 0 {
@@ -192,8 +226,8 @@ pub fn toggle_task(
             let due_next = next_due(due.as_deref(), repeat, today_date)?.to_string();
             let new = new_id();
             tx.execute(
-                "INSERT INTO tasks (id, title, notes, due, priority, tag, repeat, created_date, prev_id)
-                 SELECT ?2, title, notes, ?3, priority, tag, repeat, ?4, id FROM tasks WHERE id = ?1",
+                "INSERT INTO tasks (id, title, notes, due, priority, tag, repeat, created_date, prev_id, goal_id)
+                 SELECT ?2, title, notes, ?3, priority, tag, repeat, ?4, id, goal_id FROM tasks WHERE id = ?1",
                 params![task_id, new, due_next, today],
             )?;
             tx.execute(
@@ -291,7 +325,7 @@ pub fn list_tasks(
         "SELECT {TASK_COLUMNS}, t.rowid FROM tasks t WHERE t.deleted_date IS NULL ORDER BY t.rowid"
     ))?;
     let mut tasks: Vec<(i64, Task)> = stmt
-        .query_map([], |row| Ok((row.get(11)?, task_from_row(row, today)?)))?
+        .query_map([], |row| Ok((row.get(13)?, task_from_row(row, today)?)))?
         .collect::<Result<_, _>>()?;
 
     tasks.retain(|(_, t)| match filter {
@@ -318,6 +352,17 @@ pub fn list_tasks(
         })
     });
     Ok(tasks.into_iter().map(|(_, t)| t).collect())
+}
+
+/// Every task linked to one goal: open ones first, then done ones.
+pub fn list_goal_tasks(
+    conn: &Connection,
+    goal_id: &str,
+    today: &str,
+) -> Result<Vec<Task>, CoreError> {
+    let mut tasks = list_tasks(conn, TaskFilter::All, TaskSort::Due, today)?;
+    tasks.retain(|t| t.goal_id.as_deref() == Some(goal_id));
+    Ok(tasks)
 }
 
 /// Open tasks due today or earlier, for the Today screen: overdue first, then by priority.

@@ -565,8 +565,23 @@ fn sync_target(
         |r| r.get(0),
     )?;
     if met && !recorded {
-        result.jar_empty |= rewards::complete_target(conn, &goal.id, key, comeback, today)?;
+        match rewards::complete_target(conn, &goal.id, key, comeback, today)? {
+            rewards::Outcome::JarEmpty => result.jar_empty = true,
+            rewards::Outcome::NoTreat => result.no_treat += 1,
+            rewards::Outcome::Draw => result.drew += 1,
+            rewards::Outcome::RewardsOff => {}
+        }
     } else if !met && recorded {
+        let had_treat: bool = conn.query_row(
+            "SELECT EXISTS (SELECT 1 FROM reward_draws d
+                JOIN target_completions c ON c.id = d.completion_id
+                WHERE c.goal_id = ?1 AND c.target_key = ?2)",
+            params![goal.id, key],
+            |r| r.get(0),
+        )?;
+        if had_treat {
+            result.treats_removed += 1;
+        }
         // Removing the completion also removes any reward it earned.
         conn.execute(
             "DELETE FROM target_completions WHERE goal_id = ?1 AND target_key = ?2",

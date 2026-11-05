@@ -115,12 +115,35 @@ class AppController(private val app: GoalTrackerApp) {
     /** A message with an Undo button, such as after moving a task to the trash. */
     var undo by mutableStateOf<UndoOffer?>(null)
 
+    /**
+     * Ticks or unticks a task and always offers Undo, so a stray tap is easy to fix.
+     * Finishing a repeating task also says when the next one is due.
+     */
+    fun toggleTaskWithUndo(taskId: String, title: String) {
+        val result = change { toggleTask(taskId, today) } ?: return
+        val text = when {
+            !result.done -> "\"$title\" is open again."
+            result.nextDue != null -> "\"$title\" done. Next one is due ${formatDate(result.nextDue!!)}."
+            else -> "\"$title\" done."
+        }
+        undo = UndoOffer(text) { change { toggleTask(taskId, today) } }
+    }
+
     /** Runs a logging action, then checks whether it earned a treat. */
     fun log(block: GoalCore.() -> LogResult): Boolean = try {
         val result = core.block()
         if (result.jarEmpty && !jarPromptUsed) {
             jarPromptUsed = true
             showJarPrompt = true
+        }
+        // Say what happened to the reward, so a missing treat never looks like a bug.
+        if (result.treatsRemoved > 0u) {
+            message = "Unticked. The treat that target won was removed too."
+        } else if (result.noTreat > 0u) {
+            val left = core.rewardProgress().guaranteedIn.toInt()
+            message = "Target met. No treat this time. " +
+                if (left <= 1) "Your next target is guaranteed to win one."
+                else "A treat is guaranteed within $left more targets."
         }
         refresh()
         true

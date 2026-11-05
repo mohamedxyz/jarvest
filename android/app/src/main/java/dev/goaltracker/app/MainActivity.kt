@@ -26,7 +26,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -66,7 +68,7 @@ private val tabs = listOf(
     Tab("tasks", "Tasks", Icons.Filled.Checklist),
     Tab("goals", "Goals", Icons.Filled.Flag),
     Tab("stats", "Stats", Icons.Filled.BarChart),
-    Tab("treats", "Treats", Icons.Filled.CardGiftcard),
+    Tab("treats", "Rewards", Icons.Filled.CardGiftcard),
 )
 
 class MainActivity : ComponentActivity() {
@@ -103,6 +105,7 @@ private fun AppRoot(controller: AppController) {
     }
     BackHandler(stack.size > 1) { pop() }
 
+    var addMenu by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     // A prompt from one screen must not cover the controls of the next.
     LaunchedEffect(route) { snackbar.currentSnackbarData?.dismiss() }
@@ -165,10 +168,35 @@ private fun AppRoot(controller: AppController) {
             }
         },
         floatingActionButton = {
-            if (route == "today" || route == "goals") {
-                FloatingActionButton(onClick = { push("new") }) { Icon(Icons.Filled.Add, "Add goal") }
-            } else if (route == "tasks") {
-                FloatingActionButton(onClick = { push("newtask") }) { Icon(Icons.Filled.Add, "Add task with details") }
+            // The button always says what it makes, because goals and tasks are different things.
+            when (route) {
+                "today" -> Box {
+                    ExtendedFloatingActionButton(
+                        onClick = { addMenu = true },
+                        icon = { Icon(Icons.Filled.Add, null) },
+                        text = { Text("Add") },
+                    )
+                    DropdownMenu(addMenu, { addMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("New task (a one-off to-do)") },
+                            onClick = { addMenu = false; push("newtask") },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("New goal (a habit or target)") },
+                            onClick = { addMenu = false; push("new") },
+                        )
+                    }
+                }
+                "goals" -> ExtendedFloatingActionButton(
+                    onClick = { push("new") },
+                    icon = { Icon(Icons.Filled.Add, null) },
+                    text = { Text("New goal") },
+                )
+                "tasks" -> ExtendedFloatingActionButton(
+                    onClick = { push("newtask") },
+                    icon = { Icon(Icons.Filled.Add, null) },
+                    text = { Text("New task") },
+                )
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -181,11 +209,20 @@ private fun AppRoot(controller: AppController) {
                     onEditGoal = { push("edit/$it") },
                     onEditTask = { push("edittask/$it") },
                     onOpenTasks = { selectTab("tasks") },
+                    onOpenRewards = { selectTab("treats") },
+                    onAddGoal = { push("new") },
+                    onAddTask = { push("newtask") },
                 )
                 route == "tasks" -> TasksScreen(controller, onEdit = { push("edittask/$it") })
-                route == "newtask" -> TaskEditorScreen(controller, taskId = null, onDone = pop)
+                route == "newtask" -> TaskEditorScreen(controller, taskId = null, presetGoalId = null, onDone = pop)
+                route.startsWith("newtask/") -> TaskEditorScreen(
+                    controller,
+                    taskId = null,
+                    presetGoalId = route.removePrefix("newtask/"),
+                    onDone = pop,
+                )
                 route.startsWith("edittask/") ->
-                    TaskEditorScreen(controller, taskId = route.removePrefix("edittask/"), onDone = pop)
+                    TaskEditorScreen(controller, taskId = route.removePrefix("edittask/"), presetGoalId = null, onDone = pop)
                 route == "goals" -> GoalsScreen(controller, onOpenGoal = { push("goal/$it") })
                 route == "stats" -> StatsScreen(controller, onOpenGoal = { push("goal/$it") })
                 route == "treats" -> TreatsScreen(controller)
@@ -197,6 +234,8 @@ private fun AppRoot(controller: AppController) {
                     controller,
                     goalId = route.removePrefix("goal/"),
                     onEdit = { push("edit/$it") },
+                    onAddTask = { push("newtask/$it") },
+                    onEditTask = { push("edittask/$it") },
                     onClose = pop,
                 )
             }
@@ -209,7 +248,7 @@ private fun AppRoot(controller: AppController) {
 private fun titleFor(route: String): String = when {
     route == "settings" -> "Settings"
     route == "new" -> "New goal"
-    route == "newtask" -> "New task"
+    route == "newtask" || route.startsWith("newtask/") -> "New task"
     route.startsWith("edittask/") -> "Edit task"
     route.startsWith("edit/") -> "Edit goal"
     route.startsWith("goal/") -> "Goal"

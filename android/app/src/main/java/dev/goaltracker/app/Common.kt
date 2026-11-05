@@ -117,16 +117,26 @@ fun ConfirmDialog(
  */
 @Composable
 fun CounterControl(count: Int, onChange: (Int) -> Unit, onSubmit: () -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        IconButton(enabled = count > 0, onClick = { onChange(count - 1) }) { Icon(Icons.Filled.Remove, "Decrease") }
-        Text(
-            count.toString(),
-            Modifier.widthIn(min = 32.dp),
-            style = MaterialTheme.typography.titleLarge,
-            textAlign = TextAlign.Center,
-        )
-        IconButton(onClick = { onChange(count + 1) }) { Icon(Icons.Filled.Add, "Increase") }
-        FilledTonalButton(enabled = count > 0, onClick = onSubmit) { Text("Submit") }
+    Column(modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            IconButton(enabled = count > 0, onClick = { onChange(count - 1) }) { Icon(Icons.Filled.Remove, "Decrease") }
+            Text(
+                count.toString(),
+                Modifier.widthIn(min = 32.dp),
+                style = MaterialTheme.typography.titleLarge,
+                textAlign = TextAlign.Center,
+            )
+            IconButton(onClick = { onChange(count + 1) }) { Icon(Icons.Filled.Add, "Increase") }
+            FilledTonalButton(enabled = count > 0, onClick = onSubmit) { Text("Submit") }
+        }
+        if (count > 0) {
+            Text(
+                "Not saved yet. Press Submit to log $count.",
+                Modifier.padding(start = 12.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 

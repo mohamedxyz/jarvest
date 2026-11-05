@@ -1388,6 +1388,7 @@ fn new_task(title: &str) -> NewTask {
         tag: None,
         repeat: None,
         items: vec![],
+        goal_id: None,
     }
 }
 
@@ -1497,6 +1498,7 @@ fn creates_edits_and_validates_tasks() {
             priority: Priority::High,
             tag: None,
             repeat: Some(Repeat::Weekly),
+            goal_id: None,
         },
     )
     .unwrap();
@@ -1669,6 +1671,7 @@ fn deleted_tasks_go_to_the_trash_and_can_be_restored_or_purged() {
                 priority: Priority::Med,
                 tag: None,
                 repeat: None,
+                goal_id: None,
             }
         )
         .is_err()
@@ -1814,4 +1817,434 @@ fn a_backup_with_an_invalid_task_date_is_rejected() {
         Err(CoreError::InvalidBackup { .. })
     ));
     assert_eq!(task_titles(&core, TaskFilter::All, TaskSort::Due), ["Fine"]);
+}
+
+// Tasks linked to goals
+
+fn edit_of(task: &Task) -> TaskEdit {
+    TaskEdit {
+        title: task.title.clone(),
+        notes: task.notes.clone(),
+        due: task.due.clone(),
+        priority: task.priority,
+        tag: task.tag.clone(),
+        repeat: task.repeat,
+        goal_id: task.goal_id.clone(),
+    }
+}
+
+#[test]
+fn a_task_can_be_linked_to_a_goal_and_shows_its_name() {
+    let (core, _dir) = core();
+    let goal = yes_no(&core, "Learn Rust");
+    let linked = add_task(
+        &core,
+        NewTask {
+            goal_id: Some(goal.clone()),
+            ..new_task("Read chapter 1")
+        },
+    );
+    add_task(&core, new_task("Unrelated"));
+    let task = core.get_task(linked.clone(), DAY.into()).unwrap();
+    assert_eq!(task.goal_id.as_deref(), Some(goal.as_str()));
+    assert_eq!(task.goal_title.as_deref(), Some("Learn Rust"));
+
+    let listed = core.list_goal_tasks(goal.clone(), DAY.into()).unwrap();
+    assert_eq!(
+        listed.iter().map(|t| t.title.as_str()).collect::<Vec<_>>(),
+        ["Read chapter 1"]
+    );
+
+    // Unlinking through an edit.
+    core.update_task(
+        linked.clone(),
+        TaskEdit {
+            goal_id: None,
+            ..edit_of(&task)
+        },
+    )
+    .unwrap();
+    assert!(core.list_goal_tasks(goal, DAY.into()).unwrap().is_empty());
+}
+
+#[test]
+fn a_task_cannot_link_to_a_missing_or_archived_goal() {
+    let (core, _dir) = core();
+    let missing = NewTask {
+        goal_id: Some("nope".into()),
+        ..new_task("x")
+    };
+    assert!(core.create_task(missing, DAY.into()).is_err());
+
+    let goal = yes_no(&core, "Old goal");
+    core.set_archived(goal.clone(), true).unwrap();
+    let archived = NewTask {
+        goal_id: Some(goal),
+        ..new_task("y")
+    };
+    assert!(core.create_task(archived, DAY.into()).is_err());
+}
+
+#[test]
+fn a_task_keeps_its_link_when_the_goal_is_archived_later_and_the_task_is_edited() {
+    let (core, _dir) = core();
+    let goal = yes_no(&core, "Goal");
+    let id = add_task(
+        &core,
+        NewTask {
+            goal_id: Some(goal.clone()),
+            ..new_task("Step")
+        },
+    );
+    core.set_archived(goal.clone(), true).unwrap();
+    let task = core.get_task(id.clone(), DAY.into()).unwrap();
+    core.update_task(
+        id.clone(),
+        TaskEdit {
+            title: "Step 2".into(),
+            ..edit_of(&task)
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        core.get_task(id, DAY.into()).unwrap().goal_id.as_deref(),
+        Some(goal.as_str())
+    );
+}
+
+#[test]
+fn deleting_a_goal_unlinks_its_tasks_but_keeps_them() {
+    let (core, _dir) = core();
+    let goal = yes_no(&core, "Doomed");
+    let id = add_task(
+        &core,
+        NewTask {
+            goal_id: Some(goal.clone()),
+            ..new_task("Survivor")
+        },
+    );
+    core.delete_goal(goal).unwrap();
+    let task = core.get_task(id, DAY.into()).unwrap();
+    assert_eq!(task.goal_id, None);
+    assert_eq!(task.goal_title, None);
+}
+
+#[test]
+fn a_repeating_copy_keeps_the_goal_link() {
+    let (core, _dir) = core();
+    let goal = yes_no(&core, "Fitness");
+    let id = add_task(
+        &core,
+        NewTask {
+            goal_id: Some(goal.clone()),
+            due: Some(DAY.into()),
+            repeat: Some(Repeat::Daily),
+            ..new_task("Stretch")
+        },
+    );
+    core.toggle_task(id, DAY.into()).unwrap();
+    let open = core
+        .list_goal_tasks(goal.clone(), DAY.into())
+        .unwrap()
+        .into_iter()
+        .filter(|t| !t.done)
+        .count();
+    assert_eq!(open, 1);
+}
+
+#[test]
+fn finishing_a_linked_task_does_not_log_the_goal_or_earn_a_reward() {
+    let (core, _dir) = core();
+    core.add_treat("Ice cream".into()).unwrap();
+    let goal = yes_no(&core, "Write thesis");
+    let before = core.stats_overview(DAY.into()).unwrap();
+    for n in 0..12 {
+        let id = add_task(
+            &core,
+            NewTask {
+                goal_id: Some(goal.clone()),
+                ..new_task(&format!("Step {n}"))
+            },
+        );
+        core.toggle_task(id, DAY.into()).unwrap();
+    }
+    assert!(core.list_draws().unwrap().is_empty());
+    assert_eq!(core.stats_overview(DAY.into()).unwrap(), before);
+    // The goal is still open on Today.
+    assert_eq!(titles(&core, DAY), ["Write thesis"]);
+    assert!(core.list_entries(goal, 10).unwrap().is_empty());
+}
+
+#[test]
+fn upgrading_from_schema_6_keeps_tasks_and_adds_the_goal_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v6.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 6).unwrap();
+        conn.execute(
+            "INSERT INTO tasks (id, title, created_date) VALUES ('t1', 'Old task', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    let task = core.get_task("t1".into(), DAY.into()).unwrap();
+    assert_eq!(task.title, "Old task");
+    assert_eq!(task.goal_id, None);
+}
+
+#[test]
+fn a_linked_task_survives_a_backup_and_restore() {
+    let (core, dir) = core();
+    let goal = yes_no(&core, "Goal");
+    let id = add_task(
+        &core,
+        NewTask {
+            goal_id: Some(goal.clone()),
+            ..new_task("Linked")
+        },
+    );
+    let backup = dir
+        .path()
+        .join("linked.sqlite")
+        .to_str()
+        .unwrap()
+        .to_string();
+    core.export_backup(backup.clone()).unwrap();
+    core.delete_goal(goal.clone()).unwrap();
+    core.restore_backup(backup).unwrap();
+    assert_eq!(
+        core.get_task(id, DAY.into()).unwrap().goal_id.as_deref(),
+        Some(goal.as_str())
+    );
+}
+
+// Reward meter
+
+#[test]
+fn reward_progress_starts_with_a_full_countdown_and_the_plain_odds() {
+    let (core, _dir) = core();
+    let p = core.reward_progress().unwrap();
+    assert!(p.enabled);
+    assert_eq!(
+        (p.treats_in_jar, p.misses_since_draw, p.guaranteed_in),
+        (0, 0, 10)
+    );
+    assert_eq!((p.base_percent, p.comeback_percent), (20, 40));
+}
+
+#[test]
+fn the_meter_follows_every_roll_and_resets_after_a_treat() {
+    let (core, _dir) = core();
+    core.add_treat("Ice cream".into()).unwrap();
+    let mut expected_misses = 0;
+    let mut draws = 0;
+    for n in 0..40 {
+        let id = yes_no(&core, &format!("Goal {n}"));
+        let result = tick(&core, &id, DAY);
+        // Every completed target either wins or is reported as "no treat".
+        assert_eq!(result.drew + result.no_treat, 1);
+        if result.drew == 1 {
+            draws += 1;
+            expected_misses = 0;
+        } else {
+            expected_misses += 1;
+        }
+        let p = core.reward_progress().unwrap();
+        assert_eq!(p.misses_since_draw, expected_misses);
+        assert_eq!(
+            p.guaranteed_in,
+            10u32.saturating_sub(expected_misses).max(1)
+        );
+        // The guarantee: never more than 9 misses in a row.
+        assert!(expected_misses < 10);
+    }
+    assert!(
+        draws >= 4,
+        "40 targets must win at least 4 treats, got {draws}"
+    );
+}
+
+#[test]
+fn undoing_a_target_that_won_a_treat_reports_the_removed_treat() {
+    let (core, _dir) = core();
+    core.add_treat("Movie".into()).unwrap();
+    for n in 0..30 {
+        let id = yes_no(&core, &format!("Goal {n}"));
+        let won = tick(&core, &id, DAY);
+        if won.drew == 1 {
+            let undone = tick(&core, &id, DAY);
+            assert_eq!(undone.treats_removed, 1);
+            return;
+        }
+        // Undoing a target that won nothing removes no treat.
+        let undone = tick(&core, &id, DAY);
+        assert_eq!(undone.treats_removed, 0);
+        tick(&core, &id, DAY);
+    }
+    panic!("no treat was won in 30 targets");
+}
+
+#[test]
+fn an_empty_jar_or_rewards_off_roll_nothing_and_leave_the_meter_alone() {
+    let (core, _dir) = core();
+    let id = yes_no(&core, "No jar");
+    let result = tick(&core, &id, DAY);
+    assert!(result.jar_empty);
+    assert_eq!((result.drew, result.no_treat), (0, 0));
+
+    core.add_treat("Treat".into()).unwrap();
+    core.set_rewards_enabled(false).unwrap();
+    let id = yes_no(&core, "Off");
+    let result = tick(&core, &id, DAY);
+    assert_eq!(
+        (result.jar_empty, result.drew, result.no_treat),
+        (false, 0, 0)
+    );
+    let p = core.reward_progress().unwrap();
+    assert!(!p.enabled);
+    assert_eq!(p.misses_since_draw, 0);
+}
+
+// Momentum (today is 2026-11-05, unmet today never counts: the recent window is
+// 24 Oct to 4 Nov and the one before it is 12 to 23 Oct)
+
+const PREV_DAYS: [&str; 12] = [
+    "2026-10-12",
+    "2026-10-13",
+    "2026-10-14",
+    "2026-10-15",
+    "2026-10-16",
+    "2026-10-17",
+    "2026-10-18",
+    "2026-10-19",
+    "2026-10-20",
+    "2026-10-21",
+    "2026-10-22",
+    "2026-10-23",
+];
+const RECENT_DAYS: [&str; 12] = [
+    "2026-10-24",
+    "2026-10-25",
+    "2026-10-26",
+    "2026-10-27",
+    "2026-10-28",
+    "2026-10-29",
+    "2026-10-30",
+    "2026-10-31",
+    "2026-11-01",
+    "2026-11-02",
+    "2026-11-03",
+    "2026-11-04",
+];
+
+fn log_days(core: &GoalCore, goal: &str, days: &[&str]) {
+    for day in days {
+        core.toggle_check_in_on(goal.into(), (*day).into(), DAY.into())
+            .unwrap();
+    }
+}
+
+fn daily(core: &GoalCore, title: &str) -> String {
+    habit(core, title, Period::Day, 1.0, "2026-09-01")
+}
+
+#[test]
+fn momentum_needs_history_before_it_gives_a_verdict() {
+    let (core, _dir) = core();
+    assert_eq!(
+        core.momentum(DAY.into()).unwrap().status,
+        MomentumStatus::NotEnoughData
+    );
+    let id = habit(&core, "New", Period::Day, 1.0, "2026-11-03");
+    log_days(&core, &id, &["2026-11-03", "2026-11-04"]);
+    let m = core.momentum(DAY.into()).unwrap();
+    assert_eq!(m.status, MomentumStatus::NotEnoughData);
+    assert!(m.reason.contains("Not enough history"));
+}
+
+#[test]
+fn momentum_says_slipping_when_fewer_targets_are_met_than_before() {
+    let (core, _dir) = core();
+    let id = daily(&core, "Run");
+    log_days(&core, &id, &PREV_DAYS);
+    log_days(&core, &id, &RECENT_DAYS[..6]);
+    let m = core.momentum(DAY.into()).unwrap();
+    assert_eq!(m.status, MomentumStatus::Slipping);
+    assert_eq!(
+        (m.rate_percent, m.prev_rate_percent, m.change_points),
+        (50, 100, -50)
+    );
+    assert_eq!(
+        m.reason,
+        "Targets met 50%, down from 100%. Biggest drop: Run."
+    );
+}
+
+#[test]
+fn momentum_says_advancing_when_more_targets_are_met_than_before() {
+    let (core, _dir) = core();
+    let id = daily(&core, "Read");
+    log_days(&core, &id, &PREV_DAYS[..6]);
+    log_days(&core, &id, &RECENT_DAYS);
+    let m = core.momentum(DAY.into()).unwrap();
+    assert_eq!(m.status, MomentumStatus::Advancing);
+    assert_eq!(m.change_points, 50);
+    assert!(m.reason.starts_with("Targets met 100%, up from 50%."));
+}
+
+#[test]
+fn momentum_is_steady_for_small_changes() {
+    let (core, _dir) = core();
+    // Two goals, 24 periods per window: one extra target is 4.2 points, under the 5 needed.
+    let a = daily(&core, "A");
+    let b = daily(&core, "B");
+    for id in [&a, &b] {
+        log_days(&core, id, &PREV_DAYS[..6]);
+        log_days(&core, id, &RECENT_DAYS[..6]);
+    }
+    log_days(&core, &a, &RECENT_DAYS[6..7]);
+    let m = core.momentum(DAY.into()).unwrap();
+    assert_eq!(m.status, MomentumStatus::Steady);
+    assert_eq!(m.change_points, 4);
+    // Two extra targets is 8.3 points, enough to count as advancing.
+    log_days(&core, &b, &RECENT_DAYS[6..7]);
+    assert_eq!(
+        core.momentum(DAY.into()).unwrap().status,
+        MomentumStatus::Advancing
+    );
+}
+
+#[test]
+fn momentum_ignores_skipped_days_and_archived_goals() {
+    let (core, _dir) = core();
+    let id = daily(&core, "Walk");
+    log_days(&core, &id, &PREV_DAYS);
+    // Skipped days in the recent window are excused instead of counted as misses.
+    for day in &RECENT_DAYS[..6] {
+        core.skip_day(id.clone(), (*day).into()).unwrap();
+    }
+    log_days(&core, &id, &RECENT_DAYS[6..]);
+    let m = core.momentum(DAY.into()).unwrap();
+    assert_ne!(m.status, MomentumStatus::Slipping, "{m:?}");
+
+    let dropped = daily(&core, "Dropped");
+    log_days(&core, &dropped, &PREV_DAYS);
+    core.set_archived(dropped, true).unwrap();
+    let after = core.momentum(DAY.into()).unwrap();
+    assert_eq!(after.status, m.status);
+}
+
+#[test]
+fn goal_and_overview_stats_carry_the_previous_window() {
+    let (core, _dir) = core();
+    let id = daily(&core, "Run");
+    log_days(&core, &id, &PREV_DAYS[..9]);
+    log_days(&core, &id, &RECENT_DAYS[..3]);
+    let overview = core.stats_overview(DAY.into()).unwrap();
+    assert_eq!((overview.met, overview.eligible), (3, 12));
+    assert_eq!((overview.prev_met, overview.prev_eligible), (9, 12));
+    let stats = core.goal_stats(id, DAY.into()).unwrap().unwrap();
+    assert_eq!((stats.prev_met, stats.prev_eligible), (9, 12));
 }
