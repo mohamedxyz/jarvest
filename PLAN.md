@@ -517,3 +517,19 @@ its own commit and its own test pass before anything else is built on top.
 - Release: `./gradlew assembleRelease`, smoke test the release APK (R8 has broken things before), and test
   an upgrade install over the previous release.
 - Anything that cannot be run is reported as unverified.
+
+## Quit (avoid) habits, as built in 0.6.0
+
+- A quit habit is a daily habit created with `create_avoid_goal` (`goals.avoid = 1`, period `day`, target 1,
+  no weekday schedule). Kind, period, and the flag are immutable like any other goal.
+- Every entry on it is a **slip** (one per day, toggled with `toggle_check_in_on`). A day with no slip is a
+  **clean day**. For stats, slip counts are turned into clean-day counts (`stats::clean_days`) and the normal
+  streak walk runs on them with a target of 1.
+- Today counts: a clean day so far is met, so the streak includes today until a slip. Unlike other goals the
+  quit streak has **no grace** for the creation day or today: a slip there counts straight away.
+- A skipped (paused) day is excused when it holds a slip, and is neither a break nor a count when unmet.
+- Quit habits **never earn rewards**: a clean day passes without any action, so there is no moment to roll,
+  and `sync_targets` returns early for them. This keeps rolls deterministic and makes undo trivial.
+- They stay on Today all day (`complete` = no slip today) so a slip can be logged from there.
+- Week start: `meta.week_start` (1, 6 or 7). Periods are computed on read with `period_start_ws`.
+- Folders: `meta.folder_order` holds folder names, one per line; `rename_category` renames on all goals.

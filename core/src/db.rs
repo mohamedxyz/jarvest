@@ -18,6 +18,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/007_task_goal.sql"),
     include_str!("sql/008_milestone_tasks.sql"),
     include_str!("sql/009_task_archive.sql"),
+    include_str!("sql/011_avoid_habits.sql"),
 ];
 
 pub const SCHEMA_VERSION: i32 = MIGRATIONS.len() as i32;

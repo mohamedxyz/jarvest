@@ -106,6 +106,8 @@ pub struct Goal {
     pub weekdays: Option<u8>,
     pub milestones_done: u32,
     pub milestones_total: u32,
+    /// A quit habit: every entry is a slip, and a day with none is a clean day.
+    pub avoid: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -145,6 +147,8 @@ pub struct TodayItem {
     pub next_milestone: Option<String>,
     pub milestones_done: u32,
     pub milestones_total: u32,
+    /// A quit habit. `logged_today` then means "slipped today".
+    pub avoid: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
