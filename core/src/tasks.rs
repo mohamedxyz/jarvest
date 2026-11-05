@@ -18,7 +18,8 @@ const TASK_COLUMNS: &str = "t.id, t.title, t.notes, t.due, t.priority, t.tag, t.
     (SELECT COUNT(*) FROM task_items i WHERE i.task_id = t.id AND i.done = 1),
     (SELECT COUNT(*) FROM task_items i WHERE i.task_id = t.id),
     t.goal_id,
-    (SELECT g.title FROM goals g WHERE g.id = t.goal_id)";
+    (SELECT g.title FROM goals g WHERE g.id = t.goal_id),
+    t.milestone_id";
 
 fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
     let due: Option<String> = row.get(3)?;
@@ -42,6 +43,7 @@ fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
         items_total: row.get(10)?,
         goal_id: row.get(11)?,
         goal_title: row.get(12)?,
+        milestone_id: row.get(13)?,
     })
 }
 
@@ -74,6 +76,22 @@ fn validate_due(due: &Option<String>) -> Result<(), CoreError> {
     if let Some(due) = due {
         parse_date(due)?;
     }
+    Ok(())
+}
+
+/// The task that mirrors a milestone, so it also shows in the Tasks tab.
+pub fn create_milestone_task(
+    conn: &Connection,
+    goal_id: &str,
+    milestone_id: &str,
+    title: &str,
+    today: &str,
+) -> Result<(), CoreError> {
+    conn.execute(
+        "INSERT INTO tasks (id, title, created_date, goal_id, milestone_id)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![new_id(), title, today, goal_id, milestone_id],
+    )?;
     Ok(())
 }
 
@@ -120,12 +138,22 @@ pub fn update_task(conn: &Connection, task_id: &str, edit: TaskEdit) -> Result<(
     validate_due(&edit.due)?;
     let tag = clean_tag(edit.tag)?;
     // Keeping the link to a goal that was archived since is fine. Picking a new one is checked.
-    let current: Option<Option<String>> = conn
-        .query_row("SELECT goal_id FROM tasks WHERE id = ?1", [task_id], |r| {
-            r.get(0)
-        })
+    let current: Option<(Option<String>, Option<String>)> = conn
+        .query_row(
+            "SELECT goal_id, milestone_id FROM tasks WHERE id = ?1",
+            [task_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
         .optional()?;
-    if current.flatten() != edit.goal_id {
+    let (current_goal, milestone_id) = current.unwrap_or((None, None));
+    if milestone_id.is_some() {
+        if current_goal != edit.goal_id {
+            return Err(invalid("A milestone's task always belongs to its goal"));
+        }
+        if edit.repeat.is_some() {
+            return Err(invalid("A milestone can't repeat"));
+        }
+    } else if current_goal != edit.goal_id {
         check_goal(conn, &edit.goal_id)?;
     }
     let changed = conn.execute(
@@ -144,6 +172,13 @@ pub fn update_task(conn: &Connection, task_id: &str, edit: TaskEdit) -> Result<(
     )?;
     if changed == 0 {
         return Err(invalid("Task not found"));
+    }
+    if let Some(milestone_id) = milestone_id {
+        // Renaming the task renames the milestone, so the two never disagree.
+        conn.execute(
+            "UPDATE milestones SET title = ?2 WHERE id = ?1",
+            params![milestone_id, title],
+        )?;
     }
     Ok(())
 }
@@ -202,6 +237,28 @@ pub fn toggle_task(
     today: &str,
 ) -> Result<TaskToggleResult, CoreError> {
     let today_date = parse_date(today)?;
+    // A task that mirrors a milestone is ticked through the milestone, which owns the reward.
+    let milestone: Option<String> = conn
+        .query_row(
+            "SELECT milestone_id FROM tasks WHERE id = ?1 AND deleted_date IS NULL",
+            [task_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    if let Some(milestone_id) = milestone {
+        let reward = crate::goals::toggle_milestone(conn, &milestone_id, today)?;
+        let done: bool = conn.query_row(
+            "SELECT done_date IS NOT NULL FROM tasks WHERE id = ?1",
+            [task_id],
+            |r| r.get(0),
+        )?;
+        return Ok(TaskToggleResult {
+            done,
+            next_due: None,
+            reward,
+        });
+    }
     let tx = conn.transaction()?;
     let (done_date, due, repeat, next_id): (Option<String>, Option<String>, Option<Repeat>, Option<String>) = tx
         .query_row(
@@ -215,6 +272,7 @@ pub fn toggle_task(
     let mut result = TaskToggleResult {
         done: false,
         next_due: None,
+        reward: LogResult::default(),
     };
     if done_date.is_none() {
         tx.execute(
@@ -264,6 +322,19 @@ pub fn toggle_task(
 /// Moves a task to the trash. `restore_task` brings it back.
 pub fn delete_task(conn: &Connection, task_id: &str, today: &str) -> Result<(), CoreError> {
     parse_date(today)?;
+    let mirrored: bool = conn
+        .query_row(
+            "SELECT milestone_id IS NOT NULL FROM tasks WHERE id = ?1",
+            [task_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .unwrap_or(false);
+    if mirrored {
+        return Err(invalid(
+            "This task is a milestone. Remove it from its goal's page instead.",
+        ));
+    }
     let changed = conn.execute(
         "UPDATE tasks SET deleted_date = ?2 WHERE id = ?1 AND deleted_date IS NULL",
         params![task_id, today],
@@ -325,7 +396,7 @@ pub fn list_tasks(
         "SELECT {TASK_COLUMNS}, t.rowid FROM tasks t WHERE t.deleted_date IS NULL ORDER BY t.rowid"
     ))?;
     let mut tasks: Vec<(i64, Task)> = stmt
-        .query_map([], |row| Ok((row.get(13)?, task_from_row(row, today)?)))?
+        .query_map([], |row| Ok((row.get(14)?, task_from_row(row, today)?)))?
         .collect::<Result<_, _>>()?;
 
     tasks.retain(|(_, t)| match filter {

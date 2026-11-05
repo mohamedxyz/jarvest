@@ -113,7 +113,16 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            val isMilestone = existing?.milestoneId != null
+            if (isMilestone) {
+                Text(
+                    "This task is a milestone of \"${existing?.goalTitle}\". You can rename it and add a date, priority or notes. " +
+                        "Its goal stays the same, and it can't repeat.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (!isMilestone) Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Goal (optional)", style = MaterialTheme.typography.titleSmall)
                 InfoHint(
                     "Linking a task to a goal",
@@ -122,7 +131,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 )
             }
             val linkedMissing = existing?.goalId != null && goals.none { it.id == existing.goalId }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!isMilestone) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = goalId == null, onClick = { goalId = null }, label = { Text("None") })
                 if (linkedMissing) {
                     FilterChip(selected = goalId == existing?.goalId, onClick = { goalId = existing?.goalId }, label = { Text("${existing?.goalTitle} (archived)") })
@@ -131,7 +140,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                     FilterChip(selected = goalId == it.id, onClick = { goalId = it.id }, label = { Text(it.title) })
                 }
             }
-            if (goalId != null) {
+            if (goalId != null && !isMilestone) {
                 Text(
                     "Finishing this task will not log the goal or earn a treat.",
                     style = MaterialTheme.typography.bodySmall,
@@ -139,7 +148,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!isMilestone) Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Repeat", style = MaterialTheme.typography.titleSmall)
                 InfoHint(
                     "Repeat",
@@ -147,7 +156,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                         "If you tick it by mistake, untick it and the new copy goes away.",
                 )
             }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (!isMilestone) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = repeat == null, onClick = { repeat = null }, label = { Text("Never") })
                 Repeat.entries.forEach {
                     FilterChip(selected = repeat == it, onClick = { repeat = it }, label = { Text(it.label()) })
@@ -225,12 +234,21 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
             }) { Text(if (task.done) "Mark not done" else "Done") }
             OutlinedButton(onClick = onEdit) { Text("Edit") }
         }
-        // Kept apart from Done, and red, so it is not tapped by accident. It can be undone.
-        TextButton(onClick = {
-            if (controller.act { deleteTask(task.id, controller.today) }) {
-                controller.undo = UndoOffer("Task moved to the trash.") { controller.act { restoreTask(task.id) } }
-                onDismiss()
-            }
-        }) { Text("Move to trash", color = MaterialTheme.colorScheme.error) }
+        if (task.milestoneId != null) {
+            // A milestone's task is removed by removing the milestone, so the two never disagree.
+            Text(
+                "This is a milestone of \"${task.goalTitle}\". Ticking it counts as a target. To remove it, delete the milestone on the goal's page.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            // Kept apart from Done, and red, so it is not tapped by accident. It can be undone.
+            TextButton(onClick = {
+                if (controller.act { deleteTask(task.id, controller.today) }) {
+                    controller.undo = UndoOffer("Task moved to the trash.") { controller.act { restoreTask(task.id) } }
+                    onDismiss()
+                }
+            }) { Text("Move to trash", color = MaterialTheme.colorScheme.error) }
+        }
     }
 }

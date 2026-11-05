@@ -269,8 +269,13 @@ impl GoalCore {
         goals::list_milestones(&self.conn(), &goal_id)
     }
 
-    pub fn add_milestone(&self, goal_id: String, title: String) -> Result<(), CoreError> {
-        goals::add_milestone(&self.conn(), &goal_id, &title)
+    pub fn add_milestone(
+        &self,
+        goal_id: String,
+        title: String,
+        today: String,
+    ) -> Result<(), CoreError> {
+        goals::add_milestone(&mut self.conn(), &goal_id, &title, &today)
     }
 
     pub fn toggle_milestone(

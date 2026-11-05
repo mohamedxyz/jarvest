@@ -126,10 +126,12 @@ pub fn create_goal(conn: &mut Connection, goal: NewGoal, today: &str) -> Result<
         ],
     )?;
     for (position, title) in milestones.iter().enumerate() {
+        let milestone_id = new_id();
         tx.execute(
             "INSERT INTO milestones (id, goal_id, title, position) VALUES (?1, ?2, ?3, ?4)",
-            params![new_id(), id, title, position as i64],
+            params![milestone_id, id, title, position as i64],
         )?;
+        crate::tasks::create_milestone_task(&tx, &id, &milestone_id, title, today)?;
     }
     tx.commit()?;
     Ok(id)
@@ -608,14 +610,24 @@ pub fn list_milestones(conn: &Connection, goal_id: &str) -> Result<Vec<Milestone
     Ok(milestones)
 }
 
-pub fn add_milestone(conn: &Connection, goal_id: &str, title: &str) -> Result<(), CoreError> {
+pub fn add_milestone(
+    conn: &mut Connection,
+    goal_id: &str,
+    title: &str,
+    today: &str,
+) -> Result<(), CoreError> {
+    parse_date(today)?;
     let title = clean_title(title)?;
     get_goal(conn, goal_id)?;
-    conn.execute(
+    let milestone_id = new_id();
+    let tx = conn.transaction()?;
+    tx.execute(
         "INSERT INTO milestones (id, goal_id, title, position)
          VALUES (?1, ?2, ?3, (SELECT COALESCE(MAX(position), -1) + 1 FROM milestones WHERE goal_id = ?2))",
-        params![new_id(), goal_id, title],
+        params![milestone_id, goal_id, title],
     )?;
+    crate::tasks::create_milestone_task(&tx, goal_id, &milestone_id, &title, today)?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -648,6 +660,11 @@ pub fn toggle_milestone(
     let done_date = if done.is_some() { None } else { Some(today) };
     tx.execute(
         "UPDATE milestones SET done_date = ?2 WHERE id = ?1",
+        params![milestone_id, done_date],
+    )?;
+    // The task that mirrors this milestone shows the same state.
+    tx.execute(
+        "UPDATE tasks SET done_date = ?2 WHERE milestone_id = ?1",
         params![milestone_id, done_date],
     )?;
     let mut result = LogResult::default();

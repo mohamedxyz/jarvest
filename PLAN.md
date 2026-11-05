@@ -324,3 +324,17 @@ on the counter, the Today widget shows task count and progress, the best streak 
 
 Collapsing the Goals filters and the goal editor, larger heatmap tap targets, "empty trash", days left
 on trash rows, and a different icon for priority than for the Goals tab.
+
+# V0.5.1 plan
+
+## Milestones as tasks
+
+- Every milestone has a mirror task (`tasks.milestone_id`, migration 008, `ON DELETE CASCADE`), so it
+  also shows in the Tasks tab with the goal's name. Existing milestones get a task in the migration.
+- The milestone is the source of truth and the reward target. Ticking the task goes through the
+  milestone, so it can win or lose a treat exactly like ticking the milestone. This is the one case
+  where finishing a task earns a reward. Ordinary tasks, including ones linked to a goal, still never do.
+- Renaming the task renames the milestone. Due date, priority, notes and tag live on the task only.
+- Deleting the milestone deletes its task. A milestone's task can't be moved to the trash, moved to
+  another goal, or repeat, so the pair can't drift apart.
+- `add_milestone` now takes today's date, for the new task's created date.

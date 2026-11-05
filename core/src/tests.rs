@@ -266,7 +266,8 @@ fn milestones_keep_order_and_can_be_moved() {
         ..base("G", GoalKind::YesNo)
     };
     let id = core.create_goal(goal, DAY.into()).unwrap();
-    core.add_milestone(id.clone(), "C".into()).unwrap();
+    core.add_milestone(id.clone(), "C".into(), DAY.into())
+        .unwrap();
     let order = |core: &GoalCore| -> Vec<String> {
         core.list_milestones(id.clone())
             .unwrap()
@@ -2247,4 +2248,219 @@ fn goal_and_overview_stats_carry_the_previous_window() {
     assert_eq!((overview.prev_met, overview.prev_eligible), (9, 12));
     let stats = core.goal_stats(id, DAY.into()).unwrap().unwrap();
     assert_eq!((stats.prev_met, stats.prev_eligible), (9, 12));
+}
+
+// Milestones mirrored as tasks
+
+fn goal_with_milestones(core: &GoalCore, titles: &[&str]) -> String {
+    let goal = NewGoal {
+        milestones: titles.iter().map(|t| t.to_string()).collect(),
+        ..base("Thesis", GoalKind::YesNo)
+    };
+    core.create_goal(goal, DAY.into()).unwrap()
+}
+
+fn milestone_task(core: &GoalCore, goal: &str, title: &str) -> Task {
+    core.list_goal_tasks(goal.into(), DAY.into())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.title == title)
+        .unwrap_or_else(|| panic!("no task for milestone {title}"))
+}
+
+#[test]
+fn every_new_milestone_gets_a_task_in_the_tasks_list() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline", "Draft"]);
+    core.add_milestone(goal.clone(), "Edit".into(), DAY.into())
+        .unwrap();
+
+    let milestones = core.list_milestones(goal.clone()).unwrap();
+    assert_eq!(milestones.len(), 3);
+    let tasks = core
+        .list_tasks(TaskFilter::All, TaskSort::Due, DAY.into())
+        .unwrap();
+    assert_eq!(tasks.len(), 3);
+    for m in &milestones {
+        let task = tasks
+            .iter()
+            .find(|t| t.milestone_id.as_deref() == Some(m.id.as_str()))
+            .unwrap();
+        assert_eq!(task.title, m.title);
+        assert_eq!(task.goal_id.as_deref(), Some(goal.as_str()));
+        assert_eq!(task.goal_title.as_deref(), Some("Thesis"));
+        assert!(!task.done);
+    }
+}
+
+#[test]
+fn ticking_the_milestone_ticks_its_task_and_back() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    let milestone = core.list_milestones(goal.clone()).unwrap().remove(0);
+    core.toggle_milestone(milestone.id.clone(), DAY.into())
+        .unwrap();
+    assert!(milestone_task(&core, &goal, "Outline").done);
+    core.toggle_milestone(milestone.id, DAY.into()).unwrap();
+    assert!(!milestone_task(&core, &goal, "Outline").done);
+}
+
+#[test]
+fn ticking_the_task_ticks_the_milestone_and_the_milestone_still_rolls_the_reward() {
+    let (core, _dir) = core();
+    core.add_treat("Pizza".into()).unwrap();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    let task = milestone_task(&core, &goal, "Outline");
+
+    let result = core.toggle_task(task.id.clone(), DAY.into()).unwrap();
+    assert!(result.done);
+    // The milestone is the target: it rolled once, and won or lost.
+    assert_eq!(result.reward.drew + result.reward.no_treat, 1);
+    assert!(
+        core.list_milestones(goal.clone()).unwrap()[0]
+            .done_date
+            .is_some()
+    );
+
+    // Unticking through the task undoes the target, and the treat if there was one.
+    let undone = core.toggle_task(task.id, DAY.into()).unwrap();
+    assert!(!undone.done);
+    assert_eq!(undone.reward.treats_removed, result.reward.drew);
+    assert!(core.list_milestones(goal).unwrap()[0].done_date.is_none());
+}
+
+#[test]
+fn deleting_a_milestone_removes_its_task() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline", "Draft"]);
+    let milestone = core.list_milestones(goal.clone()).unwrap().remove(0);
+    core.delete_milestone(milestone.id).unwrap();
+    let titles: Vec<_> = core
+        .list_goal_tasks(goal, DAY.into())
+        .unwrap()
+        .into_iter()
+        .map(|t| t.title)
+        .collect();
+    assert_eq!(titles, ["Draft"]);
+}
+
+#[test]
+fn deleting_a_goal_removes_the_tasks_of_its_milestones_but_keeps_other_tasks() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    add_task(
+        &core,
+        NewTask {
+            goal_id: Some(goal.clone()),
+            ..new_task("Own task")
+        },
+    );
+    core.delete_goal(goal).unwrap();
+    assert_eq!(
+        task_titles(&core, TaskFilter::All, TaskSort::Due),
+        ["Own task"]
+    );
+}
+
+#[test]
+fn a_milestone_task_cannot_be_trashed_moved_to_another_goal_or_made_to_repeat() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    let other = yes_no(&core, "Other");
+    let task = milestone_task(&core, &goal, "Outline");
+
+    assert!(core.delete_task(task.id.clone(), DAY.into()).is_err());
+    assert!(
+        core.update_task(
+            task.id.clone(),
+            TaskEdit {
+                goal_id: Some(other),
+                ..edit_of(&task)
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        core.update_task(
+            task.id.clone(),
+            TaskEdit {
+                repeat: Some(Repeat::Daily),
+                ..edit_of(&task)
+            }
+        )
+        .is_err()
+    );
+    assert!(
+        core.update_task(
+            task.id.clone(),
+            TaskEdit {
+                goal_id: None,
+                ..edit_of(&task)
+            }
+        )
+        .is_err()
+    );
+    // It is still there.
+    assert_eq!(milestone_task(&core, &goal, "Outline").id, task.id);
+}
+
+#[test]
+fn renaming_a_milestone_task_renames_the_milestone_and_other_fields_stay_on_the_task() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    let task = milestone_task(&core, &goal, "Outline");
+    core.update_task(
+        task.id.clone(),
+        TaskEdit {
+            title: "Outline v2".into(),
+            due: Some("2026-11-20".into()),
+            priority: Priority::High,
+            ..edit_of(&task)
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        core.list_milestones(goal.clone()).unwrap()[0].title,
+        "Outline v2"
+    );
+    let after = milestone_task(&core, &goal, "Outline v2");
+    assert_eq!(
+        (after.due.as_deref(), after.priority),
+        (Some("2026-11-20"), Priority::High)
+    );
+}
+
+#[test]
+fn upgrading_from_schema_7_creates_tasks_for_existing_milestones() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v7.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 7).unwrap();
+        conn.execute_batch(
+            "INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old', 'yes_no', '2026-01-01');
+             INSERT INTO milestones (id, goal_id, title, position, done_date) VALUES
+               ('m1', 'g1', 'First', 0, '2026-02-01'),
+               ('m2', 'g1', 'Second', 1, NULL);",
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    let tasks = core.list_goal_tasks("g1".into(), DAY.into()).unwrap();
+    assert_eq!(tasks.len(), 2);
+    let first = tasks.iter().find(|t| t.title == "First").unwrap();
+    assert_eq!(first.done_date.as_deref(), Some("2026-02-01"));
+    assert_eq!(first.milestone_id.as_deref(), Some("m1"));
+    assert!(!tasks.iter().find(|t| t.title == "Second").unwrap().done);
+}
+
+#[test]
+fn milestone_tasks_survive_a_backup_and_restore() {
+    let (core, dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    let backup = dir.path().join("ms.sqlite").to_str().unwrap().to_string();
+    core.export_backup(backup.clone()).unwrap();
+    core.delete_goal(goal.clone()).unwrap();
+    core.restore_backup(backup).unwrap();
+    assert_eq!(milestone_task(&core, &goal, "Outline").title, "Outline");
 }

@@ -14,7 +14,8 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
 - **Tasks:** a separate Tasks tab for one-off to-dos with due dates, priority, a tag, notes,
   a checklist, and repeating. Type `Essay tomorrow !high #uni` to fill in the date, priority,
   and tag. A task can be linked to a goal and shows on that goal's page with its progress. Deleted
-  tasks wait in the trash for 30 days, and tasks never affect rewards or stats
+  tasks wait in the trash for 30 days, and tasks never affect rewards or stats. Every milestone also
+  shows up in Tasks and stays in step with it: ticking either one ticks both (and can win a treat)
 - **Clearer screens:** tap a goal on Today for a details sheet, "?" buttons explain terms such as
   skip and pause, and short tips appear once (Settings > Appearance > Show tips again)
 - **Organizing:** categories, deadlines, ordered milestones, and an archive

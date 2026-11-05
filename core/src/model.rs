@@ -413,6 +413,9 @@ pub struct Task {
     /// The goal this task belongs to. Only groups tasks: it never logs the goal.
     pub goal_id: Option<String>,
     pub goal_title: Option<String>,
+    /// Set when this task mirrors a milestone. Such a task is ticked, renamed and
+    /// removed together with its milestone, on the goal's page.
+    pub milestone_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -452,6 +455,8 @@ pub struct TaskToggleResult {
     pub done: bool,
     /// Set when finishing a repeating task created the next copy.
     pub next_due: Option<String>,
+    /// What the milestone behind this task earned or lost. Empty for ordinary tasks.
+    pub reward: LogResult,
 }
 
 /// What `parse_quick` found in a line such as `Essay tomorrow !high #uni`.

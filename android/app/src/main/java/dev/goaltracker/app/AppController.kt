@@ -121,6 +121,8 @@ class AppController(private val app: GoalTrackerApp) {
      */
     fun toggleTaskWithUndo(taskId: String, title: String) {
         val result = change { toggleTask(taskId, today) } ?: return
+        // A task that mirrors a milestone can win or lose a treat, like the milestone itself.
+        reportReward(result.reward)
         val text = when {
             !result.done -> "\"$title\" is open again."
             result.nextDue != null -> "\"$title\" done. Next one is due ${formatDate(result.nextDue!!)}."
@@ -132,11 +134,20 @@ class AppController(private val app: GoalTrackerApp) {
     /** Runs a logging action, then checks whether it earned a treat. */
     fun log(block: GoalCore.() -> LogResult): Boolean = try {
         val result = core.block()
+        reportReward(result)
+        refresh()
+        true
+    } catch (e: CoreException) {
+        message = e.userMessage()
+        false
+    }
+
+    /** Prompts for a treat, or says what happened to the reward, so a missing treat never looks like a bug. */
+    private fun reportReward(result: LogResult) {
         if (result.jarEmpty && !jarPromptUsed) {
             jarPromptUsed = true
             showJarPrompt = true
         }
-        // Say what happened to the reward, so a missing treat never looks like a bug.
         if (result.treatsRemoved > 0u) {
             message = "Unticked. The treat that target won was removed too."
         } else if (result.noTreat > 0u) {
@@ -145,11 +156,6 @@ class AppController(private val app: GoalTrackerApp) {
                 if (left <= 1) "Your next target is guaranteed to win one."
                 else "A treat is guaranteed within $left more targets."
         }
-        refresh()
-        true
-    } catch (e: CoreException) {
-        message = e.userMessage()
-        false
     }
 
     /** Called when the app returns to the front, since the widget or date may have changed. */

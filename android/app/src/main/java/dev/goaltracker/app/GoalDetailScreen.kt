@@ -49,7 +49,8 @@ fun GoalDetailScreen(
     val milestones = remember(controller.version, goalId) { controller.read(emptyList()) { listMilestones(goalId) } }
     val entries = remember(controller.version, goalId) { controller.read(emptyList()) { listEntries(goalId, 20u) } }
     val linkedTasks = remember(controller.version, controller.today, goalId) {
-        controller.read(emptyList()) { listGoalTasks(goalId, controller.today) }
+        // Milestones also appear as tasks, but they are listed in the Milestones section below.
+        controller.read(emptyList()) { listGoalTasks(goalId, controller.today) }.filter { it.milestoneId == null }
     }
     var milestoneToDelete by remember { mutableStateOf<dev.goaltracker.core.Milestone?>(null) }
 
@@ -186,7 +187,7 @@ fun GoalDetailScreen(
                 InfoHint(
                     "Tasks for a goal",
                     "These are to-dos you linked to this goal. Finishing one only ticks it off here: it does not log the goal and does not earn a treat. " +
-                        "Milestones below are different. Ticking a milestone counts as a target.",
+                        "Milestones below are different. Ticking a milestone counts as a target, and each milestone also shows up in your Tasks tab.",
                 )
             }
             if (linkedTasks.isNotEmpty()) {
@@ -233,7 +234,7 @@ fun GoalDetailScreen(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(newMilestone, { newMilestone = it }, Modifier.weight(1f), label = { Text("New milestone") }, singleLine = true)
                 TextButton(enabled = newMilestone.isNotBlank(), onClick = {
-                    if (controller.act { addMilestone(goalId, newMilestone) }) newMilestone = ""
+                    if (controller.act { addMilestone(goalId, newMilestone, controller.today) }) newMilestone = ""
                 }) { Text("Add") }
             }
         }
@@ -328,7 +329,7 @@ fun GoalDetailScreen(
     milestoneToDelete?.let { milestone ->
         ConfirmDialog(
             title = "Delete this milestone?",
-            body = "\"${milestone.title}\" will be removed. If you already ticked it, the treat it earned is removed too.",
+            body = "\"${milestone.title}\" will be removed from this goal and from your Tasks tab. If you already ticked it, the treat it earned is removed too.",
             confirm = "Delete",
             onConfirm = {
                 milestoneToDelete = null
