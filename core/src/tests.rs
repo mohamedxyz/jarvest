@@ -1240,4 +1240,139 @@ fn a_version_one_database_upgrades_and_keeps_its_data() {
     assert_eq!((goal.title.as_str(), goal.weekdays), ("Old", None));
     core.skip_day("g1".into(), "2026-01-02".into()).unwrap();
     core.move_goal("g1".into(), true).unwrap();
+    core.set_goal_reminder("g1".into(), Some(600)).unwrap();
+}
+
+// Reminders
+
+#[test]
+fn goal_reminders_can_be_set_changed_cleared_and_listed() {
+    let (core, _dir) = core();
+    let a = yes_no(&core, "Alpha");
+    let b = yes_no(&core, "Beta");
+    core.set_goal_reminder(a.clone(), Some(20 * 60)).unwrap();
+    core.set_goal_reminder(b.clone(), Some(8 * 60 + 30))
+        .unwrap();
+    let list = core.list_reminders().unwrap();
+    assert_eq!(
+        list.iter().map(|r| r.minutes).collect::<Vec<_>>(),
+        [510, 1200]
+    );
+    core.set_goal_reminder(a.clone(), Some(9 * 60)).unwrap();
+    assert_eq!(core.goal_reminder(a.clone()).unwrap(), Some(540));
+    core.set_goal_reminder(a.clone(), None).unwrap();
+    assert_eq!(core.goal_reminder(a).unwrap(), None);
+    // Archived goals drop out of the list but keep their time.
+    core.set_archived(b.clone(), true).unwrap();
+    assert!(core.list_reminders().unwrap().is_empty());
+    assert_eq!(core.goal_reminder(b).unwrap(), Some(510));
+}
+
+#[test]
+fn reminder_times_are_validated_and_removed_with_the_goal() {
+    let (core, _dir) = core();
+    let id = yes_no(&core, "Task");
+    assert!(core.set_goal_reminder(id.clone(), Some(1440)).is_err());
+    assert!(core.set_daily_reminder(Some(2000)).is_err());
+    assert!(core.set_goal_reminder("missing".into(), Some(60)).is_err());
+    core.set_goal_reminder(id.clone(), Some(60)).unwrap();
+    core.delete_goal(id).unwrap();
+    let rows: i64 = core
+        .conn()
+        .query_row("SELECT COUNT(*) FROM reminders", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 0);
+}
+
+#[test]
+fn daily_reminder_round_trips_and_ignores_damaged_values() {
+    let (core, _dir) = core();
+    assert_eq!(core.daily_reminder().unwrap(), None);
+    core.set_daily_reminder(Some(19 * 60)).unwrap();
+    assert_eq!(core.daily_reminder().unwrap(), Some(1140));
+    core.set_daily_reminder(Some(0)).unwrap();
+    assert_eq!(core.daily_reminder().unwrap(), Some(0));
+    core.conn()
+        .execute(
+            "UPDATE meta SET value = 'soon' WHERE key = 'daily_reminder_minutes'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(core.daily_reminder().unwrap(), None);
+    core.set_daily_reminder(None).unwrap();
+    assert_eq!(core.daily_reminder().unwrap(), None);
+}
+
+#[test]
+fn reminder_text_stays_silent_when_nothing_is_due() {
+    let (core, _dir) = core();
+    let read = yes_no(&core, "Read");
+    let _walk = yes_no(&core, "Walk");
+    let daily = core.reminder_text(None, DAY.into()).unwrap().unwrap();
+    assert_eq!(daily, "2 goals left today: Read, Walk");
+    assert_eq!(
+        core.reminder_text(Some(read.clone()), DAY.into())
+            .unwrap()
+            .unwrap(),
+        "Time for Read"
+    );
+    // Done goals stay quiet, and the summary shrinks.
+    tick(&core, &read, DAY);
+    assert_eq!(
+        core.reminder_text(Some(read.clone()), DAY.into()).unwrap(),
+        None
+    );
+    assert_eq!(
+        core.reminder_text(None, DAY.into()).unwrap().unwrap(),
+        "1 goal left today: Walk"
+    );
+}
+
+#[test]
+fn reminder_text_skips_days_off_and_skipped_days() {
+    let (core, _dir) = core();
+    let gym = mwf(&core); // created Monday 2026-11-02; Tuesday is a day off
+    assert!(
+        core.reminder_text(Some(gym.clone()), "2026-11-03".into())
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        core.reminder_text(Some(gym.clone()), "2026-11-04".into())
+            .unwrap()
+            .is_some()
+    );
+    core.skip_day(gym.clone(), "2026-11-04".into()).unwrap();
+    assert!(
+        core.reminder_text(Some(gym), "2026-11-04".into())
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        core.reminder_text(None, "2026-11-04".into())
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn reminders_survive_backup_and_restore() {
+    let fixture = Fixture::new();
+    fixture
+        .core
+        .set_goal_reminder(fixture.goal.clone(), Some(7 * 60))
+        .unwrap();
+    fixture.core.set_daily_reminder(Some(21 * 60)).unwrap();
+    let path = fixture.backup();
+    fixture
+        .core
+        .set_goal_reminder(fixture.goal.clone(), None)
+        .unwrap();
+    fixture.core.set_daily_reminder(None).unwrap();
+    fixture.core.restore_backup(path).unwrap();
+    assert_eq!(
+        fixture.core.goal_reminder(fixture.goal.clone()).unwrap(),
+        Some(420)
+    );
+    assert_eq!(fixture.core.daily_reminder().unwrap(), Some(1260));
 }

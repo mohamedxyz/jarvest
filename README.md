@@ -16,6 +16,11 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
 - **Stats:** heatmap, line charts, weekly and monthly summaries, best and worst weekdays,
   category comparison, completion rates, and streak history
 - **Reward jar:** add your own treats, draw them at random when you hit targets, and earn badges
+- **Reminders:** an optional daily summary of what is still due, plus an optional time
+  per goal. A reminder stays silent if the goal is already done, skipped, or off today.
+  Alarms are inexact, so they can arrive a few minutes late
+- **Counter:** numeric goals have `-` and `+` buttons and a Submit button, so they work
+  as a tally counter. Submit logs the count as one entry
 - **Also:** search and filter, reorder goals, quick-start templates, light, dark, and
   accent themes, a streaks widget, and CSV export
 - **Backup:** everything saves to a single SQLite file that you can restore later

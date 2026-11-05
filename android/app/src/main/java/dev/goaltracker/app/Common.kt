@@ -6,10 +6,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -26,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -102,5 +108,48 @@ fun ConfirmDialog(
             TextButton(onClick = onConfirm) { Text(confirm, color = MaterialTheme.colorScheme.error) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * A tally counter for numeric goals: `-` and `+` change the count by 1, and Submit logs
+ * it as one entry. The count is a draft until Submit, so it can't change any totals.
+ */
+@Composable
+fun CounterControl(count: Int, onChange: (Int) -> Unit, onSubmit: () -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        IconButton(enabled = count > 0, onClick = { onChange(count - 1) }) { Icon(Icons.Filled.Remove, "Decrease") }
+        Text(
+            count.toString(),
+            Modifier.widthIn(min = 32.dp),
+            style = MaterialTheme.typography.titleLarge,
+            textAlign = TextAlign.Center,
+        )
+        IconButton(onClick = { onChange(count + 1) }) { Icon(Icons.Filled.Add, "Increase") }
+        FilledTonalButton(enabled = count > 0, onClick = onSubmit) { Text("Submit") }
+    }
+}
+
+/** The counter in a dialog, for the widget's quick entry. */
+@Composable
+fun CounterDialog(
+    title: String,
+    count: Int,
+    onChange: (Int) -> Unit,
+    onSubmit: () -> Unit,
+    onExact: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                CounterControl(count, onChange, onSubmit)
+                TextButton(onClick = onExact) { Text("Enter an exact amount") }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
 }

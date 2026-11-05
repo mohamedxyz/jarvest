@@ -12,11 +12,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +60,9 @@ fun TodayScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
                     onOpen = { onOpenGoal(item.goalId) },
                     onCheck = { controller.log { toggleCheckIn(item.goalId, controller.today) } },
                     onLog = { logging = item },
+                    count = controller.counters[item.goalId] ?: 0,
+                    onCount = { controller.counters[item.goalId] = it },
+                    onSubmit = { controller.submitCounter(item.goalId) },
                 )
             }
         }
@@ -78,7 +80,15 @@ fun TodayScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
 }
 
 @Composable
-private fun TodayCard(item: TodayItem, onOpen: () -> Unit, onCheck: () -> Unit, onLog: () -> Unit) {
+private fun TodayCard(
+    item: TodayItem,
+    onOpen: () -> Unit,
+    onCheck: () -> Unit,
+    onLog: () -> Unit,
+    count: Int,
+    onCount: (Int) -> Unit,
+    onSubmit: () -> Unit,
+) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(
             Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
@@ -109,6 +119,12 @@ private fun TodayCard(item: TodayItem, onOpen: () -> Unit, onCheck: () -> Unit, 
                         )
                     }
                 }
+                if (item.kind == GoalKind.NUMERIC) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CounterControl(count, onCount, onSubmit)
+                        TextButton(onClick = onLog) { Text("Exact") }
+                    }
+                }
                 val deadline = item.deadline
                 if (item.overdue && deadline != null) {
                     OverdueLabel(deadline)
@@ -116,12 +132,7 @@ private fun TodayCard(item: TodayItem, onOpen: () -> Unit, onCheck: () -> Unit, 
                     Text("Due ${formatDate(deadline)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            if (item.kind == GoalKind.NUMERIC) {
-                FilledTonalButton(onClick = onLog) {
-                    Icon(Icons.Filled.Add, null, Modifier.size(18.dp))
-                    Text("Log")
-                }
-            } else {
+            if (item.kind != GoalKind.NUMERIC) {
                 Checkbox(checked = item.loggedToday || (item.kind == GoalKind.YES_NO && item.complete), onCheckedChange = { onCheck() })
             }
         }

@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.goaltracker.core.CoreException
@@ -50,6 +51,18 @@ class AppController(private val app: GoalTrackerApp) {
     private inline fun <reified E : Enum<E>> readEnum(key: String, default: E): E =
         enumValues<E>().firstOrNull { it.name == prefs.getString(key, null) } ?: default
 
+    /** Counts typed in on numeric goals but not submitted yet, by goal ID. */
+    val counters = mutableStateMapOf<String, Int>()
+
+    /** Logs a goal's counter as one entry, then resets it. Returns whether it worked. */
+    fun submitCounter(goalId: String): Boolean {
+        val count = counters[goalId] ?: 0
+        if (count <= 0) return false
+        val ok = log { logAmount(goalId, count.toDouble(), todayString()) }
+        if (ok) counters[goalId] = 0
+        return ok
+    }
+
     // One prompt per app session is enough of a nudge.
     private var jarPromptUsed = false
 
@@ -93,6 +106,8 @@ class AppController(private val app: GoalTrackerApp) {
     }
 
     fun refresh() {
+        // Edits can add, move, or remove reminders, so the alarms are rebuilt each time.
+        Reminders.rescheduleAll(app)
         version++
         loadPendingDraw()
         app.refreshWidgets()

@@ -2,6 +2,7 @@ package dev.goaltracker.app
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
@@ -9,6 +10,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
@@ -72,4 +75,18 @@ fun RangePickerDialog(min: String, max: String, onPick: (String, String) -> Unit
             title = { Text("Pick the days to skip", Modifier.padding(start = 24.dp, top = 16.dp)) },
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TimePickerDialog(initialMinutes: Int?, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+    val start = initialMinutes ?: (9 * 60)
+    val is24Hour = android.text.format.DateFormat.is24HourFormat(androidx.compose.ui.platform.LocalContext.current)
+    val state = rememberTimePickerState(start / 60, start % 60, is24Hour)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        text = { TimePicker(state) },
+        confirmButton = { TextButton(onClick = { onPick(state.hour * 60 + state.minute) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

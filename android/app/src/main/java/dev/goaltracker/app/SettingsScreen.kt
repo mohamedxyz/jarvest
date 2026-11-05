@@ -43,6 +43,9 @@ fun SettingsScreen(controller: AppController) {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val enabled = remember(controller.version) { controller.read(true) { rewardsEnabled() } }
+    val daily = remember(controller.version) { controller.read(null) { dailyReminder() } }
+    var pickingDaily by remember { mutableStateOf(false) }
+    val askNotifications = rememberNotificationPermissionRequest(controller)
     var busy by remember { mutableStateOf(false) }
     var restoreUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -92,6 +95,29 @@ fun SettingsScreen(controller: AppController) {
             }
         }
 
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("Reminders")
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "Daily summary of what is still due. Set a reminder on a single goal when you edit it. Reminders can arrive a few minutes late.",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Switch(daily != null, { on ->
+                    if (on) {
+                        controller.act { setDailyReminder((20 * 60).toUShort()) }
+                        askNotifications()
+                    } else {
+                        controller.act { setDailyReminder(null) }
+                    }
+                })
+            }
+            daily?.let {
+                OutlinedButton(onClick = { pickingDaily = true }) { Text("Daily summary at ${Reminders.formatMinutes(it.toInt())}") }
+            }
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column(Modifier.weight(1f)) {
                 SectionTitle("Rewards")
@@ -132,6 +158,16 @@ fun SettingsScreen(controller: AppController) {
         }
     }
 
+    if (pickingDaily) {
+        TimePickerDialog(
+            initialMinutes = daily?.toInt(),
+            onPick = {
+                controller.act { setDailyReminder(it.toUShort()) }
+                pickingDaily = false
+            },
+            onDismiss = { pickingDaily = false },
+        )
+    }
     restoreUri?.let { uri ->
         ConfirmDialog(
             title = "Replace all current data?",

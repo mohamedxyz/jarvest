@@ -24,6 +24,11 @@ class GoalTrackerApp : Application() {
 
     val controller: AppController by lazy { AppController(this) }
 
+    override fun onCreate() {
+        super.onCreate()
+        scope.launch { Reminders.rescheduleAll(this@GoalTrackerApp) }
+    }
+
     private val _widgetDataVersion = MutableStateFlow(0)
     val widgetDataVersion: StateFlow<Int> = _widgetDataVersion
 

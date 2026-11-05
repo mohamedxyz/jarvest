@@ -4,6 +4,10 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import dev.goaltracker.core.CoreException
 
 /** A small dialog for logging a numeric goal from the widget without opening the app. */
@@ -25,7 +29,18 @@ class QuickLogActivity : ComponentActivity() {
         }
         setContent {
             GoalTrackerTheme(app.controller.themeMode, app.controller.accent) {
-                LogAmountDialog(
+                var exact by remember { mutableStateOf(false) }
+                if (!exact) {
+                    val controller = app.controller
+                    CounterDialog(
+                        title = goal.title,
+                        count = controller.counters[goal.id] ?: 0,
+                        onChange = { controller.counters[goal.id] = it },
+                        onSubmit = { if (controller.submitCounter(goal.id)) finish() },
+                        onExact = { exact = true },
+                        onDismiss = { finish() },
+                    )
+                } else LogAmountDialog(
                     title = goal.title,
                     unit = goal.unit,
                     onLog = { amount ->

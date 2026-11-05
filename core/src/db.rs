@@ -13,6 +13,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/002_skips.sql"),
     include_str!("sql/003_weekdays.sql"),
     include_str!("sql/004_goal_order.sql"),
+    include_str!("sql/005_reminders.sql"),
 ];
 
 pub const SCHEMA_VERSION: i32 = MIGRATIONS.len() as i32;

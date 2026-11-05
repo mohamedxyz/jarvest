@@ -226,3 +226,30 @@ picker, like backup).
 Bump `versionCode` to 2 and `versionName` to `0.2.0` in
 `android/app/build.gradle.kts`. Smoke test the release build on an emulator or phone,
 and test upgrading an install made from 0.1.0 so the migrations run on real data.
+
+# V0.3.0 plan
+
+## Reminders
+
+- Times are stored in the database (`reminders` table, plus `daily_reminder_minutes` in
+  `meta`), so backups keep them. `core/src/reminders.rs` decides what a reminder says
+  and stays silent when nothing is due, using the Today list.
+- Android sets one inexact alarm per reminder (`AlarmManager.setAndAllowWhileIdle`, no
+  exact-alarm permission). Alarms are rebuilt after every change, on app start, on
+  boot, and after an app update. Each alarm sets the next day's alarm when it fires.
+- The notification permission (Android 13 and newer) is requested the first time a
+  reminder is turned on.
+
+## Counter
+
+Numeric goals show `-`, a count, `+`, and Submit. Each tap changes the count by 1.
+Submit logs one entry for the count and resets it to 0. The count is a draft kept in
+memory until submitted. "Exact" opens the old amount dialog for decimals.
+
+## Checked on an emulator (Android 16, x86_64)
+
+Upgrade from 0.2.0 keeps data; counter up, down, and submit; notification permission
+prompt; daily summary fired and set tomorrow's alarm; goal reminder time picker; alarms
+come back after a boot broadcast; Stats, Goals, and Treats open without crashes.
+Not checked: the widget's quick-entry dialog, a denied notification permission, and a
+real reboot.

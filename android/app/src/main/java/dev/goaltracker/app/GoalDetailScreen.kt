@@ -80,7 +80,14 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
 
         if (!goal.archived) {
             when (goal.kind) {
-                GoalKind.NUMERIC -> Button(onClick = { logging = true }, Modifier.fillMaxWidth()) { Text("Log amount") }
+                GoalKind.NUMERIC -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    CounterControl(
+                        controller.counters[goalId] ?: 0,
+                        { controller.counters[goalId] = it },
+                        { controller.submitCounter(goalId) },
+                    )
+                    TextButton(onClick = { logging = true }) { Text("Exact amount") }
+                }
                 GoalKind.YES_NO -> Button(
                     onClick = { controller.log { toggleCheckIn(goalId, controller.today) } },
                     Modifier.fillMaxWidth(),

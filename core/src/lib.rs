@@ -10,6 +10,7 @@ mod db;
 mod export;
 mod goals;
 mod model;
+mod reminders;
 mod rewards;
 mod stats;
 
@@ -285,6 +286,43 @@ impl GoalCore {
 
     pub fn badges(&self, today: String) -> Result<Vec<Badge>, CoreError> {
         badges::badges(&self.conn(), &today)
+    }
+
+    // Reminders
+
+    /// Sets a goal's reminder time in minutes after midnight, or clears it with `None`.
+    pub fn set_goal_reminder(
+        &self,
+        goal_id: String,
+        minutes: Option<u16>,
+    ) -> Result<(), CoreError> {
+        reminders::set_goal_reminder(&self.conn(), &goal_id, minutes)
+    }
+
+    pub fn goal_reminder(&self, goal_id: String) -> Result<Option<u16>, CoreError> {
+        reminders::goal_reminder(&self.conn(), &goal_id)
+    }
+
+    pub fn list_reminders(&self) -> Result<Vec<Reminder>, CoreError> {
+        reminders::list_reminders(&self.conn())
+    }
+
+    pub fn daily_reminder(&self) -> Result<Option<u16>, CoreError> {
+        reminders::daily_reminder(&self.conn())
+    }
+
+    pub fn set_daily_reminder(&self, minutes: Option<u16>) -> Result<(), CoreError> {
+        reminders::set_daily_reminder(&self.conn(), minutes)
+    }
+
+    /// What a reminder should say right now, or `None` if it should stay silent.
+    /// Pass a goal ID for a goal reminder, or `None` for the daily summary.
+    pub fn reminder_text(
+        &self,
+        goal_id: Option<String>,
+        today: String,
+    ) -> Result<Option<String>, CoreError> {
+        reminders::reminder_text(&self.conn(), goal_id.as_deref(), &today)
     }
 
     // Export

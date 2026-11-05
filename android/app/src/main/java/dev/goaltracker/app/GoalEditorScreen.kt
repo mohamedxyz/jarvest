@@ -89,6 +89,11 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
     val milestones = remember { mutableStateListOf<String>() }
     var milestoneText by rememberSaveable { mutableStateOf("") }
     var pickingDate by remember { mutableStateOf(false) }
+    var reminder by rememberSaveable {
+        mutableStateOf(existing?.let { controller.read(null) { goalReminder(it.id) } }?.toInt())
+    }
+    var pickingTime by remember { mutableStateOf(false) }
+    val askNotifications = rememberNotificationPermissionRequest(controller)
 
     Column(Modifier.fillMaxSize()) {
     Column(
@@ -222,6 +227,15 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
             }
         }
 
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { pickingTime = true }) {
+                Text(reminder?.let { "Reminder: ${Reminders.formatMinutes(it)}" } ?: "Add reminder")
+            }
+            if (reminder != null) {
+                IconButton(onClick = { reminder = null }) { Icon(Icons.Filled.Close, "Clear reminder") }
+            }
+        }
+
         OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes (optional)") }, minLines = 2)
 
         if (existing == null) {
@@ -253,15 +267,27 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                 val saved = if (existing != null) {
                     controller.act {
                         updateGoal(existing.id, GoalEdit(title, notes, category.ifBlank { null }, unit.ifBlank { null }, deadline))
+                        setGoalReminder(existing.id, reminder?.toUShort())
                     }
                 } else {
-                    saveNew(controller, title, notes, kind, category, period, periodTarget, totalTarget, unit, deadline, weekdays, milestones.toList() + listOfNotNull(milestoneText.takeIf { it.isNotBlank() }))
+                    saveNew(controller, title, notes, kind, category, period, periodTarget, totalTarget, unit, deadline, weekdays, milestones.toList() + listOfNotNull(milestoneText.takeIf { it.isNotBlank() }), reminder)
                 }
                 if (saved) onDone()
             },
         ) { Text(if (existing == null) "Create goal" else "Save") }
     }
 
+    if (pickingTime) {
+        TimePickerDialog(
+            initialMinutes = reminder,
+            onPick = {
+                reminder = it
+                pickingTime = false
+                askNotifications()
+            },
+            onDismiss = { pickingTime = false },
+        )
+    }
     if (pickingDate) {
         val initial = deadline?.let { LocalDate.parse(it).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() }
         val state = rememberDatePickerState(initialSelectedDateMillis = initial)
@@ -293,6 +319,7 @@ private fun saveNew(
     deadline: String?,
     weekdays: Set<Int>,
     milestones: List<String>,
+    reminder: Int?,
 ): Boolean {
     val usesPeriod = kind != GoalKind.YES_NO && period != null
     val parsedPeriodTarget = if (usesPeriod) parseAmount(periodTarget) else null
@@ -307,7 +334,7 @@ private fun saveNew(
         return false
     }
     return controller.act {
-        createGoal(
+        val id = createGoal(
             NewGoal(
                 title = title,
                 notes = notes,
@@ -324,5 +351,6 @@ private fun saveNew(
             ),
             controller.today,
         )
+        if (reminder != null) setGoalReminder(id, reminder.toUShort())
     }
 }

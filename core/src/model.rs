@@ -245,3 +245,11 @@ pub struct Badge {
     pub description: String,
     pub earned: bool,
 }
+
+/// A goal's reminder time, in minutes after midnight.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Reminder {
+    pub goal_id: String,
+    pub title: String,
+    pub minutes: u16,
+}
