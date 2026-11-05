@@ -416,6 +416,16 @@ pub struct Task {
     /// Set when this task mirrors a milestone. Such a task is ticked, renamed and
     /// removed together with its milestone, on the goal's page.
     pub milestone_id: Option<String>,
+    /// Set while the task is in the trash. 30 days after this date it is purged.
+    pub deleted_date: Option<String>,
+    /// Set while the task is archived (hidden, but kept).
+    pub archived_date: Option<String>,
+    /// How many times the due date was moved to a later day.
+    pub pushed_count: u32,
+    /// For a repeating task: repeat every this many days, weeks or months. 1 is the plain repeat.
+    pub repeat_every: u32,
+    /// For a weekly repeat: the weekdays it falls on (Monday = 1 up to Sunday = 64), or None.
+    pub repeat_days: Option<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -466,4 +476,61 @@ pub struct ParsedTask {
     pub due: Option<String>,
     pub priority: Option<Priority>,
     pub tag: Option<String>,
+}
+
+// Task power (bulk edit, tags, search)
+
+/// One change applied to many tasks by `bulk_update_tasks`. Turn on only what you want.
+/// The `change_*` flags exist so "set the due date to nothing" differs from "leave it".
+#[derive(Debug, Clone, Default, PartialEq, uniffi::Record)]
+pub struct BulkEdit {
+    /// Finish the tasks that are still open.
+    pub done: bool,
+    /// Hide the tasks in the archive.
+    pub archive: bool,
+    /// Move the tasks to the trash.
+    pub trash: bool,
+    pub change_due: bool,
+    pub due: Option<String>,
+    /// A new priority for all of them, or None to leave it.
+    pub priority: Option<Priority>,
+    pub change_tag: bool,
+    pub tag: Option<String>,
+    pub change_goal: bool,
+    pub goal_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, uniffi::Record)]
+pub struct BulkResult {
+    /// Tasks that were changed.
+    pub changed: u32,
+    /// Milestone tasks left out because they can only change on their goal's page.
+    pub skipped_milestones: u32,
+    /// Added up from finished milestone tasks (they can win a treat).
+    pub reward: LogResult,
+}
+
+/// A tag and how many tasks use it, for suggestion chips and the tag filter.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TagCount {
+    pub tag: String,
+    pub open: u32,
+    pub done: u32,
+}
+
+/// A goal found by `search`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct GoalHit {
+    pub id: String,
+    pub title: String,
+    pub category: Option<String>,
+    pub archived: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SearchResults {
+    /// Up to 30 tasks, open first. Archived ones have `archived_date` set.
+    pub tasks: Vec<Task>,
+    /// Up to 30 goals.
+    pub goals: Vec<GoalHit>,
 }
