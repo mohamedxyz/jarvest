@@ -45,8 +45,9 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
     val goals = remember(controller.version) { controller.read(emptyList()) { listGoals(false) } }
     var title by rememberSaveable { mutableStateOf(existing?.title ?: "") }
     var notes by rememberSaveable { mutableStateOf(existing?.notes ?: "") }
-    var due by rememberSaveable { mutableStateOf(existing?.due) }
-    var priority by rememberSaveable { mutableStateOf(existing?.priority ?: Priority.MED) }
+    var due by rememberSaveable { mutableStateOf(if (taskId == null) controller.defaultDueDate() else existing?.due) }
+    // New tasks start with the defaults from Settings. Existing ones keep what they have.
+    var priority by rememberSaveable { mutableStateOf(existing?.priority ?: controller.defaultPriority) }
     var tag by rememberSaveable { mutableStateOf(existing?.tag ?: "") }
     var repeat by rememberSaveable { mutableStateOf(existing?.repeat) }
     var goalId by rememberSaveable { mutableStateOf(existing?.goalId ?: presetGoalId) }
@@ -96,7 +97,9 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedTextField(
-                title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Task") },
+                title, { title = it },
+                Modifier.fillMaxWidth().then(if (taskId == null) Modifier.autoFocus() else Modifier),
+                label = { Text("Task") },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             )
 
@@ -172,7 +175,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
             Text("Checklist", style = MaterialTheme.typography.titleSmall)
             savedItems.forEach { item ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(item.done, { controller.act { toggleTaskItem(item.id) } })
+                    Checkbox(item.done, { controller.act { toggleTaskItem(item.id) } }, Modifier.label("Step ${item.text}"))
                     Text(item.text, Modifier.weight(1f))
                     IconButton(onClick = { removeSaved(item.id, item.text) }) { Icon(Icons.Filled.Close, "Remove ${item.text}") }
                 }
@@ -184,7 +187,10 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(newItem, { newItem = it }, Modifier.weight(1f), label = { Text("Add a step") }, singleLine = true)
+                OutlinedTextField(
+                    newItem, { newItem = it }, Modifier.weight(1f), label = { Text("Add a step") }, singleLine = true,
+                    keyboardOptions = doneKey, keyboardActions = onDone(::addItem),
+                )
                 TextButton(onClick = ::addItem, enabled = newItem.isNotBlank()) { Text("Add") }
             }
         }
@@ -223,7 +229,7 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
         if (task.notes.isNotBlank()) Text(task.notes, style = MaterialTheme.typography.bodyMedium)
         items.forEach { item ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(item.done, { controller.act { toggleTaskItem(item.id) } })
+                Checkbox(item.done, { controller.act { toggleTaskItem(item.id) } }, Modifier.label("Step ${item.text}"))
                 Text(item.text)
             }
         }

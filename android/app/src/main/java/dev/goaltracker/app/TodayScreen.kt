@@ -44,6 +44,7 @@ fun TodayScreen(
     onOpenRewards: () -> Unit,
     onAddGoal: () -> Unit,
     onAddTask: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val items = remember(controller.version, controller.today) {
         controller.read(emptyList()) { today(controller.today) }
@@ -90,6 +91,7 @@ fun TodayScreen(
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
+            item { BackupNudgeCard(controller, onOpenSettings) }
             item { EmptyJarBanner(controller, onAddTreat = onOpenRewards) }
             item {
                 TipCard(controller, "today_cards", "Tap a card to see its details. Tick the box to log it for today.")
@@ -109,11 +111,15 @@ fun TodayScreen(
                                     Text(
                                         dueLabel(it, controller.today),
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = if (task.overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = dueColor(it, controller.today),
                                     )
                                 }
                             }
-                            Checkbox(checked = false, onCheckedChange = { controller.toggleTaskWithUndo(task.id, task.title) })
+                            Checkbox(
+                                checked = false,
+                                onCheckedChange = { controller.toggleTaskWithUndo(task.id, task.title) },
+                                modifier = Modifier.label("Mark ${task.title} done"),
+                            )
                         }
                     }
                 }
@@ -163,7 +169,7 @@ fun TodayScreen(
         InfoSheet(item.title, onDismiss = { openedGoal = null }) {
             progressLine(item)?.let { InfoRow("Progress", it) }
             item.period?.let { period ->
-                InfoRow("Streak", if (item.currentStreak > 0u) "${item.currentStreak} ${period.noun()}s in a row" else "None yet")
+                InfoRow("Streak", if (item.currentStreak > 0u) "${countOf(item.currentStreak.toInt(), period.noun())} in a row" else "None yet")
             }
             item.deadline?.let { InfoRow("Deadline", formatDate(it)) }
             item.nextMilestone?.let {
@@ -217,7 +223,11 @@ private fun TodayCard(
                 }
             }
             if (item.kind != GoalKind.NUMERIC) {
-                Checkbox(checked = item.loggedToday || (item.kind == GoalKind.YES_NO && item.complete), onCheckedChange = { onCheck() })
+                Checkbox(
+                    checked = item.loggedToday || (item.kind == GoalKind.YES_NO && item.complete),
+                    onCheckedChange = { onCheck() },
+                    modifier = Modifier.label("Log ${item.title} for today"),
+                )
             }
         }
     }

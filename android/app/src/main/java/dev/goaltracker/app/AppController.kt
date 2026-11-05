@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import java.time.LocalDate
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -12,6 +13,9 @@ import androidx.compose.runtime.setValue
 import dev.goaltracker.core.CoreException
 import dev.goaltracker.core.GoalCore
 import dev.goaltracker.core.LogResult
+import dev.goaltracker.core.Priority
+import dev.goaltracker.core.TaskFilter
+import dev.goaltracker.core.TaskSort
 import dev.goaltracker.core.RewardDraw
 
 /**
@@ -19,6 +23,9 @@ import dev.goaltracker.core.RewardDraw
  * change data through [act] or [log]. Each change bumps [version], and screens
  * reload whatever depends on it.
  */
+/** The due date a new task starts with. */
+enum class DefaultDue(val label: String) { NONE("No date"), TODAY("Today"), TOMORROW("Tomorrow") }
+
 class UndoOffer(val text: String, val action: () -> Unit)
 
 class AppController(private val app: GoalTrackerApp) {
@@ -64,6 +71,75 @@ class AppController(private val app: GoalTrackerApp) {
     fun resetTips() {
         dismissedTips = emptySet()
         prefs.edit().remove("dismissed_tips").apply()
+    }
+
+    // The Tasks tab opens the way the user left it, and new tasks start with their own defaults.
+    var taskFilter by mutableStateOf(readEnum("task_filter", TaskFilter.ALL))
+        private set
+    var taskSort by mutableStateOf(readEnum("task_sort", TaskSort.DUE))
+        private set
+    var defaultPriority by mutableStateOf(readEnum("default_priority", Priority.MED))
+        private set
+    var defaultDue by mutableStateOf(readEnum("default_due", DefaultDue.NONE))
+        private set
+
+    fun chooseTaskFilter(value: TaskFilter) {
+        taskFilter = value
+        prefs.edit().putString("task_filter", value.name).apply()
+    }
+
+    fun chooseTaskSort(value: TaskSort) {
+        taskSort = value
+        prefs.edit().putString("task_sort", value.name).apply()
+    }
+
+    fun chooseDefaultPriority(value: Priority) {
+        defaultPriority = value
+        prefs.edit().putString("default_priority", value.name).apply()
+    }
+
+    fun chooseDefaultDue(value: DefaultDue) {
+        defaultDue = value
+        prefs.edit().putString("default_due", value.name).apply()
+    }
+
+    /** The due date a new task starts with, as set in Settings. */
+    fun defaultDueDate(): String? = when (defaultDue) {
+        DefaultDue.NONE -> null
+        DefaultDue.TODAY -> today
+        DefaultDue.TOMORROW -> LocalDate.parse(today).plusDays(1).toString()
+    }
+
+    // Backups. The date is kept on the phone, outside the database, so restoring an old
+    // backup can't make a stale date look fresh.
+    var lastBackup by mutableStateOf(prefs.getString("last_backup", null))
+        private set
+    var backupSnoozedUntil by mutableStateOf(prefs.getString("backup_snoozed_until", null))
+        private set
+
+    fun markBackup() {
+        lastBackup = today
+        prefs.edit().putString("last_backup", today).apply()
+    }
+
+    fun snoozeBackup(urgent: Boolean) {
+        val until = LocalDate.parse(today).plusDays(if (urgent) 1 else 3).toString()
+        backupSnoozedUntil = until
+        prefs.edit().putString("backup_snoozed_until", until).apply()
+    }
+
+    /** 0 = fine or snoozed, 1 = a week old, 2 = a month old, or never saved with a lot of data. */
+    fun backupLevel(): Int {
+        val snoozed = backupSnoozedUntil?.let { today <= it } ?: false
+        val items = read(0) { listGoals(false).size + listTasks(TaskFilter.ALL, TaskSort.DUE, today).size }
+        if (snoozed || items == 0) return 0
+        val last = lastBackup ?: return if (items >= 5) 2 else 1
+        val days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(last), LocalDate.parse(today))
+        return when {
+            days > 30 -> 2
+            days > 7 -> 1
+            else -> 0
+        }
     }
 
     private inline fun <reified E : Enum<E>> readEnum(key: String, default: E): E =

@@ -115,22 +115,43 @@ pub fn reminder_text(
             .iter()
             .find(|item| item.goal_id == id)
             .map(|item| format!("Time for {}", item.title)),
-        None if due.is_empty() => None,
         None => {
-            let names: Vec<_> = due.iter().take(4).map(|item| item.title.as_str()).collect();
-            let more = due.len().saturating_sub(names.len());
-            let mut text = names.join(", ");
+            // Open tasks due today or earlier count too, with the late ones called out.
+            let tasks = crate::tasks::due_tasks(conn, today)?;
+            if due.is_empty() && tasks.is_empty() {
+                return Ok(None);
+            }
+            let names: Vec<&str> = due
+                .iter()
+                .map(|item| item.title.as_str())
+                .chain(tasks.iter().map(|task| task.title.as_str()))
+                .collect();
+            let shown: Vec<&str> = names.iter().take(4).copied().collect();
+            let more = names.len().saturating_sub(shown.len());
+            let mut text = shown.join(", ");
             if more > 0 {
                 text.push_str(&format!(" and {more} more"));
             }
-            Some(format!(
-                "{} left today: {text}",
-                if due.len() == 1 {
-                    "1 goal".to_string()
+            let plural = |n: usize, one: &str| {
+                if n == 1 {
+                    format!("1 {one}")
                 } else {
-                    format!("{} goals", due.len())
+                    format!("{n} {one}s")
                 }
-            ))
+            };
+            let mut counts = Vec::new();
+            if !due.is_empty() {
+                counts.push(plural(due.len(), "goal"));
+            }
+            if !tasks.is_empty() {
+                let late = tasks.iter().filter(|t| t.overdue).count();
+                let mut part = plural(tasks.len(), "task");
+                if late > 0 {
+                    part.push_str(&format!(" ({late} overdue)"));
+                }
+                counts.push(part);
+            }
+            Some(format!("{} left today: {text}", counts.join(" and ")))
         }
     })
 }

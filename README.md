@@ -33,7 +33,8 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
   as a tally counter. Submit logs the count as one entry
 - **Also:** search and filter, reorder goals, quick-start templates, light, dark, and
   accent themes, a streaks widget, and CSV export
-- **Backup:** everything saves to a single SQLite file that you can restore later
+- **Backup:** everything saves to a single SQLite file that you can restore later. Settings shows
+  when you last saved one, and Today nudges you when it has been a week
 
 ## Project layout
 

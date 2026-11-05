@@ -26,6 +26,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+
+/** Gives a control a spoken name, so TalkBack doesn't read an unnamed checkbox. */
+fun Modifier.label(text: String): Modifier = semantics { contentDescription = text }
+
+/** Puts the cursor in this field as soon as the screen opens. */
+@Composable
+fun Modifier.autoFocus(): Modifier {
+    val requester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { requester.requestFocus() }
+    return focusRequester(requester)
+}
+
+/** Makes the keyboard's Done key run [onDone], so Enter adds the item. */
+val doneKey = KeyboardOptions(imeAction = ImeAction.Done)
+
+fun onDone(action: () -> Unit) = KeyboardActions(onDone = { action() })
 
 /** A short lesson shown once. The user closes it with "Got it" and it stays closed. */
 @Composable
@@ -96,6 +122,39 @@ fun EmptyJarBanner(controller: AppController, onAddTreat: (() -> Unit)?, modifie
                 color = MaterialTheme.colorScheme.onTertiaryContainer,
             )
             if (onAddTreat != null) TextButton(onClick = onAddTreat) { Text("Add") }
+        }
+    }
+}
+
+/**
+ * Reminds the user to save a backup when the last one is old, or when there never was one.
+ * Dismissing it hides it for a few days, and for only one day once it is urgent.
+ */
+@Composable
+fun BackupNudgeCard(controller: AppController, onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
+    val level = remember(controller.version, controller.lastBackup, controller.backupSnoozedUntil, controller.today) {
+        controller.backupLevel()
+    }
+    if (level == 0) return
+    val last = controller.lastBackup
+    val text = if (last == null) {
+        "You haven't saved a backup yet. Your data lives only on this phone."
+    } else {
+        val days = ChronoUnit.DAYS.between(LocalDate.parse(last), LocalDate.parse(controller.today)).toInt()
+        "Your last backup was ${countOf(days, "day")} ago."
+    }
+    Card(
+        modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (level == 2) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+        ),
+    ) {
+        Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+            Row {
+                TextButton(onClick = onOpenSettings) { Text("Back up now") }
+                TextButton(onClick = { controller.snoozeBackup(urgent = level == 2) }) { Text("Later") }
+            }
         }
     }
 }

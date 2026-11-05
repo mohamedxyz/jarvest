@@ -31,14 +31,34 @@ fun formatDate(date: String): String =
 
 fun countOf(count: Int, noun: String): String = if (count == 1) "1 $noun" else "$count ${noun}s"
 
-/** "Today", "Tomorrow", "3 days left" or "2 days late", for a task's due date. */
+private fun daysUntil(due: String, today: String): Int =
+    java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(today), LocalDate.parse(due)).toInt()
+
+/**
+ * "Today", "Tomorrow", "3 days left" or "2 days late" for a task's due date. A date more than
+ * a week away is shown as a short date instead, because "412 days left" is hard to read.
+ */
 fun dueLabel(due: String, today: String): String {
-    val days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.parse(today), LocalDate.parse(due)).toInt()
+    val days = daysUntil(due, today)
     return when {
         days == 0 -> "Today"
         days == 1 -> "Tomorrow"
-        days > 1 -> "$days days left"
+        days in 2..7 -> "$days days left"
+        days > 7 -> LocalDate.parse(due).format(DateTimeFormatter.ofPattern("MMM d"))
         days == -1 -> "1 day late"
         else -> "${-days} days late"
+    }
+}
+
+/** How urgent a due date is, so the label can be colored. */
+enum class DueTone { LATE, SOON, CALM }
+
+/** Late is red, due within three days is amber, anything further away is calm. */
+fun dueTone(due: String, today: String): DueTone {
+    val days = daysUntil(due, today)
+    return when {
+        days < 0 -> DueTone.LATE
+        days <= 3 -> DueTone.SOON
+        else -> DueTone.CALM
     }
 }

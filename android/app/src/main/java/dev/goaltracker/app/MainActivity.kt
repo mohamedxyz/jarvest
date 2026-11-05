@@ -212,6 +212,7 @@ private fun AppRoot(controller: AppController) {
                     onOpenRewards = { selectTab("treats") },
                     onAddGoal = { push("new") },
                     onAddTask = { push("newtask") },
+                    onOpenSettings = { push("settings") },
                 )
                 route == "tasks" -> TasksScreen(controller, onEdit = { push("edittask/$it") })
                 route == "newtask" -> TaskEditorScreen(controller, taskId = null, presetGoalId = null, onDone = pop)

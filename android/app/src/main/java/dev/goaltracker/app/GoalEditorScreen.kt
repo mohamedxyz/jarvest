@@ -100,7 +100,11 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
         Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("Title") }, singleLine = true)
+        OutlinedTextField(
+            title, { title = it },
+            Modifier.fillMaxWidth().then(if (existing == null) Modifier.autoFocus() else Modifier),
+            label = { Text("Title") }, singleLine = true,
+        )
 
         if (existing == null) {
             SectionTitle("Quick start")
@@ -257,11 +261,17 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(milestoneText, { milestoneText = it }, Modifier.weight(1f), label = { Text("Milestone") }, singleLine = true)
-                TextButton(enabled = milestoneText.isNotBlank(), onClick = {
-                    milestones.add(milestoneText.trim())
-                    milestoneText = ""
-                }) { Text("Add") }
+                val addMilestone = {
+                    if (milestoneText.isNotBlank()) {
+                        milestones.add(milestoneText.trim())
+                        milestoneText = ""
+                    }
+                }
+                OutlinedTextField(
+                    milestoneText, { milestoneText = it }, Modifier.weight(1f), label = { Text("Milestone") }, singleLine = true,
+                    keyboardOptions = doneKey, keyboardActions = onDone(addMilestone),
+                )
+                TextButton(enabled = milestoneText.isNotBlank(), onClick = { addMilestone() }) { Text("Add") }
             }
         }
 

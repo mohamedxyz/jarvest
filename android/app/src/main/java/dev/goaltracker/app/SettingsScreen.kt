@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.goaltracker.core.CoreException
 import dev.goaltracker.core.GoalCore
+import dev.goaltracker.core.Priority
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,6 +58,7 @@ fun SettingsScreen(controller: AppController) {
             busy = true
             scope.launch {
                 val error = withContext(Dispatchers.IO) { exportTo(context, controller.core, uri) }
+                if (error == null) controller.markBackup()
                 controller.message = error ?: "Backup saved"
                 busy = false
             }
@@ -101,6 +103,27 @@ fun SettingsScreen(controller: AppController) {
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("New tasks")
+            Text(
+                "What a new task starts with. Words in a quick-add line, such as tomorrow or !high, still win.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text("Priority", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Priority.entries.reversed().forEach {
+                    FilterChip(controller.defaultPriority == it, { controller.chooseDefaultPriority(it) }, label = { Text(it.label()) })
+                }
+            }
+            Text("Due date", style = MaterialTheme.typography.labelLarge)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DefaultDue.entries.forEach {
+                    FilterChip(controller.defaultDue == it, { controller.chooseDefaultDue(it) }, label = { Text(it.label) })
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Reminders")
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
@@ -141,6 +164,13 @@ fun SettingsScreen(controller: AppController) {
                 "Your data is stored only on this phone. A backup is one file containing everything. Keep a copy somewhere safe, because uninstalling the app deletes your data.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val last = controller.lastBackup
+            Text(
+                if (last == null) "Last backup: never"
+                else "Last backup: ${formatDate(last)} (${countOf(java.time.temporal.ChronoUnit.DAYS.between(java.time.LocalDate.parse(last), java.time.LocalDate.parse(controller.today)).toInt(), "day")} ago)",
+                style = MaterialTheme.typography.titleSmall,
+                color = if (controller.backupLevel() == 2) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             )
             Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 exporter.launch("jarvest-backup-${controller.today}.sqlite")

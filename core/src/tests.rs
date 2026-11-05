@@ -2464,3 +2464,46 @@ fn milestone_tasks_survive_a_backup_and_restore() {
     core.restore_backup(backup).unwrap();
     assert_eq!(milestone_task(&core, &goal, "Outline").title, "Outline");
 }
+
+#[test]
+fn the_daily_summary_counts_tasks_and_calls_out_late_ones() {
+    let (core, _dir) = core();
+    // Tasks alone are enough for a summary.
+    assert_eq!(core.reminder_text(None, DAY.into()).unwrap(), None);
+    add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-01".into()),
+            ..new_task("Pay rent")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            ..new_task("Call mum")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-09".into()),
+            ..new_task("Later")
+        },
+    );
+    add_task(&core, new_task("No date"));
+    assert_eq!(
+        core.reminder_text(None, DAY.into()).unwrap().unwrap(),
+        "2 tasks (1 overdue) left today: Pay rent, Call mum"
+    );
+    yes_no(&core, "Read");
+    assert_eq!(
+        core.reminder_text(None, DAY.into()).unwrap().unwrap(),
+        "1 goal and 2 tasks (1 overdue) left today: Read, Pay rent, Call mum"
+    );
+    // A goal's own reminder is not affected by tasks.
+    assert_eq!(
+        core.reminder_text(Some("nope".into()), DAY.into()).unwrap(),
+        None
+    );
+}

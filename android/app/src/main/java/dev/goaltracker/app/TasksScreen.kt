@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import dev.goaltracker.core.NewTask
 import dev.goaltracker.core.Priority
 import dev.goaltracker.core.Repeat
 import dev.goaltracker.core.Task
@@ -89,8 +90,9 @@ fun priorityColor(priority: Priority): Color = when (priority) {
 
 @Composable
 fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
-    var filter by rememberSaveable { mutableStateOf(TaskFilter.ALL) }
-    var sort by rememberSaveable { mutableStateOf(TaskSort.DUE) }
+    // Remembered across launches, so the tab opens the way it was left.
+    val filter = controller.taskFilter
+    val sort = controller.taskSort
     var showTrash by rememberSaveable { mutableStateOf(false) }
     var quick by rememberSaveable { mutableStateOf("") }
     var sortMenu by remember { mutableStateOf(false) }
@@ -106,8 +108,21 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
     val hint = remember(quick, controller.today) {
         if (quick.isBlank()) null else controller.read(null) { parseQuick(quick, controller.today) }
     }
+    val overdueCount = remember(controller.version, controller.today) {
+        controller.read(0) { listTasks(TaskFilter.OVERDUE, TaskSort.DUE, controller.today).size }
+    }
     val submit = {
-        if (quick.isNotBlank() && controller.act { quickAddTask(quick, controller.today) }) quick = ""
+        if (quick.isNotBlank()) {
+            // Words in the line win. What it leaves out comes from the defaults in Settings.
+            val parsed = controller.read(null) { parseQuick(quick, controller.today) }
+            if (parsed != null) {
+                val task = NewTask(
+                    parsed.title, "", parsed.due ?: controller.defaultDueDate(),
+                    parsed.priority ?: controller.defaultPriority, parsed.tag, null, emptyList(), null,
+                )
+                if (controller.act { createTask(task, controller.today) }) quick = ""
+            }
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -159,7 +174,11 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TaskFilter.entries.forEach {
-                        FilterChip(selected = filter == it, onClick = { filter = it }, label = { Text(it.label()) })
+                        FilterChip(
+                            selected = filter == it,
+                            onClick = { controller.chooseTaskFilter(it) },
+                            label = { Text(if (it == TaskFilter.OVERDUE && overdueCount > 0) "Overdue · $overdueCount" else it.label()) },
+                        )
                     }
                 }
                 // Outside the scrolling row, so it can never scroll out of reach.
@@ -172,7 +191,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                         TaskSort.entries.forEach {
                             DropdownMenuItem(
                                 text = { Text(it.label()) },
-                                onClick = { sort = it; sortMenu = false },
+                                onClick = { controller.chooseTaskSort(it); sortMenu = false },
                             )
                         }
                     }
@@ -261,7 +280,7 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
                         Text(
                             dueLabel(it, today),
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (task.overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (task.done) MaterialTheme.colorScheme.onSurfaceVariant else dueColor(it, today),
                         )
                     }
                     task.goalTitle?.let { Text(if (task.milestoneId != null) "Milestone of $it" else "→ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -274,7 +293,11 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
                     }
                 }
             }
-            Checkbox(checked = task.done, onCheckedChange = { onCheck() })
+            Checkbox(
+                checked = task.done,
+                onCheckedChange = { onCheck() },
+                modifier = Modifier.label(if (task.done) "Mark ${task.title} not done" else "Mark ${task.title} done"),
+            )
         }
     }
 }

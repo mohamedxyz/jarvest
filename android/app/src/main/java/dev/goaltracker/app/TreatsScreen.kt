@@ -68,10 +68,12 @@ fun TreatsScreen(controller: AppController) {
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(newTreat, { newTreat = it }, Modifier.weight(1f), label = { Text("New treat, for example a movie night") }, singleLine = true)
-                TextButton(enabled = newTreat.isNotBlank(), onClick = {
-                    if (controller.act { addTreat(newTreat) }) newTreat = ""
-                }) { Text("Add") }
+                val addTreat = { if (newTreat.isNotBlank() && controller.act { addTreat(newTreat) }) newTreat = "" }
+                OutlinedTextField(
+                    newTreat, { newTreat = it }, Modifier.weight(1f), label = { Text("New treat, for example a movie night") }, singleLine = true,
+                    keyboardOptions = doneKey, keyboardActions = onDone(addTreat),
+                )
+                TextButton(enabled = newTreat.isNotBlank(), onClick = { addTreat() }) { Text("Add") }
             }
         }
 
@@ -88,6 +90,7 @@ fun TreatsScreen(controller: AppController) {
             draws.forEach { draw ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
+                        modifier = Modifier.label(if (draw.redeemedDate != null) "Mark ${draw.treatTitle} as not enjoyed" else "Mark ${draw.treatTitle} as enjoyed"),
                         checked = draw.redeemedDate != null,
                         onCheckedChange = { controller.act { toggleRedeemed(draw.id, controller.today) } },
                     )

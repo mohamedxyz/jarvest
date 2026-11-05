@@ -199,7 +199,11 @@ fun GoalDetailScreen(
             }
             linkedTasks.forEach { task ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(task.done, { controller.toggleTaskWithUndo(task.id, task.title) })
+                    Checkbox(
+                        task.done,
+                        { controller.toggleTaskWithUndo(task.id, task.title) },
+                        Modifier.label(if (task.done) "Mark ${task.title} not done" else "Mark ${task.title} done"),
+                    )
                     TextButton(onClick = { onEditTask(task.id) }, Modifier.weight(1f)) {
                         Text(task.title, Modifier.fillMaxWidth(), textDecoration = if (task.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null)
                     }
@@ -218,6 +222,7 @@ fun GoalDetailScreen(
                         checked = milestone.doneDate != null,
                         enabled = !goal.archived,
                         onCheckedChange = { controller.log { toggleMilestone(milestone.id, controller.today) } },
+                        modifier = Modifier.label(if (milestone.doneDate != null) "Untick milestone ${milestone.title}" else "Tick milestone ${milestone.title}"),
                     )
                     Text(milestone.title, Modifier.weight(1f))
                     IconButton(enabled = index > 0, onClick = { controller.act { moveMilestone(milestone.id, true) } }) {
@@ -232,10 +237,14 @@ fun GoalDetailScreen(
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(newMilestone, { newMilestone = it }, Modifier.weight(1f), label = { Text("New milestone") }, singleLine = true)
-                TextButton(enabled = newMilestone.isNotBlank(), onClick = {
-                    if (controller.act { addMilestone(goalId, newMilestone, controller.today) }) newMilestone = ""
-                }) { Text("Add") }
+                val addMilestone = {
+                    if (newMilestone.isNotBlank() && controller.act { addMilestone(goalId, newMilestone, controller.today) }) newMilestone = ""
+                }
+                OutlinedTextField(
+                    newMilestone, { newMilestone = it }, Modifier.weight(1f), label = { Text("New milestone") }, singleLine = true,
+                    keyboardOptions = doneKey, keyboardActions = onDone(addMilestone),
+                )
+                TextButton(enabled = newMilestone.isNotBlank(), onClick = { addMilestone() }) { Text("Add") }
             }
         }
 

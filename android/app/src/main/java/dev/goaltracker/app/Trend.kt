@@ -31,6 +31,17 @@ import kotlin.math.roundToInt
 @Composable
 fun positiveColor(): Color = if (LocalDarkTheme.current) Color(0xFF7FD99A) else Color(0xFF1B7F3B)
 
+/** Amber for "due soon". It always comes with words such as "Today" or "2 days left". */
+@Composable
+fun warningColor(): Color = if (LocalDarkTheme.current) Color(0xFFFFC266) else Color(0xFF9A5B00)
+
+@Composable
+fun dueColor(due: String, today: String): Color = when (dueTone(due, today)) {
+    DueTone.LATE -> negativeColor()
+    DueTone.SOON -> warningColor()
+    DueTone.CALM -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
 @Composable
 fun negativeColor(): Color = if (LocalDarkTheme.current) Color(0xFFFF9C94) else Color(0xFFB3261E)
 
