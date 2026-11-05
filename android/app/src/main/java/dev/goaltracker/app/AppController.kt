@@ -19,6 +19,8 @@ import dev.goaltracker.core.RewardDraw
  * change data through [act] or [log]. Each change bumps [version], and screens
  * reload whatever depends on it.
  */
+class UndoOffer(val text: String, val action: () -> Unit)
+
 class AppController(private val app: GoalTrackerApp) {
     val core: GoalCore get() = app.core
 
@@ -46,6 +48,22 @@ class AppController(private val app: GoalTrackerApp) {
     fun chooseAccent(choice: Accent) {
         accent = choice
         prefs.edit().putString("accent", choice.name).apply()
+    }
+
+    /** Tip cards the user has closed. Kept on the phone only, so backups don't carry it. */
+    var dismissedTips by mutableStateOf(prefs.getStringSet("dismissed_tips", emptySet()) ?: emptySet())
+        private set
+
+    fun isTipDismissed(id: String) = id in dismissedTips
+
+    fun dismissTip(id: String) {
+        dismissedTips = dismissedTips + id
+        prefs.edit().putStringSet("dismissed_tips", dismissedTips).apply()
+    }
+
+    fun resetTips() {
+        dismissedTips = emptySet()
+        prefs.edit().remove("dismissed_tips").apply()
     }
 
     private inline fun <reified E : Enum<E>> readEnum(key: String, default: E): E =
@@ -83,6 +101,19 @@ class AppController(private val app: GoalTrackerApp) {
         message = e.userMessage()
         false
     }
+
+    /** Like [act], for a change that returns a value. Returns null if it failed. */
+    fun <T> change(block: GoalCore.() -> T): T? = try {
+        val result = core.block()
+        refresh()
+        result
+    } catch (e: CoreException) {
+        message = e.userMessage()
+        null
+    }
+
+    /** A message with an Undo button, such as after moving a task to the trash. */
+    var undo by mutableStateOf<UndoOffer?>(null)
 
     /** Runs a logging action, then checks whether it earned a treat. */
     fun log(block: GoalCore.() -> LogResult): Boolean = try {

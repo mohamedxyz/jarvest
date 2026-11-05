@@ -1376,3 +1376,442 @@ fn reminders_survive_backup_and_restore() {
     );
     assert_eq!(fixture.core.daily_reminder().unwrap(), Some(1260));
 }
+
+// Tasks (DAY is Thursday 2026-11-05)
+
+fn new_task(title: &str) -> NewTask {
+    NewTask {
+        title: title.into(),
+        notes: String::new(),
+        due: None,
+        priority: Priority::Med,
+        tag: None,
+        repeat: None,
+        items: vec![],
+    }
+}
+
+fn add_task(core: &GoalCore, task: NewTask) -> String {
+    core.create_task(task, DAY.into()).unwrap()
+}
+
+fn task_titles(core: &GoalCore, filter: TaskFilter, sort: TaskSort) -> Vec<String> {
+    core.list_tasks(filter, sort, DAY.into())
+        .unwrap()
+        .into_iter()
+        .map(|t| t.title)
+        .collect()
+}
+
+#[test]
+fn quick_add_reads_date_priority_and_tag() {
+    let (core, _dir) = core();
+    let parsed = core
+        .parse_quick("Essay tomorrow !high #uni".into(), DAY.into())
+        .unwrap();
+    assert_eq!(parsed.title, "Essay");
+    assert_eq!(parsed.due.as_deref(), Some("2026-11-06"));
+    assert_eq!(parsed.priority, Some(Priority::High));
+    assert_eq!(parsed.tag.as_deref(), Some("uni"));
+
+    let id = core
+        .quick_add_task("Essay tomorrow !high #uni".into(), DAY.into())
+        .unwrap();
+    let task = core.get_task(id, DAY.into()).unwrap();
+    assert_eq!(task.title, "Essay");
+    assert_eq!(task.due.as_deref(), Some("2026-11-06"));
+    assert_eq!(task.priority, Priority::High);
+    assert_eq!(task.tag.as_deref(), Some("uni"));
+}
+
+#[test]
+fn quick_add_understands_the_supported_date_words() {
+    let (core, _dir) = core();
+    let due = |raw: &str| core.parse_quick(raw.into(), DAY.into()).unwrap().due;
+    assert_eq!(due("Call today"), Some("2026-11-05".into()));
+    assert_eq!(due("Call in 3 days"), Some("2026-11-08".into()));
+    assert_eq!(due("Call in 2 weeks"), Some("2026-11-19".into()));
+    // Today is Thursday: next week means the coming Monday, a weekday name can mean today.
+    assert_eq!(due("Call next week"), Some("2026-11-09".into()));
+    assert_eq!(due("Call thursday"), Some("2026-11-05".into()));
+    assert_eq!(due("Call on friday"), Some("2026-11-06".into()));
+    assert_eq!(due("Call 2026-12-24"), Some("2026-12-24".into()));
+    assert_eq!(due("Call 25 dec"), Some("2026-12-25".into()));
+    assert_eq!(due("Call december 25"), Some("2026-12-25".into()));
+    assert_eq!(due("Call 25/12"), Some("2026-12-25".into()));
+    // Dates already past roll to next year. A fake date stays in the title.
+    assert_eq!(due("Call 1 jan"), Some("2027-01-01".into()));
+    assert_eq!(due("Call 31 feb"), None);
+}
+
+#[test]
+fn quick_add_keeps_ordinary_text_and_only_uses_whole_words() {
+    let (core, _dir) = core();
+    let parsed = core
+        .parse_quick("Buy 1/2 cup todayish stuff".into(), DAY.into())
+        .unwrap();
+    assert_eq!(parsed.title, "Buy 1/2 cup todayish stuff");
+    assert_eq!(parsed.due, None);
+    // A line made only of tokens keeps its text as the title.
+    let only = core.parse_quick("tomorrow".into(), DAY.into()).unwrap();
+    assert_eq!(only.title, "tomorrow");
+    assert_eq!(only.due.as_deref(), Some("2026-11-06"));
+    // Priority shortcuts and an unknown one.
+    let p = |raw: &str| core.parse_quick(raw.into(), DAY.into()).unwrap().priority;
+    assert_eq!(p("x !1"), Some(Priority::Low));
+    assert_eq!(p("x !med"), Some(Priority::Med));
+    assert_eq!(p("x !urgent"), None);
+}
+
+#[test]
+fn creates_edits_and_validates_tasks() {
+    let (core, _dir) = core();
+    assert!(core.create_task(new_task("  "), DAY.into()).is_err());
+    let bad_due = NewTask {
+        due: Some("2026-02-30".into()),
+        ..new_task("x")
+    };
+    assert!(core.create_task(bad_due, DAY.into()).is_err());
+
+    let id = add_task(
+        &core,
+        NewTask {
+            notes: " bring ID ".into(),
+            tag: Some("#uni".into()),
+            items: vec!["Draft".into(), "Edit".into()],
+            ..new_task(" Essay ")
+        },
+    );
+    let task = core.get_task(id.clone(), DAY.into()).unwrap();
+    assert_eq!(task.title, "Essay");
+    assert_eq!(task.notes, "bring ID");
+    assert_eq!(task.tag.as_deref(), Some("uni"));
+    assert_eq!((task.items_done, task.items_total), (0, 2));
+
+    core.update_task(
+        id.clone(),
+        TaskEdit {
+            title: "Essay v2".into(),
+            notes: String::new(),
+            due: Some("2026-11-10".into()),
+            priority: Priority::High,
+            tag: None,
+            repeat: Some(Repeat::Weekly),
+        },
+    )
+    .unwrap();
+    let task = core.get_task(id, DAY.into()).unwrap();
+    assert_eq!(task.title, "Essay v2");
+    assert_eq!(task.priority, Priority::High);
+    assert_eq!(task.repeat, Some(Repeat::Weekly));
+    assert_eq!(task.tag, None);
+}
+
+#[test]
+fn checklist_items_can_be_added_ticked_and_removed() {
+    let (core, _dir) = core();
+    let id = add_task(&core, new_task("Pack"));
+    let a = core.add_task_item(id.clone(), "Charger".into()).unwrap();
+    core.add_task_item(id.clone(), "Passport".into()).unwrap();
+    core.toggle_task_item(a.clone()).unwrap();
+
+    let items = core.list_task_items(id.clone()).unwrap();
+    assert_eq!(
+        items
+            .iter()
+            .map(|i| (i.text.as_str(), i.done))
+            .collect::<Vec<_>>(),
+        vec![("Charger", true), ("Passport", false)]
+    );
+    let task = core.get_task(id.clone(), DAY.into()).unwrap();
+    assert_eq!((task.items_done, task.items_total), (1, 2));
+
+    core.toggle_task_item(a.clone()).unwrap();
+    core.delete_task_item(a).unwrap();
+    assert_eq!(core.list_task_items(id).unwrap().len(), 1);
+    assert!(core.add_task_item("missing".into(), "x".into()).is_err());
+}
+
+#[test]
+fn filters_and_sorts_tasks() {
+    let (core, _dir) = core();
+    add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-01".into()),
+            ..new_task("Late")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            priority: Priority::Low,
+            ..new_task("Now")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-20".into()),
+            priority: Priority::High,
+            ..new_task("Later")
+        },
+    );
+    add_task(&core, new_task("Someday"));
+    let done = add_task(&core, new_task("Finished"));
+    core.toggle_task(done, DAY.into()).unwrap();
+
+    use TaskFilter::*;
+    use TaskSort::{Alphabetical, Due, Newest};
+    assert_eq!(
+        task_titles(&core, All, Due),
+        ["Late", "Now", "Later", "Someday", "Finished"]
+    );
+    assert_eq!(task_titles(&core, Today, Due), ["Now"]);
+    assert_eq!(task_titles(&core, Overdue, Due), ["Late"]);
+    assert_eq!(task_titles(&core, TaskFilter::Done, Due), ["Finished"]);
+    assert_eq!(
+        task_titles(&core, All, TaskSort::Priority),
+        ["Later", "Late", "Someday", "Now", "Finished"]
+    );
+    assert_eq!(
+        task_titles(&core, All, Newest),
+        ["Someday", "Later", "Now", "Late", "Finished"]
+    );
+    assert_eq!(
+        task_titles(&core, All, Alphabetical),
+        ["Late", "Later", "Now", "Someday", "Finished"]
+    );
+
+    let late = core.list_tasks(Overdue, Due, DAY.into()).unwrap();
+    assert!(late[0].overdue);
+}
+
+#[test]
+fn finishing_a_repeating_task_creates_the_next_and_undo_removes_it() {
+    let (core, _dir) = core();
+    let id = add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            repeat: Some(Repeat::Weekly),
+            items: vec!["Step".into()],
+            ..new_task("Weekly review")
+        },
+    );
+    let step = core.list_task_items(id.clone()).unwrap().remove(0);
+    core.toggle_task_item(step.id).unwrap();
+
+    let result = core.toggle_task(id.clone(), DAY.into()).unwrap();
+    assert!(result.done);
+    assert_eq!(result.next_due.as_deref(), Some("2026-11-12"));
+    let open = core
+        .list_tasks(TaskFilter::All, TaskSort::Due, DAY.into())
+        .unwrap();
+    assert_eq!(open.len(), 2);
+    let next = open.iter().find(|t| !t.done).unwrap();
+    assert_eq!(next.due.as_deref(), Some("2026-11-12"));
+    // The copy starts with an unticked checklist.
+    assert_eq!((next.items_done, next.items_total), (0, 1));
+
+    // Finishing it twice must not create a second copy.
+    core.toggle_task(id.clone(), DAY.into()).unwrap();
+    let again = core.toggle_task(id, DAY.into()).unwrap();
+    assert_eq!(again.next_due.as_deref(), Some("2026-11-12"));
+    assert_eq!(
+        core.list_tasks(TaskFilter::All, TaskSort::Due, DAY.into())
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn undoing_a_repeating_task_keeps_a_copy_that_was_already_finished() {
+    let (core, _dir) = core();
+    let id = add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            repeat: Some(Repeat::Daily),
+            ..new_task("Water plants")
+        },
+    );
+    core.toggle_task(id.clone(), DAY.into()).unwrap();
+    let next = core
+        .list_tasks(TaskFilter::All, TaskSort::Due, DAY.into())
+        .unwrap()
+        .into_iter()
+        .find(|t| !t.done)
+        .unwrap();
+    core.toggle_task(next.id.clone(), "2026-11-06".into())
+        .unwrap();
+    core.toggle_task(id.clone(), DAY.into()).unwrap();
+    assert!(core.get_task(next.id, DAY.into()).unwrap().done);
+}
+
+#[test]
+fn deleted_tasks_go_to_the_trash_and_can_be_restored_or_purged() {
+    let (core, _dir) = core();
+    let keep = add_task(&core, new_task("Keep"));
+    let gone = add_task(&core, new_task("Gone"));
+    core.delete_task(gone.clone(), DAY.into()).unwrap();
+    assert_eq!(task_titles(&core, TaskFilter::All, TaskSort::Due), ["Keep"]);
+    assert_eq!(core.list_trash(DAY.into()).unwrap().len(), 1);
+    assert!(
+        core.update_task(
+            gone.clone(),
+            TaskEdit {
+                title: "x".into(),
+                notes: String::new(),
+                due: None,
+                priority: Priority::Med,
+                tag: None,
+                repeat: None,
+            }
+        )
+        .is_err()
+    );
+
+    core.restore_task(gone.clone()).unwrap();
+    assert_eq!(task_titles(&core, TaskFilter::All, TaskSort::Due).len(), 2);
+    assert!(core.restore_task(gone.clone()).is_err());
+
+    core.delete_task(gone, "2026-10-01".into()).unwrap();
+    // 29 days later it is still there; at 30 days it goes.
+    assert_eq!(core.purge_trash("2026-10-30".into()).unwrap(), 0);
+    assert_eq!(core.purge_trash("2026-10-31".into()).unwrap(), 1);
+    assert!(core.list_trash(DAY.into()).unwrap().is_empty());
+    assert_eq!(core.get_task(keep, DAY.into()).unwrap().title, "Keep");
+}
+
+#[test]
+fn due_tasks_lists_open_tasks_due_today_or_earlier() {
+    let (core, _dir) = core();
+    add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-06".into()),
+            ..new_task("Tomorrow")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            priority: Priority::Low,
+            ..new_task("Today low")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            priority: Priority::High,
+            ..new_task("Today high")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-01".into()),
+            ..new_task("Overdue")
+        },
+    );
+    add_task(&core, new_task("No date"));
+    let finished = add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            ..new_task("Done")
+        },
+    );
+    core.toggle_task(finished, DAY.into()).unwrap();
+    let titles: Vec<_> = core
+        .due_tasks(DAY.into())
+        .unwrap()
+        .into_iter()
+        .map(|t| t.title)
+        .collect();
+    assert_eq!(titles, ["Overdue", "Today high", "Today low"]);
+}
+
+#[test]
+fn tasks_never_earn_rewards_or_change_goal_stats() {
+    let (core, _dir) = core();
+    core.add_treat("Ice cream".into()).unwrap();
+    let before = core.stats_overview(DAY.into()).unwrap();
+    for n in 0..12 {
+        let id = add_task(&core, new_task(&format!("Task {n}")));
+        core.toggle_task(id, DAY.into()).unwrap();
+    }
+    assert!(core.list_draws().unwrap().is_empty());
+    assert_eq!(core.stats_overview(DAY.into()).unwrap(), before);
+    assert!(titles(&core, DAY).is_empty());
+}
+
+#[test]
+fn tasks_survive_a_backup_and_restore() {
+    let (core, dir) = core();
+    let id = add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            items: vec!["One".into()],
+            ..new_task("Keep me")
+        },
+    );
+    let backup = dir
+        .path()
+        .join("backup.sqlite")
+        .to_str()
+        .unwrap()
+        .to_string();
+    core.export_backup(backup.clone()).unwrap();
+    core.delete_task(id.clone(), DAY.into()).unwrap();
+    core.purge_trash("2027-01-01".into()).unwrap();
+    assert!(core.get_task(id.clone(), DAY.into()).is_err());
+
+    core.restore_backup(backup).unwrap();
+    let task = core.get_task(id.clone(), DAY.into()).unwrap();
+    assert_eq!(task.title, "Keep me");
+    assert_eq!(core.list_task_items(id).unwrap().len(), 1);
+}
+
+#[test]
+fn upgrading_from_schema_5_keeps_goals_and_adds_tasks() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("old.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 5).unwrap();
+        conn.execute(
+            "INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old goal', 'yes_no', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    assert_eq!(core.list_goals(false).unwrap()[0].title, "Old goal");
+    let id = add_task(&core, new_task("New task"));
+    assert_eq!(core.get_task(id, DAY.into()).unwrap().title, "New task");
+}
+
+#[test]
+fn a_backup_with_an_invalid_task_date_is_rejected() {
+    let (core, dir) = core();
+    add_task(&core, new_task("Fine"));
+    let backup = dir.path().join("bad.sqlite").to_str().unwrap().to_string();
+    core.export_backup(backup.clone()).unwrap();
+    {
+        let conn = rusqlite::Connection::open(&backup).unwrap();
+        conn.execute("UPDATE tasks SET due = '2026-13-45'", [])
+            .unwrap();
+    }
+    assert!(matches!(
+        core.restore_backup(backup),
+        Err(CoreError::InvalidBackup { .. })
+    ));
+    assert_eq!(task_titles(&core, TaskFilter::All, TaskSort::Due), ["Fine"]);
+}

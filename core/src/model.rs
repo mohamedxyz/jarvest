@@ -253,3 +253,157 @@ pub struct Reminder {
     pub title: String,
     pub minutes: u16,
 }
+
+// Tasks
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum Priority {
+    Low,
+    Med,
+    High,
+}
+
+impl Priority {
+    pub fn as_sql(self) -> &'static str {
+        match self {
+            Priority::Low => "low",
+            Priority::Med => "med",
+            Priority::High => "high",
+        }
+    }
+}
+
+impl FromSql for Priority {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value.as_str()? {
+            "low" => Ok(Priority::Low),
+            "med" => Ok(Priority::Med),
+            "high" => Ok(Priority::High),
+            other => Err(FromSqlError::Other(
+                format!("unknown priority {other}").into(),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum Repeat {
+    Daily,
+    Weekdays,
+    Weekly,
+    Monthly,
+}
+
+impl Repeat {
+    pub fn as_sql(self) -> &'static str {
+        match self {
+            Repeat::Daily => "daily",
+            Repeat::Weekdays => "weekdays",
+            Repeat::Weekly => "weekly",
+            Repeat::Monthly => "monthly",
+        }
+    }
+}
+
+impl FromSql for Repeat {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value.as_str()? {
+            "daily" => Ok(Repeat::Daily),
+            "weekdays" => Ok(Repeat::Weekdays),
+            "weekly" => Ok(Repeat::Weekly),
+            "monthly" => Ok(Repeat::Monthly),
+            other => Err(FromSqlError::Other(
+                format!("unknown repeat {other}").into(),
+            )),
+        }
+    }
+}
+
+/// Which tasks `list_tasks` returns. Done tasks always come last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum TaskFilter {
+    /// Open and done tasks.
+    All,
+    /// Open tasks due today.
+    Today,
+    /// Open tasks due before today.
+    Overdue,
+    /// Finished tasks only.
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum TaskSort {
+    /// Soonest due date first. Tasks with no date come last.
+    Due,
+    /// High priority first, then soonest due.
+    Priority,
+    /// Most recently created first.
+    Newest,
+    /// A to Z by title.
+    Alphabetical,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Task {
+    pub id: String,
+    pub title: String,
+    pub notes: String,
+    pub due: Option<String>,
+    pub priority: Priority,
+    pub tag: Option<String>,
+    pub repeat: Option<Repeat>,
+    pub created_date: String,
+    pub done_date: Option<String>,
+    pub done: bool,
+    /// Not done, and due before the `today` that was passed in.
+    pub overdue: bool,
+    pub items_done: u32,
+    pub items_total: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct NewTask {
+    pub title: String,
+    pub notes: String,
+    pub due: Option<String>,
+    pub priority: Priority,
+    pub tag: Option<String>,
+    pub repeat: Option<Repeat>,
+    /// Checklist lines, in order.
+    pub items: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TaskEdit {
+    pub title: String,
+    pub notes: String,
+    pub due: Option<String>,
+    pub priority: Priority,
+    pub tag: Option<String>,
+    pub repeat: Option<Repeat>,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TaskItem {
+    pub id: String,
+    pub task_id: String,
+    pub text: String,
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TaskToggleResult {
+    pub done: bool,
+    /// Set when finishing a repeating task created the next copy.
+    pub next_due: Option<String>,
+}
+
+/// What `parse_quick` found in a line such as `Essay tomorrow !high #uni`.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct ParsedTask {
+    pub title: String,
+    pub due: Option<String>,
+    pub priority: Option<Priority>,
+    pub tag: Option<String>,
+}

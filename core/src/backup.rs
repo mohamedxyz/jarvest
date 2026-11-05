@@ -105,6 +105,23 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
     if bad_dates > 0 {
         return Err(bad("it contains invalid dates"));
     }
+    // Tasks arrived in schema version 6, so older files have no such table.
+    if version >= 6 {
+        let bad_task_dates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM tasks
+                 WHERE date(created_date) IS NOT created_date
+                    OR (due IS NOT NULL AND date(due) IS NOT due)
+                    OR (done_date IS NOT NULL AND date(done_date) IS NOT done_date)
+                    OR (deleted_date IS NOT NULL AND date(deleted_date) IS NOT deleted_date)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_task_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

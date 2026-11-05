@@ -13,7 +13,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.LocalFireDepartment
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
@@ -33,20 +35,37 @@ import dev.goaltracker.core.GoalKind
 import dev.goaltracker.core.TodayItem
 
 @Composable
-fun TodayScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
+fun TodayScreen(
+    controller: AppController,
+    onOpenGoal: (String) -> Unit,
+    onEditGoal: (String) -> Unit,
+    onEditTask: (String) -> Unit,
+    onOpenTasks: () -> Unit,
+) {
     val items = remember(controller.version, controller.today) {
         controller.read(emptyList()) { today(controller.today) }
+    }
+    val dueTasks = remember(controller.version, controller.today) {
+        controller.read(emptyList()) { dueTasks(controller.today) }
     }
     val hasGoals = remember(controller.version) {
         controller.read(emptyList()) { listGoals(false) }.isNotEmpty()
     }
     var logging by remember { mutableStateOf<TodayItem?>(null) }
+    var openedGoal by remember { mutableStateOf<TodayItem?>(null) }
+    var openedTask by remember { mutableStateOf<String?>(null) }
 
-    if (items.isEmpty()) {
+    if (items.isEmpty() && dueTasks.isEmpty()) {
         if (hasGoals) {
-            EmptyState("You're all caught up", "Nothing else is due today.")
+            EmptyState("You're all caught up", "No goals or tasks are due today.")
         } else {
-            EmptyState("Add your first goal", "Tap + to create a goal or habit to track.")
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                EmptyState(
+                    "Add your first goal",
+                    "A goal is something you track over time, such as a habit or a number to reach. For one-off to-dos, use the Tasks tab.",
+                )
+                Button(onClick = onOpenTasks) { Text("Go to Tasks") }
+            }
         }
     } else {
         LazyColumn(
@@ -54,10 +73,43 @@ fun TodayScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            item {
+                TipCard(controller, "today_cards", "Tap a card to see its details. Tick the box to log it for today.")
+            }
+            if (dueTasks.isNotEmpty()) {
+                item { SectionTitle("Tasks due") }
+                items(dueTasks, key = { "task-${it.id}" }) { task ->
+                    Card(Modifier.fillMaxWidth().clickable { openedTask = task.id }) {
+                        Row(
+                            Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(task.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                task.due?.let {
+                                    Text(
+                                        dueLabel(it, controller.today),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (task.overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Checkbox(checked = false, onCheckedChange = {
+                                val result = controller.change { toggleTask(task.id, controller.today) }
+                                result?.nextDue?.let { controller.message = "Next \"${task.title}\" is due ${formatDate(it)}." }
+                            })
+                        }
+                    }
+                }
+                item { TextButton(onClick = onOpenTasks) { Text("See all tasks") } }
+            }
+            if (items.isNotEmpty()) {
+                item { SectionTitle("Goals") }
+            }
             items(items, key = { it.goalId }) { item ->
                 TodayCard(
                     item,
-                    onOpen = { onOpenGoal(item.goalId) },
+                    onOpen = { openedGoal = item },
                     onCheck = { controller.log { toggleCheckIn(item.goalId, controller.today) } },
                     onLog = { logging = item },
                     count = controller.counters[item.goalId] ?: 0,
@@ -76,6 +128,26 @@ fun TodayScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
             },
             onDismiss = { logging = null },
         )
+    }
+    openedTask?.let { id ->
+        TaskSheet(controller, id, onEdit = { openedTask = null; onEditTask(id) }, onDismiss = { openedTask = null })
+    }
+    openedGoal?.let { item ->
+        InfoSheet(item.title, onDismiss = { openedGoal = null }) {
+            progressLine(item)?.let { InfoRow("Progress", it) }
+            item.period?.let { period ->
+                InfoRow("Streak", if (item.currentStreak > 0u) "${item.currentStreak} ${period.noun()}s in a row" else "None yet")
+            }
+            item.deadline?.let { InfoRow("Deadline", formatDate(it)) }
+            item.nextMilestone?.let {
+                InfoRow("Milestones", "${item.milestonesDone} of ${item.milestonesTotal} done")
+                InfoRow("Next", it)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { val id = item.goalId; openedGoal = null; onOpenGoal(id) }) { Text("Full details") }
+                OutlinedButton(onClick = { val id = item.goalId; openedGoal = null; onEditGoal(id) }) { Text("Edit") }
+            }
+        }
     }
 }
 
@@ -106,30 +178,16 @@ private fun TodayCard(
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 progressFraction(item)?.let { LinearProgressIndicator({ it }, Modifier.fillMaxWidth()) }
-                item.nextMilestone?.let {
-                    Text("${item.milestonesDone} of ${item.milestonesTotal} done · Next: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                val period = item.period
-                if (item.currentStreak > 0u && period != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Outlined.LocalFireDepartment, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                        Text(
-                            "${item.currentStreak}-${period.noun()} streak",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
                 if (item.kind == GoalKind.NUMERIC) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CounterControl(count, onCount, onSubmit)
                         TextButton(onClick = onLog) { Text("Exact") }
+                        InfoHint("Counter", "Use - and + to count as you go, then press Submit to log the count as one entry. Exact lets you type an amount, such as 2.5.")
                     }
                 }
                 val deadline = item.deadline
                 if (item.overdue && deadline != null) {
                     OverdueLabel(deadline)
-                } else if (deadline != null) {
-                    Text("Due ${formatDate(deadline)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (item.kind != GoalKind.NUMERIC) {

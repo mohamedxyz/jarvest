@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Today
@@ -62,6 +63,7 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 
 private val tabs = listOf(
     Tab("today", "Today", Icons.Filled.Today),
+    Tab("tasks", "Tasks", Icons.Filled.Checklist),
     Tab("goals", "Goals", Icons.Filled.Flag),
     Tab("stats", "Stats", Icons.Filled.BarChart),
     Tab("treats", "Treats", Icons.Filled.CardGiftcard),
@@ -108,6 +110,13 @@ private fun AppRoot(controller: AppController) {
         controller.message?.let {
             snackbar.showSnackbar(it)
             controller.message = null
+        }
+    }
+    LaunchedEffect(controller.undo) {
+        controller.undo?.let { offer ->
+            controller.undo = null
+            val result = snackbar.showSnackbar(offer.text, actionLabel = "Undo", duration = SnackbarDuration.Long)
+            if (result == SnackbarResult.ActionPerformed) offer.action()
         }
     }
     LaunchedEffect(controller.showJarPrompt) {
@@ -158,13 +167,25 @@ private fun AppRoot(controller: AppController) {
         floatingActionButton = {
             if (route == "today" || route == "goals") {
                 FloatingActionButton(onClick = { push("new") }) { Icon(Icons.Filled.Add, "Add goal") }
+            } else if (route == "tasks") {
+                FloatingActionButton(onClick = { push("newtask") }) { Icon(Icons.Filled.Add, "Add task with details") }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding()) {
             when {
-                route == "today" -> TodayScreen(controller, onOpenGoal = { push("goal/$it") })
+                route == "today" -> TodayScreen(
+                    controller,
+                    onOpenGoal = { push("goal/$it") },
+                    onEditGoal = { push("edit/$it") },
+                    onEditTask = { push("edittask/$it") },
+                    onOpenTasks = { selectTab("tasks") },
+                )
+                route == "tasks" -> TasksScreen(controller, onEdit = { push("edittask/$it") })
+                route == "newtask" -> TaskEditorScreen(controller, taskId = null, onDone = pop)
+                route.startsWith("edittask/") ->
+                    TaskEditorScreen(controller, taskId = route.removePrefix("edittask/"), onDone = pop)
                 route == "goals" -> GoalsScreen(controller, onOpenGoal = { push("goal/$it") })
                 route == "stats" -> StatsScreen(controller, onOpenGoal = { push("goal/$it") })
                 route == "treats" -> TreatsScreen(controller)
@@ -188,6 +209,8 @@ private fun AppRoot(controller: AppController) {
 private fun titleFor(route: String): String = when {
     route == "settings" -> "Settings"
     route == "new" -> "New goal"
+    route == "newtask" -> "New task"
+    route.startsWith("edittask/") -> "Edit task"
     route.startsWith("edit/") -> "Edit goal"
     route.startsWith("goal/") -> "Goal"
     else -> tabs.first { it.route == route }.label

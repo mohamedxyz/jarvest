@@ -11,6 +11,11 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
 - **Three goal types:** habits (such as 3 times a week, or only on chosen weekdays),
   numeric goals (such as 5 km a day or 300 pages in total), and one-off yes/no goals
 - **Missed a day?** Log past days, skip a day, or pause a goal without losing the streak
+- **Tasks:** a separate Tasks tab for one-off to-dos with due dates, priority, a tag, notes,
+  a checklist, and repeating. Type `Essay tomorrow !high #uni` to fill in the date, priority,
+  and tag. Deleted tasks wait in the trash for 30 days, and tasks never affect rewards or stats
+- **Clearer screens:** tap a goal on Today for a details sheet, "?" buttons explain terms such as
+  skip and pause, and short tips appear once (Settings > Appearance > Show tips again)
 - **Organizing:** categories, deadlines, ordered milestones, and an archive
 - **Today screen and home screen widgets** for logging in one tap
 - **Stats:** heatmap, line charts, weekly and monthly summaries, best and worst weekdays,

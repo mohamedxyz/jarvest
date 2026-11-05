@@ -117,6 +117,11 @@ fun GoalDetailScreen(controller: AppController, goalId: String, onEdit: (String)
                         Modifier.weight(1f),
                     ) { Text(if (skippedToday) "Unskip today" else "Skip today") }
                     OutlinedButton(onClick = { pickingPause = true }, Modifier.weight(1f)) { Text("Pause days") }
+                    InfoHint(
+                        "Skip and pause",
+                        "Skip today excuses today only. Pause days excuses a range of days, such as a holiday. " +
+                            "A skipped or paused period never breaks your streak, and it is left out of your completion rate.",
+                    )
                 }
                 if (upcomingSkips > 0) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

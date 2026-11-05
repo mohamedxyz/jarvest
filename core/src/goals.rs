@@ -20,17 +20,17 @@ pub fn invalid(reason: impl Into<String>) -> CoreError {
     }
 }
 
-fn new_id() -> String {
+pub(crate) fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-fn clean_optional(value: Option<String>) -> Option<String> {
+pub(crate) fn clean_optional(value: Option<String>) -> Option<String> {
     value
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
 }
 
-fn clean_title(title: &str) -> Result<String, CoreError> {
+pub(crate) fn clean_title(title: &str) -> Result<String, CoreError> {
     let title = title.trim();
     if title.is_empty() {
         return Err(invalid("A title is required"));

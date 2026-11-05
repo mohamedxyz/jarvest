@@ -24,8 +24,8 @@ android {
         applicationId = "dev.goaltracker.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
 
         ndk {
             // Only the CPU types the Rust core is built for.

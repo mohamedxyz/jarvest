@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,6 +94,10 @@ fun SettingsScreen(controller: AppController) {
                     FilterChip(controller.accent == choice, { controller.chooseAccent(choice) }, label = { Text(choice.label) })
                 }
             }
+            TextButton(onClick = {
+                controller.resetTips()
+                controller.message = "Tips will show again."
+            }) { Text("Show tips again") }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

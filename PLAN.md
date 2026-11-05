@@ -253,3 +253,33 @@ prompt; daily summary fired and set tomorrow's alarm; goal reminder time picker;
 come back after a boot broadcast; Stats, Goals, and Treats open without crashes.
 Not checked: the widget's quick-entry dialog, a denied notification permission, and a
 real reboot.
+
+# V0.4.0 plan
+
+## Tasks
+
+- Tasks are separate from goals: own tables (`tasks`, `task_items`, migration 006), own
+  module (`core/src/tasks.rs`), and no rewards, streaks, badges, or stats.
+- A task has a title, notes, due date, priority (low, medium, high), one tag, an optional
+  repeat (daily, weekdays, weekly, monthly), and a checklist.
+- Finishing a repeating task creates the next copy, due after the old due date and never in
+  the past. Unticking it removes that copy unless it was already finished.
+- `parse_quick(raw, today)` reads `today`, `tomorrow`, `in N days/weeks`, `next week`,
+  weekday names, `YYYY-MM-DD`, `5 nov`, `nov 5`, a final `d/m`, `!high|med|low`, and `#tag`.
+  English only.
+- Deleting moves a task to the trash. `purge_trash` removes tasks deleted 30 or more days ago.
+- The Tasks tab has filters (All, Today, Overdue, Done) and sorting (Due, Priority, Newest, A to Z).
+  Today shows a "Tasks due" section above the goals.
+
+## Clearer screens
+
+- Reusable `TipCard`, `InfoSheet`, and `InfoHint` in `Guidance.kt`. Dismissed tips are stored in
+  the `ui` preferences, not in the database, so backups don't carry them.
+- Tapping a goal on Today opens a details sheet. The Today card now shows only the title,
+  progress, and controls.
+- "?" buttons explain goal types, the counter, and skip versus pause.
+
+## Not done yet
+
+Task calendar and focus timer, tasks in the widget, a details sheet on the Goals list,
+Arabic quick add, and hints on the Treats screen.

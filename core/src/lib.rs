@@ -10,9 +10,11 @@ mod db;
 mod export;
 mod goals;
 mod model;
+mod quickadd;
 mod reminders;
 mod rewards;
 mod stats;
+mod tasks;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -99,6 +101,96 @@ impl GoalCore {
 
     pub fn today(&self, today: String) -> Result<Vec<TodayItem>, CoreError> {
         goals::today_items(&self.conn(), &today)
+    }
+
+    // Tasks
+
+    pub fn create_task(&self, task: NewTask, today: String) -> Result<String, CoreError> {
+        tasks::create_task(&mut self.conn(), task, &today)
+    }
+
+    /// Creates a task from one line such as `Essay tomorrow !high #uni`.
+    pub fn quick_add_task(&self, raw: String, today: String) -> Result<String, CoreError> {
+        let parsed = quickadd::parse_quick(&raw, &today)?;
+        let task = NewTask {
+            title: parsed.title,
+            notes: String::new(),
+            due: parsed.due,
+            priority: parsed.priority.unwrap_or(Priority::Med),
+            tag: parsed.tag,
+            repeat: None,
+            items: vec![],
+        };
+        tasks::create_task(&mut self.conn(), task, &today)
+    }
+
+    /// Shows what a quick-add line would become, without saving anything.
+    pub fn parse_quick(&self, raw: String, today: String) -> Result<ParsedTask, CoreError> {
+        quickadd::parse_quick(&raw, &today)
+    }
+
+    pub fn update_task(&self, task_id: String, edit: TaskEdit) -> Result<(), CoreError> {
+        tasks::update_task(&self.conn(), &task_id, edit)
+    }
+
+    pub fn get_task(&self, task_id: String, today: String) -> Result<Task, CoreError> {
+        tasks::get_task(&self.conn(), &task_id, &today)
+    }
+
+    pub fn toggle_task(
+        &self,
+        task_id: String,
+        today: String,
+    ) -> Result<TaskToggleResult, CoreError> {
+        tasks::toggle_task(&mut self.conn(), &task_id, &today)
+    }
+
+    /// Moves a task to the trash. Use `restore_task` to undo.
+    pub fn delete_task(&self, task_id: String, today: String) -> Result<(), CoreError> {
+        tasks::delete_task(&self.conn(), &task_id, &today)
+    }
+
+    pub fn restore_task(&self, task_id: String) -> Result<(), CoreError> {
+        tasks::restore_task(&self.conn(), &task_id)
+    }
+
+    pub fn list_tasks(
+        &self,
+        filter: TaskFilter,
+        sort: TaskSort,
+        today: String,
+    ) -> Result<Vec<Task>, CoreError> {
+        tasks::list_tasks(&self.conn(), filter, sort, &today)
+    }
+
+    pub fn list_trash(&self, today: String) -> Result<Vec<Task>, CoreError> {
+        tasks::list_trash(&self.conn(), &today)
+    }
+
+    /// Permanently removes tasks that were deleted 30 or more days ago.
+    pub fn purge_trash(&self, today: String) -> Result<u32, CoreError> {
+        tasks::purge_trash(&self.conn(), &today)
+    }
+
+    /// Open tasks due today or earlier, for the Today screen.
+    pub fn due_tasks(&self, today: String) -> Result<Vec<Task>, CoreError> {
+        tasks::due_tasks(&self.conn(), &today)
+    }
+
+    pub fn list_task_items(&self, task_id: String) -> Result<Vec<TaskItem>, CoreError> {
+        tasks::list_items(&self.conn(), &task_id)
+    }
+
+    pub fn add_task_item(&self, task_id: String, text: String) -> Result<String, CoreError> {
+        tasks::add_item(&self.conn(), &task_id, &text)
+    }
+
+    pub fn toggle_task_item(&self, item_id: String) -> Result<(), CoreError> {
+        tasks::toggle_item(&self.conn(), &item_id)
+    }
+
+    pub fn delete_task_item(&self, item_id: String) -> Result<(), CoreError> {
+        tasks::delete_item(&self.conn(), &item_id)
     }
 
     // Logging

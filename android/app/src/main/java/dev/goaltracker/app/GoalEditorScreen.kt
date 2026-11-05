@@ -118,7 +118,15 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                     }, label = { Text(template.title) })
                 }
             }
-            SectionTitle("Type")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle("Type")
+                InfoHint(
+                    "Goal types",
+                    "Habit: something you check in on, up to once a day, with a target per day, week or month.\n\n" +
+                        "Numeric: add amounts toward a target, such as 5 km a day or 300 pages in total.\n\n" +
+                        "Yes/no: a one-off thing you do once.",
+                )
+            }
             val kinds = listOf(GoalKind.HABIT to "Habit", GoalKind.NUMERIC to "Numeric", GoalKind.YES_NO to "Yes/no")
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 kinds.forEachIndexed { index, (value, label) ->
