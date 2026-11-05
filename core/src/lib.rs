@@ -83,8 +83,32 @@ impl GoalCore {
         goals::set_archived(&self.conn(), &goal_id, archived)
     }
 
+    /// Deletes a goal for good ("Delete forever"). For a normal delete use `trash_goal`.
     pub fn delete_goal(&self, goal_id: String) -> Result<(), CoreError> {
         goals::delete_goal(&self.conn(), &goal_id)
+    }
+
+    /// Moves a goal to the trash for 30 days. `restore_goal` undoes it.
+    pub fn trash_goal(&self, goal_id: String, today: String) -> Result<(), CoreError> {
+        goals::trash_goal(&self.conn(), &goal_id, &today)
+    }
+
+    pub fn restore_goal(&self, goal_id: String) -> Result<(), CoreError> {
+        goals::restore_goal(&self.conn(), &goal_id)
+    }
+
+    pub fn list_goal_trash(&self, today: String) -> Result<Vec<TrashedGoal>, CoreError> {
+        goals::list_goal_trash(&self.conn(), &today)
+    }
+
+    /// Permanently removes goals that were trashed 30 or more days ago.
+    pub fn purge_goal_trash(&self, today: String) -> Result<u32, CoreError> {
+        goals::purge_goal_trash(&self.conn(), &today)
+    }
+
+    /// Permanently removes every goal in the trash.
+    pub fn empty_goal_trash(&self) -> Result<u32, CoreError> {
+        goals::empty_goal_trash(&self.conn())
     }
 
     pub fn get_goal(&self, goal_id: String) -> Result<Goal, CoreError> {
@@ -426,6 +450,21 @@ impl GoalCore {
 
     pub fn set_daily_reminder(&self, minutes: Option<u16>) -> Result<(), CoreError> {
         reminders::set_daily_reminder(&self.conn(), minutes)
+    }
+
+    /// The optional evening check-in time, in minutes after midnight.
+    pub fn evening_reminder(&self) -> Result<Option<u16>, CoreError> {
+        reminders::evening_reminder(&self.conn())
+    }
+
+    pub fn set_evening_reminder(&self, minutes: Option<u16>) -> Result<(), CoreError> {
+        reminders::set_evening_reminder(&self.conn(), minutes)
+    }
+
+    /// Text for the evening check-in ("2 goals and 1 task left today"), or `None` when
+    /// nothing is left and the notification should stay silent.
+    pub fn evening_text(&self, today: String) -> Result<Option<String>, CoreError> {
+        reminders::evening_text(&self.conn(), &today)
     }
 
     /// What a reminder should say right now, or `None` if it should stay silent.

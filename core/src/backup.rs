@@ -122,6 +122,20 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // Goal trash arrived in a later schema version, so older files have no such column.
+    if version >= db::goal_trash_version() {
+        let bad_goal_dates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM goals
+                 WHERE deleted_date IS NOT NULL AND date(deleted_date) IS NOT deleted_date",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_goal_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

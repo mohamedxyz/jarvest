@@ -202,6 +202,9 @@ pub fn weekday_stats(conn: &Connection, today: &str) -> Result<Vec<WeekdayStat>,
     Ok(stats)
 }
 
+/// How many missed tasks a report lists by name.
+const MISSED_LIST_LIMIT: usize = 20;
+
 /// Activity in the week or month that is `back` periods before the current one.
 pub fn recap(
     conn: &Connection,
@@ -223,16 +226,42 @@ pub fn recap(
     let (entries, active_days, goals_logged) = conn.query_row(
         "SELECT COUNT(*), COUNT(DISTINCT e.local_date), COUNT(DISTINCT e.goal_id)
          FROM entries e JOIN goals g ON g.id = e.goal_id
-         WHERE g.archived = 0 AND e.local_date BETWEEN ?1 AND ?2",
+         WHERE g.archived = 0 AND g.deleted_date IS NULL AND e.local_date BETWEEN ?1 AND ?2",
         params![from, to],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     )?;
     let targets_met = conn.query_row(
         "SELECT COUNT(*) FROM target_completions t JOIN goals g ON g.id = t.goal_id
-         WHERE g.archived = 0 AND t.local_date BETWEEN ?1 AND ?2",
+         WHERE g.archived = 0 AND g.deleted_date IS NULL AND t.local_date BETWEEN ?1 AND ?2",
         params![from, to],
         |r| r.get(0),
     )?;
+    // Tasks never count in goal stats, but the report lists them separately. Mirror
+    // tasks of milestones are skipped, and so is anything in the trash.
+    let tasks_done = conn.query_row(
+        "SELECT COUNT(*) FROM tasks t
+         WHERE t.deleted_date IS NULL AND t.milestone_id IS NULL
+           AND t.done_date BETWEEN ?1 AND ?2",
+        params![from, to],
+        |r| r.get(0),
+    )?;
+    let mut stmt = conn.prepare(
+        "SELECT t.id, t.title, t.due FROM tasks t
+         WHERE t.deleted_date IS NULL AND t.milestone_id IS NULL AND t.done_date IS NULL
+           AND t.due BETWEEN ?1 AND ?2 AND t.due < ?3
+         ORDER BY t.due, t.rowid",
+    )?;
+    let all_missed: Vec<MissedTask> = stmt
+        .query_map(params![from, to, today], |r| {
+            Ok(MissedTask {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                due: r.get(2)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    let tasks_missed = all_missed.len() as u32;
+    let missed_tasks = all_missed.into_iter().take(MISSED_LIST_LIMIT).collect();
     Ok(Recap {
         start: from,
         end: to,
@@ -240,6 +269,9 @@ pub fn recap(
         active_days,
         goals_logged,
         targets_met,
+        tasks_done,
+        tasks_missed,
+        missed_tasks,
     })
 }
 

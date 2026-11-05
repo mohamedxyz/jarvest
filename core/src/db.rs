@@ -17,9 +17,20 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/006_tasks.sql"),
     include_str!("sql/007_task_goal.sql"),
     include_str!("sql/008_milestone_tasks.sql"),
+    include_str!("sql/012_goal_trash.sql"),
 ];
 
 pub const SCHEMA_VERSION: i32 = MIGRATIONS.len() as i32;
+
+/// The schema version that added `goals.deleted_date`. It is looked up by the file's
+/// text, so it stays right even when other migrations are numbered before it.
+pub fn goal_trash_version() -> i32 {
+    let ours = include_str!("sql/012_goal_trash.sql");
+    MIGRATIONS
+        .iter()
+        .position(|sql| *sql == ours)
+        .map_or(SCHEMA_VERSION, |index| index as i32 + 1)
+}
 
 pub fn open(path: &str) -> Result<Connection, CoreError> {
     let mut conn = Connection::open(path)?;

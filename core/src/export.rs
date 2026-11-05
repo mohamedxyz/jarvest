@@ -26,6 +26,7 @@ pub fn export_csv(conn: &Connection, dest: &str) -> Result<(), CoreError> {
     let mut stmt = conn.prepare(
         "SELECT e.local_date, g.title, COALESCE(g.category, ''), g.kind, e.amount, COALESCE(g.unit, '')
          FROM entries e JOIN goals g ON g.id = e.goal_id
+         WHERE g.deleted_date IS NULL
          ORDER BY e.local_date, e.seq",
     )?;
     let rows = stmt.query_map([], |r| {

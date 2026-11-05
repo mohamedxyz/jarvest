@@ -2507,3 +2507,366 @@ fn the_daily_summary_counts_tasks_and_calls_out_late_ones() {
         None
     );
 }
+
+// Goal trash
+
+/// Ticks new goals until one wins a treat (the pity rule guarantees one within 10).
+fn goal_that_won_a_treat(core: &GoalCore) -> String {
+    core.add_treat("Ice cream".into()).unwrap();
+    for n in 0..12 {
+        let id = yes_no(core, &format!("Lucky {n}"));
+        if tick(core, &id, DAY).drew == 1 {
+            return id;
+        }
+    }
+    panic!("no treat was won");
+}
+
+fn trash(core: &GoalCore, id: &str) {
+    core.trash_goal(id.into(), DAY.into()).unwrap();
+}
+
+#[test]
+fn a_trashed_goal_leaves_today_the_goal_list_and_categories() {
+    let (core, _dir) = core();
+    let goal = NewGoal {
+        category: Some("Health".into()),
+        ..base("Run", GoalKind::YesNo)
+    };
+    let id = core.create_goal(goal, DAY.into()).unwrap();
+    yes_no(&core, "Read");
+    trash(&core, &id);
+    assert_eq!(titles(&core, DAY), vec!["Read"]);
+    let listed: Vec<String> = core
+        .list_goals(false)
+        .unwrap()
+        .into_iter()
+        .map(|g| g.title)
+        .collect();
+    assert_eq!(listed, vec!["Read"]);
+    assert!(core.list_goals(true).unwrap().is_empty());
+    assert!(core.categories().unwrap().is_empty());
+    // It cannot be logged while it is in the trash.
+    assert!(core.toggle_check_in(id.clone(), DAY.into()).is_err());
+    core.restore_goal(id).unwrap();
+    assert_eq!(titles(&core, DAY), vec!["Run", "Read"]);
+    assert_eq!(core.categories().unwrap(), vec!["Health"]);
+}
+
+#[test]
+fn a_trashed_goal_is_left_out_of_stats_recap_and_the_heatmap() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Day, 1.0, "2026-11-01");
+    let other = habit(&core, "Walk", Period::Day, 1.0, "2026-11-01");
+    tick(&core, &id, "2026-11-03");
+    tick(&core, &other, "2026-11-03");
+    let before = core.stats_overview(DAY.into()).unwrap();
+    assert_eq!(before.goals.len(), 2);
+    trash(&core, &id);
+    let after = core.stats_overview(DAY.into()).unwrap();
+    assert_eq!(after.goals.len(), 1);
+    assert!(after.met < before.met);
+    let recap = core.recap(Period::Week, 0, DAY.into()).unwrap();
+    assert_eq!((recap.entries, recap.goals_logged), (1, 1));
+    let days = core
+        .heatmap(None, "2026-11-03".into(), "2026-11-03".into())
+        .unwrap();
+    assert_eq!(days[0].count, 1);
+    core.restore_goal(id).unwrap();
+    assert_eq!(core.stats_overview(DAY.into()).unwrap().goals.len(), 2);
+    assert_eq!(core.recap(Period::Week, 0, DAY.into()).unwrap().entries, 2);
+}
+
+#[test]
+fn a_trashed_goal_is_left_out_of_badges() {
+    let (core, _dir) = core();
+    let earned = |core: &GoalCore| {
+        core.badges(DAY.into())
+            .unwrap()
+            .into_iter()
+            .find(|b| b.id == "first_log")
+            .unwrap()
+            .earned
+    };
+    let id = yes_no(&core, "Read");
+    tick(&core, &id, DAY);
+    assert!(earned(&core));
+    trash(&core, &id);
+    assert!(!earned(&core));
+    core.restore_goal(id).unwrap();
+    assert!(earned(&core));
+}
+
+#[test]
+fn a_trashed_goal_is_left_out_of_treats_and_reward_progress_until_restored() {
+    let (core, _dir) = core();
+    let id = goal_that_won_a_treat(&core);
+    assert_eq!(core.list_draws().unwrap().len(), 1);
+    assert_eq!(core.unseen_draws().unwrap().len(), 1);
+    let progress_before = core.reward_progress().unwrap();
+    trash(&core, &id);
+    assert!(core.list_draws().unwrap().is_empty());
+    assert!(core.unseen_draws().unwrap().is_empty());
+    // History is preserved: restoring brings the draw and the countdown back.
+    core.restore_goal(id).unwrap();
+    assert_eq!(core.list_draws().unwrap().len(), 1);
+    assert_eq!(core.reward_progress().unwrap(), progress_before);
+}
+
+#[test]
+fn the_countdown_ignores_misses_from_trashed_goals() {
+    let (core, _dir) = core();
+    core.add_treat("Ice cream".into()).unwrap();
+    // Collect a few misses; a goal that won a treat is not trashed.
+    let mut missed = Vec::new();
+    for n in 0..3 {
+        let id = yes_no(&core, &format!("Goal {n}"));
+        if tick(&core, &id, DAY).no_treat == 1 {
+            missed.push(id);
+        }
+    }
+    let before = core.reward_progress().unwrap().misses_since_draw;
+    for id in &missed {
+        trash(&core, id);
+    }
+    let after = core.reward_progress().unwrap().misses_since_draw;
+    assert_eq!(after, before - missed.len() as u32);
+    for id in &missed {
+        core.restore_goal(id.clone()).unwrap();
+    }
+    assert_eq!(core.reward_progress().unwrap().misses_since_draw, before);
+}
+
+#[test]
+fn a_trashed_goal_is_left_out_of_reminders_and_the_csv_export() {
+    let (core, dir) = core();
+    let id = yes_no(&core, "Read");
+    core.set_goal_reminder(id.clone(), Some(600)).unwrap();
+    tick(&core, &id, DAY);
+    let other = yes_no(&core, "Walk");
+    core.set_goal_reminder(other.clone(), Some(700)).unwrap();
+    let csv = |name: &str| {
+        let path = dir.path().join(name).to_str().unwrap().to_string();
+        core.export_csv(path.clone()).unwrap();
+        std::fs::read_to_string(path).unwrap()
+    };
+    assert!(csv("a.csv").contains("Read"));
+
+    trash(&core, &id);
+    let reminders = core.list_reminders().unwrap();
+    assert_eq!(reminders.len(), 1);
+    assert_eq!(reminders[0].goal_id, other);
+    // A goal's own reminder stays silent, and the summary does not name it.
+    assert_eq!(
+        core.reminder_text(Some(id.clone()), DAY.into()).unwrap(),
+        None
+    );
+    let summary = core.reminder_text(None, DAY.into()).unwrap().unwrap();
+    assert!(summary.contains("Walk") && !summary.contains("Read"));
+    assert!(!csv("b.csv").contains("Read"));
+
+    // Restoring keeps the reminder time the goal had.
+    core.restore_goal(id).unwrap();
+    assert_eq!(core.list_reminders().unwrap().len(), 2);
+    assert!(csv("c.csv").contains("Read"));
+}
+
+#[test]
+fn a_trashed_goals_milestones_and_tasks_are_hidden_and_come_back_on_restore() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline", "Draft"]);
+    let linked = add_task(
+        &core,
+        NewTask {
+            goal_id: Some(goal.clone()),
+            ..new_task("Buy paper")
+        },
+    );
+    add_task(&core, new_task("Unrelated"));
+    let all = |core: &GoalCore| task_titles(core, TaskFilter::All, TaskSort::Alphabetical);
+    assert_eq!(all(&core).len(), 4);
+
+    trash(&core, &goal);
+    // Milestone tasks vanish; the ordinary linked task stays, unlinked.
+    assert_eq!(all(&core), vec!["Buy paper", "Unrelated"]);
+    let task = core.get_task(linked.clone(), DAY.into()).unwrap();
+    assert_eq!((task.goal_id, task.goal_title), (None, None));
+    assert!(core.list_trash(DAY.into()).unwrap().is_empty());
+    assert!(core.toggle_check_in(goal.clone(), DAY.into()).is_err());
+    // New tasks cannot be linked to it.
+    let nope = NewTask {
+        goal_id: Some(goal.clone()),
+        ..new_task("Nope")
+    };
+    assert!(core.create_task(nope, DAY.into()).is_err());
+
+    core.restore_goal(goal.clone()).unwrap();
+    assert_eq!(all(&core).len(), 4);
+    assert_eq!(core.list_milestones(goal.clone()).unwrap().len(), 2);
+    let task = core.get_task(linked, DAY.into()).unwrap();
+    assert_eq!(task.goal_id.as_deref(), Some(goal.as_str()));
+}
+
+#[test]
+fn trash_lists_days_left_and_purges_after_thirty_days() {
+    let (core, _dir) = core();
+    let old = yes_no(&core, "Old");
+    let fresh = yes_no(&core, "Fresh");
+    core.trash_goal(old.clone(), "2026-10-01".into()).unwrap();
+    core.trash_goal(fresh.clone(), "2026-10-20".into()).unwrap();
+    let list = core.list_goal_trash("2026-10-25".into()).unwrap();
+    assert_eq!(list.len(), 2);
+    assert_eq!((list[0].title.as_str(), list[0].days_left), ("Fresh", 25));
+    assert_eq!((list[1].title.as_str(), list[1].days_left), ("Old", 6));
+    // Trashing twice is an error, and so is restoring what is not in the trash.
+    assert!(core.trash_goal(old.clone(), DAY.into()).is_err());
+    assert!(core.restore_goal("nope".into()).is_err());
+
+    assert_eq!(core.purge_goal_trash("2026-10-30".into()).unwrap(), 0);
+    assert_eq!(core.purge_goal_trash("2026-10-31".into()).unwrap(), 1);
+    assert!(core.get_goal(old).is_err());
+    assert!(core.get_goal(fresh).is_ok());
+    assert_eq!(core.empty_goal_trash().unwrap(), 1);
+    assert!(core.list_goal_trash(DAY.into()).unwrap().is_empty());
+}
+
+#[test]
+fn deleting_a_goal_forever_removes_its_rewards_and_milestone_tasks_but_keeps_other_tasks() {
+    let (core, _dir) = core();
+    let id = goal_that_won_a_treat(&core);
+    core.add_milestone(id.clone(), "Step".into(), DAY.into())
+        .unwrap();
+    let linked = add_task(
+        &core,
+        NewTask {
+            goal_id: Some(id.clone()),
+            ..new_task("Linked")
+        },
+    );
+    trash(&core, &id);
+    core.delete_goal(id.clone()).unwrap();
+    assert!(core.list_draws().unwrap().is_empty());
+    assert!(core.get_goal(id).is_err());
+    // The treat stays in the jar; the ordinary task stays, unlinked.
+    assert_eq!(core.list_treats().unwrap().len(), 1);
+    let names = task_titles(&core, TaskFilter::All, TaskSort::Alphabetical);
+    assert_eq!(names, vec!["Linked"]);
+    assert_eq!(core.get_task(linked, DAY.into()).unwrap().goal_id, None);
+}
+
+#[test]
+fn upgrading_from_the_schema_before_goal_trash_keeps_goals_and_adds_the_column() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir
+        .path()
+        .join("pre-trash.db")
+        .to_str()
+        .unwrap()
+        .to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, db::goal_trash_version() - 1).unwrap();
+        conn.execute_batch(
+            "INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old', 'yes_no', '2026-01-01');",
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    assert_eq!(core.list_goals(false).unwrap().len(), 1);
+    core.trash_goal("g1".into(), DAY.into()).unwrap();
+    assert!(core.list_goals(false).unwrap().is_empty());
+    core.restore_goal("g1".into()).unwrap();
+    assert_eq!(core.list_goals(false).unwrap().len(), 1);
+}
+
+#[test]
+fn trashed_goals_survive_a_backup_and_a_bad_trash_date_is_rejected() {
+    let fixture = Fixture::new();
+    let id = yes_no(&fixture.core, "Read");
+    fixture.core.trash_goal(id, DAY.into()).unwrap();
+    let path = fixture.path("trash-backup.sqlite");
+    fixture.core.export_backup(path.clone()).unwrap();
+    fixture.core.restore_backup(path).unwrap();
+    assert_eq!(fixture.core.list_goal_trash(DAY.into()).unwrap().len(), 1);
+
+    let bad = fixture.path("bad-trash.sqlite");
+    fixture.core.export_backup(bad.clone()).unwrap();
+    let conn = Connection::open(&bad).unwrap();
+    conn.execute("UPDATE goals SET deleted_date = 'last week'", [])
+        .unwrap();
+    drop(conn);
+    assert_invalid_backup(fixture.core.restore_backup(bad), "invalid dates");
+}
+
+#[test]
+fn the_report_counts_tasks_done_and_lists_missed_ones() {
+    let (core, _dir) = core();
+    let done = add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-03".into()),
+            ..new_task("Finished")
+        },
+    );
+    core.toggle_task(done, "2026-11-03".into()).unwrap();
+    for (title, due) in [
+        ("Missed one", "2026-11-02"),
+        ("Due today", "2026-11-05"),
+        ("Last month", "2026-10-20"),
+    ] {
+        add_task(
+            &core,
+            NewTask {
+                due: Some(due.into()),
+                ..new_task(title)
+            },
+        );
+    }
+    // A milestone's task is not counted: the milestone is the target.
+    goal_with_milestones(&core, &["Outline"]);
+    let week = core.recap(Period::Week, 0, DAY.into()).unwrap();
+    assert_eq!((week.tasks_done, week.tasks_missed), (1, 1));
+    assert_eq!(week.missed_tasks[0].title, "Missed one");
+    assert_eq!(week.missed_tasks[0].due, "2026-11-02");
+    let month = core.recap(Period::Month, 0, DAY.into()).unwrap();
+    assert_eq!(month.tasks_missed, 1);
+    let last_month = core.recap(Period::Month, 1, DAY.into()).unwrap();
+    assert_eq!(last_month.tasks_missed, 1);
+    assert_eq!(last_month.missed_tasks[0].title, "Last month");
+}
+
+#[test]
+fn the_evening_check_in_counts_what_is_left_and_stays_silent_when_nothing_is() {
+    let (core, _dir) = core();
+    assert_eq!(core.evening_reminder().unwrap(), None);
+    core.set_evening_reminder(Some(21 * 60)).unwrap();
+    assert_eq!(core.evening_reminder().unwrap(), Some(1260));
+    assert!(core.set_evening_reminder(Some(24 * 60)).is_err());
+    assert_eq!(core.evening_text(DAY.into()).unwrap(), None);
+
+    let goal = yes_no(&core, "Read");
+    yes_no(&core, "Walk");
+    assert_eq!(
+        core.evening_text(DAY.into()).unwrap().unwrap(),
+        "2 goals left today"
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            ..new_task("Call mum")
+        },
+    );
+    assert_eq!(
+        core.evening_text(DAY.into()).unwrap().unwrap(),
+        "2 goals and 1 task left today"
+    );
+    // Trashed goals are not counted.
+    trash(&core, &goal);
+    assert_eq!(
+        core.evening_text(DAY.into()).unwrap().unwrap(),
+        "1 goal and 1 task left today"
+    );
+    core.set_evening_reminder(None).unwrap();
+    assert_eq!(core.evening_reminder().unwrap(), None);
+}

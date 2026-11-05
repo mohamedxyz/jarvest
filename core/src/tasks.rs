@@ -17,9 +17,15 @@ const TASK_COLUMNS: &str = "t.id, t.title, t.notes, t.due, t.priority, t.tag, t.
     t.created_date, t.done_date,
     (SELECT COUNT(*) FROM task_items i WHERE i.task_id = t.id AND i.done = 1),
     (SELECT COUNT(*) FROM task_items i WHERE i.task_id = t.id),
-    t.goal_id,
-    (SELECT g.title FROM goals g WHERE g.id = t.goal_id),
+    (SELECT g.id FROM goals g WHERE g.id = t.goal_id AND g.deleted_date IS NULL),
+    (SELECT g.title FROM goals g WHERE g.id = t.goal_id AND g.deleted_date IS NULL),
     t.milestone_id";
+
+/// A milestone's task belongs to its goal, so it is hidden while the goal is in the
+/// trash. An ordinary task linked to a trashed goal stays visible but shows as
+/// unlinked (see `TASK_COLUMNS`); the link comes back when the goal is restored.
+const VISIBLE: &str = "NOT (t.milestone_id IS NOT NULL AND EXISTS
+    (SELECT 1 FROM goals g WHERE g.id = t.goal_id AND g.deleted_date IS NOT NULL))";
 
 fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
     let due: Option<String> = row.get(3)?;
@@ -61,7 +67,7 @@ fn check_goal(conn: &Connection, goal_id: &Option<String>) -> Result<(), CoreErr
         return Ok(());
     };
     let usable: bool = conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM goals WHERE id = ?1 AND archived = 0)",
+        "SELECT EXISTS (SELECT 1 FROM goals WHERE id = ?1 AND archived = 0 AND deleted_date IS NULL)",
         [goal_id],
         |r| r.get(0),
     )?;
@@ -369,7 +375,7 @@ pub fn purge_trash(conn: &Connection, today: &str) -> Result<u32, CoreError> {
 pub fn list_trash(conn: &Connection, today: &str) -> Result<Vec<Task>, CoreError> {
     parse_date(today)?;
     let mut stmt = conn.prepare(&format!(
-        "SELECT {TASK_COLUMNS} FROM tasks t WHERE t.deleted_date IS NOT NULL
+        "SELECT {TASK_COLUMNS} FROM tasks t WHERE t.deleted_date IS NOT NULL AND {VISIBLE}
          ORDER BY t.deleted_date DESC, t.rowid DESC"
     ))?;
     let rows = stmt.query_map([], |row| task_from_row(row, today))?;
@@ -393,7 +399,8 @@ pub fn list_tasks(
     parse_date(today)?;
     // rowid keeps creation order, which "Newest" and ties rely on.
     let mut stmt = conn.prepare(&format!(
-        "SELECT {TASK_COLUMNS}, t.rowid FROM tasks t WHERE t.deleted_date IS NULL ORDER BY t.rowid"
+        "SELECT {TASK_COLUMNS}, t.rowid FROM tasks t
+         WHERE t.deleted_date IS NULL AND {VISIBLE} ORDER BY t.rowid"
     ))?;
     let mut tasks: Vec<(i64, Task)> = stmt
         .query_map([], |row| Ok((row.get(14)?, task_from_row(row, today)?)))?

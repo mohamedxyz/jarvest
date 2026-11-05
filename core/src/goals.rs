@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use chrono::NaiveDate;
+use chrono::{Days, NaiveDate};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use crate::CoreError;
@@ -165,9 +165,84 @@ pub fn set_archived(conn: &Connection, goal_id: &str, archived: bool) -> Result<
     Ok(())
 }
 
+/// Permanently deletes a goal and, through the database's cascade rules, its entries,
+/// milestones (and their tasks), rewards and reminder. Tasks linked to the goal stay,
+/// unlinked. This is "Delete forever": use `trash_goal` for an ordinary delete.
+/// Every query that lists goals, or adds up their entries and rewards, must skip
+/// rows where `deleted_date` is set.
 pub fn delete_goal(conn: &Connection, goal_id: &str) -> Result<(), CoreError> {
     conn.execute("DELETE FROM goals WHERE id = ?1", params![goal_id])?;
     Ok(())
+}
+
+/// Days a deleted goal stays in the trash before `purge_goal_trash` removes it.
+pub const GOAL_TRASH_DAYS: u64 = 30;
+
+/// Moves a goal to the trash. Nothing is deleted, so `restore_goal` can undo it.
+pub fn trash_goal(conn: &Connection, goal_id: &str, today: &str) -> Result<(), CoreError> {
+    parse_date(today)?;
+    let changed = conn.execute(
+        "UPDATE goals SET deleted_date = ?2 WHERE id = ?1 AND deleted_date IS NULL",
+        params![goal_id, today],
+    )?;
+    if changed == 0 {
+        return Err(invalid("That goal no longer exists"));
+    }
+    Ok(())
+}
+
+pub fn restore_goal(conn: &Connection, goal_id: &str) -> Result<(), CoreError> {
+    let changed = conn.execute(
+        "UPDATE goals SET deleted_date = NULL WHERE id = ?1 AND deleted_date IS NOT NULL",
+        params![goal_id],
+    )?;
+    if changed == 0 {
+        return Err(invalid("That goal is not in the trash"));
+    }
+    Ok(())
+}
+
+/// Goals in the trash, newest first, with how many days are left before they go.
+pub fn list_goal_trash(conn: &Connection, today: &str) -> Result<Vec<TrashedGoal>, CoreError> {
+    let today = parse_date(today)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, title, kind, category, deleted_date,
+                (SELECT COUNT(*) FROM entries e WHERE e.goal_id = goals.id)
+         FROM goals WHERE deleted_date IS NOT NULL
+         ORDER BY deleted_date DESC, rowid DESC",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        let deleted_date: String = r.get(4)?;
+        Ok(TrashedGoal {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            kind: r.get(2)?,
+            category: r.get(3)?,
+            // A damaged date counts as already expired rather than failing the list.
+            days_left: parse_date(&deleted_date).map_or(0, |d| {
+                (d + Days::new(GOAL_TRASH_DAYS) - today).num_days().max(0) as u32
+            }),
+            deleted_date,
+            entries: r.get(5)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// Permanently removes goals trashed `GOAL_TRASH_DAYS` or more days ago. Returns how many.
+pub fn purge_goal_trash(conn: &Connection, today: &str) -> Result<u32, CoreError> {
+    let cutoff = parse_date(today)? - Days::new(GOAL_TRASH_DAYS);
+    let removed = conn.execute(
+        "DELETE FROM goals WHERE deleted_date IS NOT NULL AND deleted_date <= ?1",
+        params![cutoff.to_string()],
+    )?;
+    Ok(removed as u32)
+}
+
+/// "Empty trash": permanently removes every trashed goal.
+pub fn empty_goal_trash(conn: &Connection) -> Result<u32, CoreError> {
+    let removed = conn.execute("DELETE FROM goals WHERE deleted_date IS NOT NULL", [])?;
+    Ok(removed as u32)
 }
 
 const GOAL_COLUMNS: &str = "id, title, notes, kind, category, period, period_target, total_target,
@@ -219,7 +294,7 @@ pub fn get_goal(conn: &Connection, goal_id: &str) -> Result<Goal, CoreError> {
 
 pub fn list_goals(conn: &Connection, archived: bool) -> Result<Vec<Goal>, CoreError> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {GOAL_COLUMNS} FROM goals WHERE archived = ?1
+        "SELECT {GOAL_COLUMNS} FROM goals WHERE archived = ?1 AND deleted_date IS NULL
          ORDER BY category IS NULL, category COLLATE NOCASE, position, created_date, rowid"
     ))?;
     let goals = stmt
@@ -262,7 +337,8 @@ pub fn move_goal(conn: &mut Connection, goal_id: &str, earlier: bool) -> Result<
 
 pub fn categories(conn: &Connection) -> Result<Vec<String>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT category FROM goals WHERE category IS NOT NULL ORDER BY category COLLATE NOCASE",
+        "SELECT DISTINCT category FROM goals WHERE category IS NOT NULL AND deleted_date IS NULL
+         ORDER BY category COLLATE NOCASE",
     )?;
     let names = stmt
         .query_map([], |r| r.get(0))?
@@ -274,6 +350,16 @@ fn loggable_goal(conn: &Connection, goal_id: &str) -> Result<Goal, CoreError> {
     let goal = get_goal(conn, goal_id)?;
     if goal.archived {
         return Err(invalid("Restore this goal before logging it"));
+    }
+    let trashed: bool = conn.query_row(
+        "SELECT deleted_date IS NOT NULL FROM goals WHERE id = ?1",
+        params![goal_id],
+        |r| r.get(0),
+    )?;
+    if trashed {
+        return Err(invalid(
+            "Restore this goal from the trash before logging it",
+        ));
     }
     Ok(goal)
 }
@@ -844,7 +930,7 @@ pub fn heatmap(
     let mut stmt = conn.prepare(
         "SELECT e.local_date, COUNT(*) FROM entries e JOIN goals g ON g.id = e.goal_id
          WHERE e.local_date BETWEEN ?2 AND ?3
-           AND (?1 IS NOT NULL AND e.goal_id = ?1 OR ?1 IS NULL AND g.archived = 0)
+           AND (?1 IS NOT NULL AND e.goal_id = ?1 OR ?1 IS NULL AND g.archived = 0 AND g.deleted_date IS NULL)
          GROUP BY e.local_date",
     )?;
     let counts: BTreeMap<String, u32> = stmt

@@ -76,8 +76,13 @@ pub enum Outcome {
 
 fn misses_since_draw(conn: &Connection) -> Result<u32, CoreError> {
     Ok(conn.query_row(
-        "SELECT COUNT(*) FROM target_completions WHERE outcome = 'none' AND seq > (
-             SELECT COALESCE(MAX(seq), 0) FROM target_completions WHERE outcome = 'draw')",
+        // Completions of goals in the trash are ignored, both as misses and as draws,
+        // so the counter matches what the Treats screen shows. Restoring brings them back.
+        "SELECT COUNT(*) FROM target_completions c JOIN goals g ON g.id = c.goal_id
+         WHERE g.deleted_date IS NULL AND c.outcome = 'none' AND c.seq > (
+             SELECT COALESCE(MAX(c2.seq), 0) FROM target_completions c2
+             JOIN goals g2 ON g2.id = c2.goal_id
+             WHERE g2.deleted_date IS NULL AND c2.outcome = 'draw')",
         [],
         |r| r.get(0),
     )?)
@@ -202,7 +207,7 @@ fn draws_where(conn: &Connection, condition: &str) -> Result<Vec<RewardDraw>, Co
          JOIN treats t ON t.id = d.treat_id
          JOIN target_completions c ON c.id = d.completion_id
          JOIN goals g ON g.id = c.goal_id
-         WHERE {condition}
+         WHERE g.deleted_date IS NULL AND {condition}
          ORDER BY c.seq DESC"
     ))?;
     let draws = stmt
