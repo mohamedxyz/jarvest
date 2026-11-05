@@ -240,6 +240,25 @@ fun SettingsScreen(controller: AppController) {
         }
         }
 
+        SettingsGroup("About", "about") {
+            val version = remember {
+                try {
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            Text(
+                "Jarvest ${version ?: ""}".trim(),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                "Your data stays on this phone.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
         SettingsGroup("Backup and data", "data") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Backup")
