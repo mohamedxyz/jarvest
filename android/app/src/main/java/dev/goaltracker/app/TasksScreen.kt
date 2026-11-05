@@ -375,7 +375,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                             onRestore = { controller.act { restoreTask(task.id) } },
                             onDeleteForever = {
                                 if (controller.confirmDeleteForever) taskToDelete = task
-                                else controller.act { deleteTaskForever(task.id) }
+                                else if (controller.act { deleteTaskForever(task.id) }) controller.message = "Task deleted for good"
                             },
                         )
                         showArchive -> ArchiveRow(task) { controller.act { unarchiveTask(task.id) } }
@@ -405,7 +405,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             confirm = "Delete forever",
             onConfirm = {
                 goalToDelete = null
-                controller.act { deleteGoal(goal.id) }
+                if (controller.act { deleteGoal(goal.id) }) controller.message = "Goal deleted for good"
             },
             onDismiss = { goalToDelete = null },
         )
@@ -415,7 +415,10 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             title = "Delete this task forever?",
             body = "\"${task.title}\" will be gone for good. This can't be undone.",
             confirm = "Delete forever",
-            onConfirm = { taskToDelete = null; controller.act { deleteTaskForever(task.id) } },
+            onConfirm = {
+                taskToDelete = null
+                if (controller.act { deleteTaskForever(task.id) }) controller.message = "Task deleted for good"
+            },
             onDismiss = { taskToDelete = null },
         )
     }
@@ -424,7 +427,11 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             title = "Empty the task trash?",
             body = "Every task in the trash will be deleted for good.",
             confirm = "Delete forever",
-            onConfirm = { confirmEmptyTasks = false; controller.act { emptyTaskTrash() } },
+            onConfirm = {
+                confirmEmptyTasks = false
+                val removed = controller.change { emptyTaskTrash() }
+                if (removed != null) controller.message = "Deleted ${countOf(removed.toInt(), "task")} for good"
+            },
             onDismiss = { confirmEmptyTasks = false },
         )
     }
@@ -435,7 +442,8 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             confirm = "Delete forever",
             onConfirm = {
                 confirmEmpty = false
-                controller.act { emptyGoalTrash() }
+                val removed = controller.change { emptyGoalTrash() }
+                if (removed != null) controller.message = "Deleted ${countOf(removed.toInt(), "goal")} for good"
             },
             onDismiss = { confirmEmpty = false },
         )
