@@ -168,6 +168,9 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
                 if (habits) EmptyState("No habits yet", "Tap New habit to create one.") else EmptyState("No goals yet", "Tap New goal to create one.")
             }
         }
+        if (habits && !reordering && goals.isNotEmpty()) {
+            HabitGrid(controller, goals, onOpenGoal)
+        } else {
         LazyColumn(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -231,6 +234,7 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
                     }
                 }
             }
+        }
         }
     }
 
