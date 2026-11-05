@@ -1,5 +1,7 @@
 package dev.goaltracker.app
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,11 +20,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -47,6 +53,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+import dev.goaltracker.core.BulkEdit
 import dev.goaltracker.core.NewTask
 import dev.goaltracker.core.Priority
 import dev.goaltracker.core.Repeat
@@ -98,10 +107,18 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
     var quick by rememberSaveable { mutableStateOf("") }
     var sortMenu by remember { mutableStateOf(false) }
     var opened by remember { mutableStateOf<Task?>(null) }
+    var showArchive by rememberSaveable { mutableStateOf(false) }
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var searchText by rememberSaveable { mutableStateOf("") }
+    var tagFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    // Tasks picked with a long press. While any are picked, a tap picks or drops one.
+    var selected by remember { mutableStateOf(setOf<String>()) }
+    var confirmEmptyTasks by remember { mutableStateOf(false) }
 
     // Tasks deleted a month ago or more are removed for good.
     LaunchedEffect(Unit) {
         controller.read(0u) { purgeTrash(controller.today) }
+        controller.runAutoArchive()
         controller.read(0u) { purgeGoalTrash(controller.today) }
     }
     val trashedGoals = remember(controller.version, controller.today, showTrash) {
@@ -109,11 +126,19 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
     }
     var goalToDelete by remember { mutableStateOf<TrashedGoal?>(null) }
     var confirmEmpty by remember { mutableStateOf(false) }
+    var taskToDelete by remember { mutableStateOf<Task?>(null) }
 
-    val tasks = remember(controller.version, controller.today, filter, sort, showTrash) {
-        if (showTrash) controller.read(emptyList()) { listTrash(controller.today) }
-        else controller.read(emptyList()) { listTasks(filter, sort, controller.today) }
+    val tasks = remember(controller.version, controller.today, filter, sort, showTrash, showArchive, searching, searchText, tagFilter) {
+        val base = when {
+            showTrash -> controller.read(emptyList()) { listTrash(controller.today) }
+            showArchive -> controller.read(emptyList()) { listArchivedTasks(controller.today) }
+            searching && searchText.isNotBlank() -> controller.read(emptyList()) { search(searchText, controller.today).tasks }
+            else -> controller.read(emptyList()) { listTasks(filter, sort, controller.today) }
+        }
+        val tag = tagFilter
+        if (tag != null && !showTrash) base.filter { it.tag == tag } else base
     }
+    val tags = remember(controller.version) { controller.read(emptyList()) { listTags() } }
     val hint = remember(quick, controller.today) {
         if (quick.isBlank()) null else controller.read(null) { parseQuick(quick, controller.today) }
     }
@@ -135,7 +160,34 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        if (!showTrash) {
+        if (searching) {
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = { searchText = it },
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp).autoFocus(),
+                placeholder = { Text("Search tasks, including archived ones") },
+                singleLine = true,
+                trailingIcon = {
+                    IconButton(onClick = { searching = false; searchText = "" }) { Icon(Icons.Filled.Close, "Close search") }
+                },
+            )
+        }
+        if (selected.isNotEmpty()) {
+            val picked = tasks.filter { it.id in selected }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = { selected = emptySet() }) { Icon(Icons.Filled.Close, "Clear selection") }
+                Text("${selected.size} selected", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                TextButton(onClick = { controller.bulkTasks(picked, bulk(done = true), "Finished"); selected = emptySet() }) { Text("Done") }
+                TextButton(onClick = { controller.bulkTasks(picked, bulk(archive = true), "Archived"); selected = emptySet() }) { Text("Archive") }
+                TextButton(onClick = { controller.bulkTasks(picked, bulk(trash = true), "Deleted"); selected = emptySet() }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+        if (!showTrash && !showArchive && !searching) {
             OutlinedTextField(
                 value = quick,
                 onValueChange = { quick = it },
@@ -206,18 +258,54 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                     }
                 }
             }
+            if (tags.isNotEmpty()) {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    tags.forEach { t ->
+                        FilterChip(
+                            selected = tagFilter == t.tag,
+                            onClick = { tagFilter = if (tagFilter == t.tag) null else t.tag },
+                            label = { Text("#${t.tag} · ${t.open}") },
+                        )
+                    }
+                }
+            }
         }
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                if (showTrash) "Trash: tasks are removed for good after 30 days" else "${tasks.size} ${if (tasks.size == 1) "task" else "tasks"}",
+                when {
+                    showTrash -> "Trash: tasks are removed for good after 30 days"
+                    showArchive -> "Archive: hidden from your lists, kept for good"
+                    else -> "${tasks.size} ${if (tasks.size == 1) "task" else "tasks"}"
+                },
+                Modifier.weight(1f),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = { showTrash = !showTrash }) { Text(if (showTrash) "Back to tasks" else "Trash") }
+            if (!showTrash && !showArchive) {
+                IconButton(onClick = { searching = !searching; if (!searching) searchText = "" }) {
+                    Icon(Icons.Filled.Search, "Search tasks")
+                }
+            }
+            if (!showTrash) {
+                TextButton(onClick = { showArchive = !showArchive; selected = emptySet() }) {
+                    Text(if (showArchive) "Back to tasks" else "Archive")
+                }
+            }
+            if (!showArchive) {
+                TextButton(onClick = { showTrash = !showTrash; selected = emptySet() }) { Text(if (showTrash) "Back to tasks" else "Trash") }
+            }
+        }
+        if (showTrash && tasks.isNotEmpty()) {
+            TextButton(onClick = { confirmEmptyTasks = true }, Modifier.padding(horizontal = 8.dp)) {
+                Text("Empty task trash", color = MaterialTheme.colorScheme.error)
+            }
         }
 
         if (showTrash && trashedGoals.isNotEmpty()) {
@@ -229,6 +317,8 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
         if (tasks.isEmpty() && trashedGoals.isEmpty()) {
             when {
                 showTrash -> EmptyState("The trash is empty", "Deleted tasks wait here for 30 days.")
+                showArchive -> EmptyState("Nothing archived", "Archive a finished task to hide it without deleting it.")
+                searching && searchText.isNotBlank() -> EmptyState("No matches", "Nothing found for \"$searchText\".")
                 filter == TaskFilter.ALL -> EmptyState("No tasks yet", "Type one above. Words like tomorrow, !high and #tag fill in the date, priority and tag for you.")
                 else -> EmptyState("Nothing here", "No ${filter.label().lowercase()} tasks.")
             }
@@ -247,13 +337,28 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                 }
                 item { TipCard(controller, "tasks_quick_add", "Tip: write a task in one line. \"Essay tomorrow !high #uni\" sets the due date, the priority and the tag.") }
                 items(tasks, key = { it.id }) { task ->
-                    if (showTrash) {
-                        TrashRow(task) { controller.act { restoreTask(task.id) } }
-                    } else {
-                        TaskRow(
+                    when {
+                        showTrash -> TrashRow(
                             task,
                             controller.today,
-                            onOpen = { opened = task },
+                            onRestore = { controller.act { restoreTask(task.id) } },
+                            onDeleteForever = {
+                                if (controller.confirmDeleteForever) taskToDelete = task
+                                else controller.act { deleteTaskForever(task.id) }
+                            },
+                        )
+                        showArchive -> ArchiveRow(task) { controller.act { unarchiveTask(task.id) } }
+                        else -> TaskRow(
+                            controller,
+                            task,
+                            controller.today,
+                            selected = task.id in selected,
+                            onOpen = {
+                                if (selected.isNotEmpty()) {
+                                    selected = if (task.id in selected) selected - task.id else selected + task.id
+                                } else opened = task
+                            },
+                            onLongPress = { selected = selected + task.id },
                             onCheck = { controller.toggleTaskWithUndo(task.id, task.title) },
                         )
                     }
@@ -272,6 +377,24 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                 controller.act { deleteGoal(goal.id) }
             },
             onDismiss = { goalToDelete = null },
+        )
+    }
+    taskToDelete?.let { task ->
+        ConfirmDialog(
+            title = "Delete this task forever?",
+            body = "\"${task.title}\" will be gone for good. This can't be undone.",
+            confirm = "Delete forever",
+            onConfirm = { taskToDelete = null; controller.act { deleteTaskForever(task.id) } },
+            onDismiss = { taskToDelete = null },
+        )
+    }
+    if (confirmEmptyTasks) {
+        ConfirmDialog(
+            title = "Empty the task trash?",
+            body = "Every task in the trash will be deleted for good.",
+            confirm = "Delete forever",
+            onConfirm = { confirmEmptyTasks = false; controller.act { emptyTaskTrash() } },
+            onDismiss = { confirmEmptyTasks = false },
         )
     }
     if (confirmEmpty) {
@@ -298,10 +421,14 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
 }
 
 @Composable
-private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+@OptIn(ExperimentalFoundationApi::class)
+private fun TaskRow(controller: AppController, task: Task, today: String, selected: Boolean, onOpen: () -> Unit, onLongPress: () -> Unit, onCheck: () -> Unit) {
+    Card(
+        Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onLongPress),
+        colors = if (selected) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else CardDefaults.cardColors(),
+    ) {
         Row(
-            Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            Modifier.padding(start = 16.dp, end = 8.dp, top = if (controller.compactTaskRows) 2.dp else 8.dp, bottom = if (controller.compactTaskRows) 2.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -314,6 +441,15 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
                     textDecoration = if (task.done) TextDecoration.LineThrough else null,
                     color = if (task.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
+                if (controller.showTaskNotes && task.notes.isNotBlank()) {
+                    Text(
+                        task.notes.lineSequence().first(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (task.priority != Priority.MED) {
                         // A signal-bars icon, so priority never looks like the Goals tab's flag.
@@ -336,7 +472,7 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
                     if (task.repeat != null) {
                         Icon(Icons.Outlined.Repeat, "Repeats", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (task.itemsTotal > 0u) {
+                    if (controller.showChecklistProgress && task.itemsTotal > 0u) {
                         Text("${task.itemsDone}/${task.itemsTotal}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -351,15 +487,54 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
 }
 
 @Composable
-private fun TrashRow(task: Task, onRestore: () -> Unit) {
+private fun TrashRow(task: Task, today: String, onRestore: () -> Unit, onDeleteForever: () -> Unit) {
+    val left = task.deletedDate?.let {
+        val gone = LocalDate.parse(it).plusDays(30)
+        ChronoUnit.DAYS.between(LocalDate.parse(today), gone).coerceAtLeast(0)
+    }
     Card(Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Filled.Delete, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(task.title, Modifier.weight(1f).padding(start = 8.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                Text(task.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (left != null) {
+                    Text(
+                        if (left == 1L) "1 day left" else "$left days left",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             TextButton(onClick = onRestore) { Text("Restore") }
+            TextButton(onClick = onDeleteForever) { Text("Delete", color = MaterialTheme.colorScheme.error) }
         }
     }
 }
+
+@Composable
+private fun ArchiveRow(task: Task, onUnarchive: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Filled.Archive, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                task.title,
+                Modifier.weight(1f).padding(start = 8.dp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textDecoration = if (task.done) TextDecoration.LineThrough else null,
+            )
+            TextButton(onClick = onUnarchive) { Text("Unarchive") }
+        }
+    }
+}
+
+/** A bulk change that does nothing unless you switch one thing on. */
+private fun bulk(done: Boolean = false, archive: Boolean = false, trash: Boolean = false) = BulkEdit(
+    done, archive, trash, false, null, null, false, null, false, null,
+)

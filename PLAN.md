@@ -533,3 +533,9 @@ its own commit and its own test pass before anything else is built on top.
 - They stay on Today all day (`complete` = no slip today) so a slip can be logged from there.
 - Week start: `meta.week_start` (1, 6 or 7). Periods are computed on read with `period_start_ws`.
 - Folders: `meta.folder_order` holds folder names, one per line; `rename_category` renames on all goals.
+
+## V0.6.0 as shipped
+
+Built: automatic daily backup and restore preview; task archive, bulk select, tags, search, trash details; icons, sample data, onboarding, OLED theme; quit habits, week start, month calendar, folders; goal trash, evening check-in, tasks and quick-add widgets.
+Not built, moved to 0.7.0: task calendar, focus timer, custom repeat screen and checklist editing (core `set_task_repeat_rule` / `replace_task_items` exist but have no UI), tag grouping and confirm-before-trash settings (stored, not used yet).
+Never run on a device; test the upgrade from 0.5.2, auto backup, widgets and reminders on the phone.

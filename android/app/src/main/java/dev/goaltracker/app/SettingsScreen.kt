@@ -142,6 +142,32 @@ fun SettingsScreen(controller: AppController) {
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("Task list")
+            @Composable
+            fun toggle(label: String, on: Boolean, change: (Boolean) -> Unit) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Switch(on, change)
+                }
+            }
+            toggle("Show the first line of notes", controller.showTaskNotes) { controller.chooseShowTaskNotes(it) }
+            toggle("Show checklist progress", controller.showChecklistProgress) { controller.chooseShowChecklistProgress(it) }
+            toggle("Compact rows", controller.compactTaskRows) { controller.chooseCompactTaskRows(it) }
+            toggle("Ask before deleting forever", controller.confirmDeleteForever) { controller.chooseConfirmDeleteForever(it) }
+            Text("Archive finished tasks", style = MaterialTheme.typography.labelLarge)
+            Text(
+                "Archived tasks leave your lists but stay searchable. Open them from the Archive button on the Tasks tab.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(-1 to "Never", 1 to "After 1 day", 7 to "After 7 days", 30 to "After 30 days").forEach { (days, label) ->
+                    FilterChip(controller.archiveAfterDays == days, { controller.chooseArchiveAfterDays(days) }, label = { Text(label) })
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Week starts on")
             Text(
                 "Weekly goals, the calendar, and charts begin their week on this day. Changing it never changes your history.",
