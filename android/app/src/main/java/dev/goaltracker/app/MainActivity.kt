@@ -11,6 +11,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -78,8 +81,16 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            GoalTrackerTheme(controller.themeMode, controller.accent) { AppRoot(controller) }
+            GoalTrackerTheme(controller.themeMode, controller.accent) {
+                // The quick-add widget opens the app straight on the new task screen.
+                AppEntry(controller, startOnNewTask = (intent?.action == ACTION_QUICK_ADD || intent?.getBooleanExtra(EXTRA_QUICK_ADD, false) == true))
+            }
         }
+    }
+
+    companion object {
+        const val ACTION_QUICK_ADD = "dev.goaltracker.app.QUICK_ADD"
+        const val EXTRA_QUICK_ADD = "quick_add"
     }
 
     override fun onResume() {
@@ -89,13 +100,15 @@ class MainActivity : ComponentActivity() {
 }
 
 /** Routes are strings so the back stack survives rotation: `goal/<id>`, `edit/<id>`, and so on. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun AppRoot(controller: AppController) {
+internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false) {
     val stack = rememberSaveable(
         saver = listSaver(save = { it.toList() }, restore = { it.toMutableStateList() }),
-    ) { mutableStateListOf("today") }
+    ) { if (startOnNewTask) mutableStateListOf("today", "newtask") else mutableStateListOf("today") }
     val route = stack.last()
+    // Hide the bottom bar while the keyboard is up, so it does not eat the screen.
+    val imeVisible = WindowInsets.isImeVisible
     val isTab = tabs.any { it.route == route }
     val push: (String) -> Unit = { stack.add(it) }
     val pop: () -> Unit = { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
@@ -154,7 +167,7 @@ private fun AppRoot(controller: AppController) {
             )
         },
         bottomBar = {
-            if (isTab) {
+            if (isTab && !imeVisible) {
                 NavigationBar {
                     tabs.forEach { tab ->
                         NavigationBarItem(
@@ -244,6 +257,7 @@ private fun AppRoot(controller: AppController) {
     }
 
     controller.pendingDraw?.let { RewardReveal(it, controller::dismissDraw) }
+    CelebrationBurst()
 }
 
 private fun titleFor(route: String): String = when {
@@ -259,9 +273,11 @@ private fun titleFor(route: String): String = when {
 @Composable
 private fun RewardReveal(draw: RewardDraw, onDismiss: () -> Unit) {
     var shown by remember(draw.id) { mutableStateOf(false) }
+    // With animations off on the phone, the dialog simply appears at full size.
+    val reduced = Feel.reducedMotion(androidx.compose.ui.platform.LocalContext.current)
     LaunchedEffect(draw.id) { shown = true }
     val scale by animateFloatAsState(
-        targetValue = if (shown) 1f else 0.5f,
+        targetValue = if (shown || reduced) 1f else 0.5f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
         label = "reveal",
     )

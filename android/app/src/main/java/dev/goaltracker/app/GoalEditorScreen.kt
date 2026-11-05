@@ -82,6 +82,10 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
     var unit by rememberSaveable { mutableStateOf(existing?.unit ?: "") }
     var deadline by rememberSaveable { mutableStateOf(existing?.deadline) }
     var kind by rememberSaveable { mutableStateOf(GoalKind.HABIT) }
+    // A quit habit is a daily habit met by not slipping. It has no targets to set.
+    var quit by rememberSaveable { mutableStateOf(false) }
+    // Step two of the form: folder, deadline, reminder, notes and milestones.
+    var moreOpen by rememberSaveable { mutableStateOf(existing != null) }
     var period by rememberSaveable { mutableStateOf<Period?>(Period.WEEK) }
     var periodTarget by rememberSaveable { mutableStateOf("3") }
     var totalTarget by rememberSaveable { mutableStateOf("") }
@@ -106,6 +110,8 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
             label = { Text("Title") }, singleLine = true,
         )
 
+        if (existing == null) BundleChips(controller, onDone)
+
         if (existing == null) {
             SectionTitle("Quick start")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -113,6 +119,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                     SuggestionChip(onClick = {
                         title = template.title
                         kind = template.kind
+                        quit = false
                         period = template.period
                         periodTarget = template.periodTarget
                         totalTarget = template.totalTarget
@@ -131,13 +138,16 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                         "Yes/no: a one-off thing you do once.",
                 )
             }
-            val kinds = listOf(GoalKind.HABIT to "Habit", GoalKind.NUMERIC to "Numeric", GoalKind.YES_NO to "Yes/no")
+            // The fourth choice is a quit habit: a habit kind with the quit flag on.
+            val kinds = listOf(GoalKind.HABIT to "Habit", GoalKind.NUMERIC to "Numeric", GoalKind.YES_NO to "Yes/no", GoalKind.HABIT to "Quit")
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 kinds.forEachIndexed { index, (value, label) ->
                     SegmentedButton(
-                        selected = kind == value,
+                        selected = kind == value && quit == (index == 3),
                         onClick = {
+                            quit = index == 3
                             kind = value
+                            if (quit) period = Period.DAY
                             if (value == GoalKind.HABIT && period == null) period = Period.WEEK
                             if (value == GoalKind.NUMERIC) {
                                 periodTarget = ""
@@ -150,7 +160,9 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
             }
             Text(
                 when (kind) {
-                    GoalKind.HABIT -> "Check in up to once a day, for example 3 times a week."
+                    GoalKind.HABIT -> if (quit) {
+                        "Something to stop, such as sugar. Every day without a slip counts. Tap \"I slipped\" if you do it. Quit habits don't draw treats."
+                    } else "Check in up to once a day, for example 3 times a week."
                     GoalKind.NUMERIC -> "Add amounts toward a target, for example 300 pages."
                     GoalKind.YES_NO -> "Something to do once, for example file your taxes."
                 },
@@ -158,7 +170,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            if (kind != GoalKind.YES_NO) {
+            if (kind != GoalKind.YES_NO && !quit) {
                 SectionTitle(if (kind == GoalKind.HABIT) "Target" else "Repeating target (optional)")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (kind == GoalKind.NUMERIC) {
@@ -223,14 +235,18 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
             OutlinedTextField(unit, { unit = it }, Modifier.fillMaxWidth(), label = { Text("Unit (optional), for example km") }, singleLine = true)
         }
 
-        OutlinedTextField(category, { category = it }, Modifier.fillMaxWidth(), label = { Text("Category (optional)") }, singleLine = true)
+        TextButton(onClick = { moreOpen = !moreOpen }) {
+            Text(if (moreOpen) "Fewer options" else "More options: folder, deadline, reminder, notes, milestones")
+        }
+        if (moreOpen) {
+        OutlinedTextField(category, { category = it }, Modifier.fillMaxWidth(), label = { Text("Folder (optional)") }, singleLine = true)
         if (categories.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 categories.forEach { name -> SuggestionChip({ category = name }, { Text(name) }) }
             }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!(quit && existing == null)) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { pickingDate = true }) {
                 Text(deadline?.let { "Deadline: ${formatDate(it)}" } ?: "Add deadline")
             }
@@ -250,7 +266,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
 
         OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes (optional)") }, minLines = 2)
 
-        if (existing == null) {
+        if (existing == null && !quit) {
             SectionTitle("Milestones (optional)")
             milestones.forEachIndexed { index, milestone ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -274,18 +290,24 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                 TextButton(enabled = milestoneText.isNotBlank(), onClick = { addMilestone() }) { Text("Add") }
             }
         }
+        }
 
     }
 
         // Pinned, so saving never requires scrolling past the whole form.
         Button(
-            enabled = title.isNotBlank() && (existing != null || kind != GoalKind.HABIT || period != Period.DAY || weekdays.isNotEmpty()),
+            enabled = title.isNotBlank() && (existing != null || quit || kind != GoalKind.HABIT || period != Period.DAY || weekdays.isNotEmpty()),
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             onClick = {
                 val saved = if (existing != null) {
                     controller.act {
                         updateGoal(existing.id, GoalEdit(title, notes, category.ifBlank { null }, unit.ifBlank { null }, deadline))
                         setGoalReminder(existing.id, reminder?.toUShort())
+                    }
+                } else if (quit) {
+                    controller.act {
+                        val id = createAvoidGoal(title, notes, category.ifBlank { null }, controller.today)
+                        if (reminder != null) setGoalReminder(id, reminder!!.toUShort())
                     }
                 } else {
                     saveNew(controller, title, notes, kind, category, period, periodTarget, totalTarget, unit, deadline, weekdays, milestones.toList() + listOfNotNull(milestoneText.takeIf { it.isNotBlank() }), reminder)

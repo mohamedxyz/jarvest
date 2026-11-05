@@ -1010,6 +1010,7 @@ fn today_item(
         milestones_done: goal.milestones_done,
         milestones_total: goal.milestones_total,
         avoid: goal.avoid,
+        icon: goal.icon.clone(),
     }))
 }
 

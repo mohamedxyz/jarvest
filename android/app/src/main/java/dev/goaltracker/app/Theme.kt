@@ -12,14 +12,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
+enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark"), BLACK("Black (OLED)") }
 
-enum class Accent(val label: String) { BLUE("Blue"), GREEN("Green"), PURPLE("Purple") }
+enum class Accent(val label: String) {
+    BLUE("Blue"), GREEN("Green"), PURPLE("Purple"),
+    ROSE("Rose"), TEAL("Teal"), AMBER("Amber"), GRAPHITE("Graphite"),
+}
 
 /** Whether the app is currently drawn dark, which can differ from the phone's setting. */
 val LocalDarkTheme = compositionLocalOf { false }
 
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = Color(0xFF256ABF),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFCDE2FB),
@@ -41,7 +44,7 @@ private val LightColors = lightColorScheme(
     outlineVariant = Color(0xFFCBCBC7),
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = Color(0xFF9EC5F4),
     onPrimary = Color(0xFF0D366B),
     primaryContainer = Color(0xFF184F95),
@@ -81,6 +84,38 @@ private fun lightFor(accent: Accent) = when (accent) {
         secondaryContainer = Color(0xFFE2DAF7),
         onSecondaryContainer = Color(0xFF2D1A66),
     )
+    Accent.ROSE -> LightColors.copy(
+        primary = Color(0xFFB3264F),
+        primaryContainer = Color(0xFFFAD4DD),
+        onPrimaryContainer = Color(0xFF5E0F27),
+        secondary = Color(0xFF8A1D3E),
+        secondaryContainer = Color(0xFFFAD4DD),
+        onSecondaryContainer = Color(0xFF5E0F27),
+    )
+    Accent.TEAL -> LightColors.copy(
+        primary = Color(0xFF0F6B6B),
+        primaryContainer = Color(0xFFC4EBEA),
+        onPrimaryContainer = Color(0xFF053B3B),
+        secondary = Color(0xFF0B5050),
+        secondaryContainer = Color(0xFFC4EBEA),
+        onSecondaryContainer = Color(0xFF053B3B),
+    )
+    Accent.AMBER -> LightColors.copy(
+        primary = Color(0xFF8A5100),
+        primaryContainer = Color(0xFFFFDDB0),
+        onPrimaryContainer = Color(0xFF4A2A00),
+        secondary = Color(0xFF6B3F00),
+        secondaryContainer = Color(0xFFFFDDB0),
+        onSecondaryContainer = Color(0xFF4A2A00),
+    )
+    Accent.GRAPHITE -> LightColors.copy(
+        primary = Color(0xFF45494F),
+        primaryContainer = Color(0xFFDFE2E8),
+        onPrimaryContainer = Color(0xFF1C1F24),
+        secondary = Color(0xFF33373C),
+        secondaryContainer = Color(0xFFDFE2E8),
+        onSecondaryContainer = Color(0xFF1C1F24),
+    )
 }
 
 private fun darkFor(accent: Accent) = when (accent) {
@@ -103,6 +138,62 @@ private fun darkFor(accent: Accent) = when (accent) {
         secondaryContainer = Color(0xFF47318A),
         onSecondaryContainer = Color(0xFFE2DAF7),
     )
+    Accent.ROSE -> DarkColors.copy(
+        primary = Color(0xFFF2A3B8),
+        onPrimary = Color(0xFF5E0F27),
+        primaryContainer = Color(0xFF8A1D3E),
+        onPrimaryContainer = Color(0xFFFAD4DD),
+        secondary = Color(0xFFE88DA5),
+        secondaryContainer = Color(0xFF8A1D3E),
+        onSecondaryContainer = Color(0xFFFAD4DD),
+    )
+    Accent.TEAL -> DarkColors.copy(
+        primary = Color(0xFF86D3D1),
+        onPrimary = Color(0xFF053B3B),
+        primaryContainer = Color(0xFF0B5050),
+        onPrimaryContainer = Color(0xFFC4EBEA),
+        secondary = Color(0xFF6FC0BE),
+        secondaryContainer = Color(0xFF0B5050),
+        onSecondaryContainer = Color(0xFFC4EBEA),
+    )
+    Accent.AMBER -> DarkColors.copy(
+        primary = Color(0xFFFFB955),
+        onPrimary = Color(0xFF4A2A00),
+        primaryContainer = Color(0xFF6B3F00),
+        onPrimaryContainer = Color(0xFFFFDDB0),
+        secondary = Color(0xFFF0B060),
+        secondaryContainer = Color(0xFF6B3F00),
+        onSecondaryContainer = Color(0xFFFFDDB0),
+    )
+    Accent.GRAPHITE -> DarkColors.copy(
+        primary = Color(0xFFC4C8CF),
+        onPrimary = Color(0xFF1C1F24),
+        primaryContainer = Color(0xFF3A3E44),
+        onPrimaryContainer = Color(0xFFDFE2E8),
+        secondary = Color(0xFFB0B5BC),
+        secondaryContainer = Color(0xFF3A3E44),
+        onSecondaryContainer = Color(0xFFDFE2E8),
+    )
+}
+
+/** True black surfaces for OLED screens: dark colors with the backgrounds pushed to black. */
+private fun blackFor(accent: Accent) = darkFor(accent).copy(
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceVariant = Color(0xFF2A2A28),
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF0B0B0B),
+    surfaceContainer = Color(0xFF121211),
+    surfaceContainerHigh = Color(0xFF1A1A19),
+    surfaceContainerHighest = Color(0xFF222221),
+    outlineVariant = Color(0xFF3A3A38),
+)
+
+/** The scheme for a mode and accent. Internal so the contrast test can check every pair. */
+internal fun colorSchemeFor(mode: ThemeMode, dark: Boolean, accent: Accent) = when {
+    mode == ThemeMode.BLACK -> blackFor(accent)
+    dark -> darkFor(accent)
+    else -> lightFor(accent)
 }
 
 /** Fixed palettes, because the heatmap's steps were chosen against these surfaces. */
@@ -115,7 +206,7 @@ fun GoalTrackerTheme(
     val dark = when (mode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
+        ThemeMode.DARK, ThemeMode.BLACK -> true
     }
     // Status bar icons must contrast with the chosen theme, not the phone's.
     val view = LocalView.current
@@ -130,7 +221,7 @@ fun GoalTrackerTheme(
     }
     CompositionLocalProvider(LocalDarkTheme provides dark) {
         MaterialTheme(
-            colorScheme = if (dark) darkFor(accent) else lightFor(accent),
+            colorScheme = colorSchemeFor(mode, dark, accent),
             content = content,
         )
     }

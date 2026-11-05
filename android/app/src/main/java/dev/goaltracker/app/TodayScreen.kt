@@ -61,7 +61,17 @@ fun TodayScreen(
 
     if (items.isEmpty() && dueTasks.isEmpty()) {
         if (hasGoals) {
-            EmptyState("You're all caught up", "No goals or tasks are due today.")
+            // Say how many goals are resting today, so an empty screen reads as good news.
+            val resting = remember(controller.version) {
+                controller.read(emptyList()) { listGoals(false) }.count { !it.done }
+            }
+            Column(Modifier.fillMaxSize()) {
+                SampleBanner(controller)
+                EmptyState(
+                    "Nothing due today",
+                    if (resting > 0) "${countOf(resting, "goal")} off today. Enjoy the break." else "Enjoy your day.",
+                )
+            }
         } else {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 EmptyState(
@@ -72,6 +82,7 @@ fun TodayScreen(
                     Button(onClick = onAddGoal) { Text("Add a goal") }
                     OutlinedButton(onClick = onAddTask) { Text("Add a task") }
                 }
+                FirstRunHelpers(controller)
             }
         }
     } else {
@@ -87,10 +98,12 @@ fun TodayScreen(
                     buildList {
                         if (items.isNotEmpty()) add("$goalsDone of ${items.size} goals done")
                         if (dueTasks.isNotEmpty()) add(countOf(dueTasks.size, "task") + " due")
+                        if (items.isNotEmpty() && goalsDone == items.size && dueTasks.isEmpty()) add("All done")
                     }.joinToString(" · "),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
+            item { SampleBanner(controller) }
             item { BackupNudgeCard(controller, onOpenSettings) }
             item { EmptyJarBanner(controller, onAddTreat = onOpenRewards) }
             item {
@@ -106,7 +119,7 @@ fun TodayScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(task.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(task.title.withIcon(task.icon), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 task.due?.let {
                                     Text(
                                         dueLabel(it, controller.today),
@@ -115,7 +128,7 @@ fun TodayScreen(
                                     )
                                 }
                             }
-                            Checkbox(
+                            TickBox(
                                 checked = false,
                                 onCheckedChange = { controller.toggleTaskWithUndo(task.id, task.title) },
                                 modifier = Modifier.label("Mark ${task.title} done"),
@@ -202,7 +215,7 @@ private fun TodayCard(
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    item.title,
+                    item.title.withIcon(item.icon),
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -222,9 +235,13 @@ private fun TodayCard(
                     OverdueLabel(deadline)
                 }
             }
-            if (item.kind != GoalKind.NUMERIC) {
-                Checkbox(
+            if (item.avoid) {
+                // A quit habit is clean by default, so the only action is logging a slip.
+                OutlinedButton(onClick = { onCheck() }) { Text(if (item.loggedToday) "Undo slip" else "I slipped") }
+            } else if (item.kind != GoalKind.NUMERIC) {
+                TickBox(
                     checked = item.loggedToday || (item.kind == GoalKind.YES_NO && item.complete),
+                    cue = Cue.HABIT,
                     onCheckedChange = { onCheck() },
                     modifier = Modifier.label("Log ${item.title} for today"),
                 )
@@ -238,6 +255,7 @@ internal fun progressLine(item: TodayItem): String? {
     val periodTarget = item.periodTarget
     val totalTarget = item.totalTarget
     return when {
+        item.avoid -> if (item.loggedToday) "Slipped today" else "Clean so far today"
         period != null && periodTarget != null ->
             "${formatAmount(item.periodProgress)} of ${withUnit(periodTarget, item.unit)} ${period.current()}"
         totalTarget != null -> "${formatAmount(item.totalProgress)} of ${withUnit(totalTarget, item.unit)}"
@@ -250,6 +268,7 @@ private fun progressFraction(item: TodayItem): Float? {
     val periodTarget = item.periodTarget
     val totalTarget = item.totalTarget
     return when {
+        item.avoid -> null
         periodTarget != null -> (item.periodProgress / periodTarget).toFloat().coerceIn(0f, 1f)
         totalTarget != null -> (item.totalProgress / totalTarget).toFloat().coerceIn(0f, 1f)
         else -> null

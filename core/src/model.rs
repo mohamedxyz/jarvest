@@ -153,6 +153,8 @@ pub struct TodayItem {
     pub milestones_total: u32,
     /// A quit habit. `logged_today` then means "slipped today".
     pub avoid: bool,
+    /// The goal's emoji, if the user picked one.
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

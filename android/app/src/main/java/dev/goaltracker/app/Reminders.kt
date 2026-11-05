@@ -35,6 +35,7 @@ import java.time.temporal.ChronoUnit
 object Reminders {
     private const val CHANNEL = "reminders"
     private const val KEY_DAILY = "daily"
+    private const val KEY_EVENING = "evening"
     private const val PREFS = "reminders"
     private const val SCHEDULED = "scheduled"
     private const val KEY_STALE = "stale_backup"
@@ -53,6 +54,10 @@ object Reminders {
             app.core.dailyReminder()?.let {
                 schedule(context, KEY_DAILY, it.toInt())
                 keys += KEY_DAILY
+            }
+            app.core.eveningReminder()?.let {
+                schedule(context, KEY_EVENING, it.toInt())
+                keys += KEY_EVENING
             }
             app.core.listReminders().forEach {
                 schedule(context, it.goalId, it.minutes.toInt())
@@ -137,16 +142,34 @@ object Reminders {
         if (key == KEY_STALE) return fireStaleBackup(context)
         val app = context.applicationContext as GoalTrackerApp
         try {
-            val goalId = key.takeIf { it != KEY_DAILY }
-            val minutes = if (goalId == null) app.core.dailyReminder() else app.core.goalReminder(goalId)
+            val goalId = key.takeIf { it != KEY_DAILY && it != KEY_EVENING }
+            val minutes = when (key) {
+                KEY_DAILY -> app.core.dailyReminder()
+                KEY_EVENING -> app.core.eveningReminder()
+                else -> app.core.goalReminder(goalId!!)
+            }
             // The reminder was removed since this alarm was set.
             if (minutes == null) return
             schedule(context, key, minutes.toInt())
-            val text = app.core.reminderText(goalId, todayString())
+            // The evening check-in only speaks when something is still left today.
+            val text = if (key == KEY_EVENING) app.core.eveningText(todayString())
+            else app.core.reminderText(goalId, todayString())
             if (text != null && canNotify(context)) notify(context, key, text)
         } catch (_: CoreException) {
             // Nothing to show. The next change or app start rebuilds the alarms.
         }
+    }
+
+    /**
+     * Posts a test notification now. Returns what to tell the user: either that it was
+     * sent, or why nothing can show (so a denied permission is explained, not silent).
+     */
+    fun sendTest(context: Context): String {
+        if (!canNotify(context)) {
+            return "Notifications are off for Jarvest. Turn them on in the phone's Settings, under Apps, Jarvest, Notifications."
+        }
+        notify(context, "test", "This is a test. Reminders will look like this.")
+        return "Test notification sent."
     }
 
     private fun notify(context: Context, key: String, text: String) {

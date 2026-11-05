@@ -19,7 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
@@ -53,6 +53,7 @@ import dev.goaltracker.core.Repeat
 import dev.goaltracker.core.Task
 import dev.goaltracker.core.TaskFilter
 import dev.goaltracker.core.TaskSort
+import dev.goaltracker.core.TrashedGoal
 
 private fun TaskFilter.label() = when (this) {
     TaskFilter.ALL -> "All"
@@ -99,7 +100,15 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
     var opened by remember { mutableStateOf<Task?>(null) }
 
     // Tasks deleted a month ago or more are removed for good.
-    LaunchedEffect(Unit) { controller.read(0u) { purgeTrash(controller.today) } }
+    LaunchedEffect(Unit) {
+        controller.read(0u) { purgeTrash(controller.today) }
+        controller.read(0u) { purgeGoalTrash(controller.today) }
+    }
+    val trashedGoals = remember(controller.version, controller.today, showTrash) {
+        if (showTrash) controller.read(emptyList()) { listGoalTrash(controller.today) } else emptyList()
+    }
+    var goalToDelete by remember { mutableStateOf<TrashedGoal?>(null) }
+    var confirmEmpty by remember { mutableStateOf(false) }
 
     val tasks = remember(controller.version, controller.today, filter, sort, showTrash) {
         if (showTrash) controller.read(emptyList()) { listTrash(controller.today) }
@@ -211,7 +220,13 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             TextButton(onClick = { showTrash = !showTrash }) { Text(if (showTrash) "Back to tasks" else "Trash") }
         }
 
-        if (tasks.isEmpty()) {
+        if (showTrash && trashedGoals.isNotEmpty()) {
+            TextButton(onClick = { confirmEmpty = true }, Modifier.padding(horizontal = 8.dp)) {
+                Text("Empty goal trash", color = MaterialTheme.colorScheme.error)
+            }
+        }
+
+        if (tasks.isEmpty() && trashedGoals.isEmpty()) {
             when {
                 showTrash -> EmptyState("The trash is empty", "Deleted tasks wait here for 30 days.")
                 filter == TaskFilter.ALL -> EmptyState("No tasks yet", "Type one above. Words like tomorrow, !high and #tag fill in the date, priority and tag for you.")
@@ -223,6 +238,13 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 88.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                items(trashedGoals, key = { "goal-" + it.id }) { goal ->
+                    GoalTrashRow(
+                        goal,
+                        onRestore = { controller.act { restoreGoal(goal.id) } },
+                        onDeleteForever = { goalToDelete = goal },
+                    )
+                }
                 item { TipCard(controller, "tasks_quick_add", "Tip: write a task in one line. \"Essay tomorrow !high #uni\" sets the due date, the priority and the tag.") }
                 items(tasks, key = { it.id }) { task ->
                     if (showTrash) {
@@ -238,6 +260,31 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                 }
             }
         }
+    }
+
+    goalToDelete?.let { goal ->
+        ConfirmDialog(
+            title = "Delete this goal forever?",
+            body = "\"${goal.title}\" and its ${countOf(goal.entries.toInt(), "log")}, milestones and rewards will be gone for good. This can't be undone.",
+            confirm = "Delete forever",
+            onConfirm = {
+                goalToDelete = null
+                controller.act { deleteGoal(goal.id) }
+            },
+            onDismiss = { goalToDelete = null },
+        )
+    }
+    if (confirmEmpty) {
+        ConfirmDialog(
+            title = "Empty the goal trash?",
+            body = "Every goal in the trash, with its history and rewards, will be deleted for good. Tasks in the trash are not affected.",
+            confirm = "Delete forever",
+            onConfirm = {
+                confirmEmpty = false
+                controller.act { emptyGoalTrash() }
+            },
+            onDismiss = { confirmEmpty = false },
+        )
     }
 
     opened?.let { task ->
@@ -260,7 +307,7 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
         ) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    task.title,
+                    task.title.withIcon(task.icon),
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -269,7 +316,8 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
                 )
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (task.priority != Priority.MED) {
-                        Icon(Icons.Filled.Flag, null, Modifier.size(14.dp), tint = priorityColor(task.priority))
+                        // A signal-bars icon, so priority never looks like the Goals tab's flag.
+                        Icon(Icons.Filled.SignalCellularAlt, null, Modifier.size(14.dp), tint = priorityColor(task.priority))
                         Text(
                             task.priority.label(),
                             style = MaterialTheme.typography.bodySmall,
@@ -293,7 +341,7 @@ private fun TaskRow(task: Task, today: String, onOpen: () -> Unit, onCheck: () -
                     }
                 }
             }
-            Checkbox(
+            TickBox(
                 checked = task.done,
                 onCheckedChange = { onCheck() },
                 modifier = Modifier.label(if (task.done) "Mark ${task.title} not done" else "Mark ${task.title} done"),

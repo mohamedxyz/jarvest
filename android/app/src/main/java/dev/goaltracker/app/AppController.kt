@@ -10,10 +10,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.goaltracker.core.BulkEdit
 import dev.goaltracker.core.CoreException
 import dev.goaltracker.core.GoalCore
 import dev.goaltracker.core.LogResult
 import dev.goaltracker.core.Priority
+import dev.goaltracker.core.Task
+import dev.goaltracker.core.TaskEdit
 import dev.goaltracker.core.TaskFilter
 import dev.goaltracker.core.TaskSort
 import dev.goaltracker.core.RewardDraw
@@ -129,6 +132,45 @@ class AppController(private val app: GoalTrackerApp) {
         prefs.edit().putString("default_due", value.name).apply()
     }
 
+    // Task list look and behaviour (Settings > Tasks). Kept on the phone only.
+    var showTaskNotes by mutableStateOf(prefs.getBoolean("task_notes", false))
+        private set
+    var showChecklistProgress by mutableStateOf(prefs.getBoolean("task_progress", true))
+        private set
+    var compactTaskRows by mutableStateOf(prefs.getBoolean("task_compact", false))
+        private set
+    var groupTasksByTag by mutableStateOf(prefs.getBoolean("task_group_tags", false))
+        private set
+    /** Ask before moving a task to the trash. Off by default, because Undo is always offered. */
+    var confirmTaskTrash by mutableStateOf(prefs.getBoolean("confirm_task_trash", false))
+        private set
+    /** Ask before deleting for good, which can't be undone. On by default. */
+    var confirmDeleteForever by mutableStateOf(prefs.getBoolean("confirm_delete_forever", true))
+        private set
+    /** Archive finished tasks after this many days, or -1 for never. */
+    var archiveAfterDays by mutableStateOf(prefs.getInt("archive_after_days", -1))
+        private set
+
+    fun chooseShowTaskNotes(on: Boolean) { showTaskNotes = on; prefs.edit().putBoolean("task_notes", on).apply() }
+    fun chooseShowChecklistProgress(on: Boolean) { showChecklistProgress = on; prefs.edit().putBoolean("task_progress", on).apply() }
+    fun chooseCompactTaskRows(on: Boolean) { compactTaskRows = on; prefs.edit().putBoolean("task_compact", on).apply() }
+    fun chooseGroupTasksByTag(on: Boolean) { groupTasksByTag = on; prefs.edit().putBoolean("task_group_tags", on).apply() }
+    fun chooseConfirmTaskTrash(on: Boolean) { confirmTaskTrash = on; prefs.edit().putBoolean("confirm_task_trash", on).apply() }
+    fun chooseConfirmDeleteForever(on: Boolean) { confirmDeleteForever = on; prefs.edit().putBoolean("confirm_delete_forever", on).apply() }
+
+    fun chooseArchiveAfterDays(days: Int) {
+        archiveAfterDays = days
+        prefs.edit().putInt("archive_after_days", days).apply()
+        runAutoArchive()
+    }
+
+    /** Archives old finished tasks if the setting is on. Called when the app opens or the setting changes. */
+    fun runAutoArchive() {
+        if (archiveAfterDays < 0) return
+        val moved = read(0u) { autoArchiveTasks(archiveAfterDays.toUInt(), today) }
+        if (moved > 0u) version++
+    }
+
     /** The due date a new task starts with, as set in Settings. */
     fun defaultDueDate(): String? = when (defaultDue) {
         DefaultDue.NONE -> null
@@ -240,6 +282,39 @@ class AppController(private val app: GoalTrackerApp) {
         undo = UndoOffer(text) { change { toggleTask(taskId, today) } }
     }
 
+    /**
+     * Applies one change to many tasks and offers a single Undo that puts the whole batch back.
+     * [before] are the tasks as they were, so Undo knows what to restore.
+     */
+    fun bulkTasks(before: List<Task>, edit: BulkEdit, verb: String) {
+        val result = change { bulkUpdateTasks(before.map { it.id }, edit, today) } ?: return
+        reportReward(result.reward)
+        // Milestone tasks are skipped by everything except Done, and the user is told.
+        val skipped = if (result.skippedMilestones > 0u) {
+            " ${countOf(result.skippedMilestones.toInt(), "milestone task")} skipped: change those on the goal's page."
+        } else ""
+        if (result.changed == 0u) {
+            message = "Nothing changed.$skipped".trim()
+            return
+        }
+        val changed = before.filter { it.milestoneId == null || edit.done }
+        undo = UndoOffer("$verb ${countOf(result.changed.toInt(), "task")}.$skipped") {
+            act {
+                changed.forEach { old ->
+                    when {
+                        edit.done -> if (!old.done) toggleTask(old.id, today)
+                        edit.trash -> restoreTask(old.id)
+                        edit.archive -> if (old.archivedDate == null) unarchiveTask(old.id)
+                        else -> updateTask(
+                            old.id,
+                            TaskEdit(old.title, old.notes, old.due, old.priority, old.tag, old.repeat, old.goalId),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     /** Runs a logging action, then checks whether it earned a treat. */
     fun log(block: GoalCore.() -> LogResult): Boolean = try {
         val result = core.block()
@@ -257,6 +332,8 @@ class AppController(private val app: GoalTrackerApp) {
             jarPromptUsed = true
             showJarPrompt = true
         }
+        // A target was met (it rolled for a treat, won one, or found the jar empty): celebrate.
+        if (result.drew > 0u || result.noTreat > 0u || result.jarEmpty) Feel.celebrate(null)
         if (result.treatsRemoved > 0u) {
             message = "Unticked. The treat that target won was removed too."
         } else if (result.noTreat > 0u) {
@@ -270,6 +347,7 @@ class AppController(private val app: GoalTrackerApp) {
     /** Called when the app returns to the front, since the widget or date may have changed. */
     fun onResume() {
         today = todayString()
+        runAutoArchive()
         version++
         loadPendingDraw()
     }
@@ -290,6 +368,13 @@ class AppController(private val app: GoalTrackerApp) {
         read(Unit) { markDrawSeen(draw.id) }
         version++
         loadPendingDraw()
+    }
+
+    /** First day of the week set in Settings: 1 = Monday, 6 = Saturday, 7 = Sunday. */
+    fun weekStart(): Int = read(1) { weekStart().toInt() }
+
+    fun chooseWeekStart(day: Int) {
+        act { setWeekStart(day.toUByte()) }
     }
 
     private fun loadPendingDraw() {

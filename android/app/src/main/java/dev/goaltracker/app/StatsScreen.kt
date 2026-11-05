@@ -178,8 +178,11 @@ private fun CompletionBar(met: UInt, eligible: UInt) {
 @Composable
 fun Heatmap(controller: AppController, goalId: String?) {
     val todayDate = remember(controller.today) { LocalDate.parse(controller.today) }
-    val start = remember(todayDate) {
-        todayDate.minusDays(todayDate.dayOfWeek.value - 1L).minusWeeks(HEATMAP_WEEKS - 1)
+    val weekStart = remember(controller.version) { controller.weekStart() }
+    val start = remember(todayDate, weekStart) {
+        // The first column begins on the week-start day chosen in Settings.
+        val since = (todayDate.dayOfWeek.value - weekStart + 7) % 7
+        todayDate.minusDays(since.toLong()).minusWeeks(HEATMAP_WEEKS - 1)
     }
     val days = remember(controller.version, controller.today, goalId) {
         controller.read(emptyList()) { heatmap(goalId, start.toString(), controller.today) }
@@ -196,7 +199,10 @@ fun Heatmap(controller: AppController, goalId: String?) {
             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 Column(Modifier.width(labelWidth), verticalArrangement = Arrangement.spacedBy(gap)) {
                     Box(Modifier.height(16.dp))
-                    listOf("M", "", "W", "", "F", "", "").forEach { label ->
+                    // Row labels follow the week start: the 1st, 3rd and 5th rows are named.
+                    (0 until 7).map { row ->
+                        if (row % 2 == 0 && row < 5) "MTWTFSS"[(weekStart - 1 + row) % 7].toString() else ""
+                    }.forEach { label ->
                         Box(Modifier.height(cell), contentAlignment = Alignment.CenterStart) {
                             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -294,6 +300,26 @@ private fun RecapCard(controller: AppController) {
                         "${countOf(recap.targetsMet.toInt(), "target")} met.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                // Tasks are reported on their own: they never count in goal stats.
+                Text(
+                    "${countOf(recap.tasksDone.toInt(), "task")} done." +
+                        if (recap.tasksMissed > 0u) " ${countOf(recap.tasksMissed.toInt(), "task")} missed." else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (recap.missedTasks.isNotEmpty()) {
+                    SectionTitle("Missed tasks")
+                    recap.missedTasks.forEach {
+                        Text(
+                            "${it.title} (due ${formatDate(it.due)})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    val more = recap.tasksMissed.toInt() - recap.missedTasks.size
+                    if (more > 0) {
+                        Text("and $more more", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 if (before != null) {
                     val previous = if (back == 0) "last ${period.noun()}" else "the ${period.noun()} before"
                     DeltaRow("Logs", recap.entries.toInt(), before.entries.toInt(), previous)
@@ -332,7 +358,8 @@ private fun WeekdayCard(controller: AppController) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Best and worst days")
-            stats.forEach { s ->
+            val weekStart = controller.weekStart()
+            stats.sortedBy { (it.weekday.toInt() - (weekStart - 1) + 7) % 7 }.forEach { s ->
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(names[s.weekday.toInt()], Modifier.width(36.dp), style = MaterialTheme.typography.labelLarge)
                     Box(Modifier.weight(1f)) { CompletionBar(s.met, s.eligible) }

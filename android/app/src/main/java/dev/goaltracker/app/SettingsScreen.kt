@@ -48,6 +48,8 @@ fun SettingsScreen(controller: AppController) {
     val enabled = remember(controller.version) { controller.read(true) { rewardsEnabled() } }
     val daily = remember(controller.version) { controller.read(null) { dailyReminder() } }
     var pickingDaily by remember { mutableStateOf(false) }
+    val evening = remember(controller.version) { controller.read(null) { eveningReminder() } }
+    var pickingEvening by remember { mutableStateOf(false) }
     val askNotifications = rememberNotificationPermissionRequest(controller)
     var busy by remember { mutableStateOf(false) }
     var restorePreview by remember { mutableStateOf<RestorePreview?>(null) }
@@ -96,6 +98,7 @@ fun SettingsScreen(controller: AppController) {
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        SettingsGroup("Look and feel", "look") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Appearance")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -113,7 +116,10 @@ fun SettingsScreen(controller: AppController) {
                 controller.message = "Tips will show again."
             }) { Text("Show tips again") }
         }
+        FeelSettings()
+        }
 
+        SettingsGroup("Tasks and reminders", "tasks") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("New tasks")
             Text(
@@ -131,6 +137,21 @@ fun SettingsScreen(controller: AppController) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DefaultDue.entries.forEach {
                     FilterChip(controller.defaultDue == it, { controller.chooseDefaultDue(it) }, label = { Text(it.label) })
+                }
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("Week starts on")
+            Text(
+                "Weekly goals, the calendar, and charts begin their week on this day. Changing it never changes your history.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val weekStart = remember(controller.version) { controller.weekStart() }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(1 to "Monday", 7 to "Sunday", 6 to "Saturday").forEach { (day, label) ->
+                    FilterChip(weekStart == day, { controller.chooseWeekStart(day) }, label = { Text(label) })
                 }
             }
         }
@@ -156,6 +177,28 @@ fun SettingsScreen(controller: AppController) {
             daily?.let {
                 OutlinedButton(onClick = { pickingDaily = true }) { Text("Daily summary at ${Reminders.formatMinutes(it.toInt())}") }
             }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "Evening check-in: a second reminder that says how many goals and tasks are left today. It stays quiet when nothing is left.",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Switch(evening != null, { on ->
+                    if (on) {
+                        controller.act { setEveningReminder((21 * 60).toUShort()) }
+                        askNotifications()
+                    } else {
+                        controller.act { setEveningReminder(null) }
+                    }
+                })
+            }
+            evening?.let {
+                OutlinedButton(onClick = { pickingEvening = true }) { Text("Evening check-in at ${Reminders.formatMinutes(it.toInt())}") }
+            }
+            OutlinedButton(onClick = { controller.message = Reminders.sendTest(context) }) {
+                Text("Send a test notification")
+            }
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -169,7 +212,9 @@ fun SettingsScreen(controller: AppController) {
             }
             Switch(enabled, { on -> controller.act { setRewardsEnabled(on) } })
         }
+        }
 
+        SettingsGroup("Backup and data", "data") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Backup")
             Text(
@@ -205,6 +250,9 @@ fun SettingsScreen(controller: AppController) {
                 csvExporter.launch("jarvest-logs-${controller.today}.csv")
             }) { Text("Export to CSV") }
         }
+        }
+
+        HelpGroup(controller)
     }
 
     if (pickingDaily) {
@@ -215,6 +263,16 @@ fun SettingsScreen(controller: AppController) {
                 pickingDaily = false
             },
             onDismiss = { pickingDaily = false },
+        )
+    }
+    if (pickingEvening) {
+        TimePickerDialog(
+            initialMinutes = evening?.toInt(),
+            onPick = {
+                controller.act { setEveningReminder(it.toUShort()) }
+                pickingEvening = false
+            },
+            onDismiss = { pickingEvening = false },
         )
     }
     restorePreview?.let { preview ->

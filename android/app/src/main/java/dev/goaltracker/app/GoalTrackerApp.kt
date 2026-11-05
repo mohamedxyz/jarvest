@@ -26,6 +26,7 @@ class GoalTrackerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Feel.init(this)
         scope.launch { Reminders.rescheduleAll(this@GoalTrackerApp) }
     }
 
@@ -41,6 +42,7 @@ class GoalTrackerApp : Application() {
         scope.launch {
             TodayWidget().updateAll(this@GoalTrackerApp)
             StreakWidget().updateAll(this@GoalTrackerApp)
+            TasksWidget().updateAll(this@GoalTrackerApp)
         }
     }
 }

@@ -77,7 +77,9 @@ fun GoalDetailScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(goal.title, style = MaterialTheme.typography.headlineSmall)
+            Text(goal.title.withIcon(goal.icon), style = MaterialTheme.typography.headlineSmall)
+            // Pick or clear an emoji shown on this goal's cards.
+            IconPickerRow(goal.icon) { icon -> controller.act { setGoalIcon(goalId, icon) } }
             Text(describe(goal), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             goal.deadline?.let { deadline ->
                 if (!goal.done && deadline < controller.today) {
@@ -109,13 +111,15 @@ fun GoalDetailScreen(
                     Button(
                         onClick = { controller.log { toggleCheckIn(goalId, controller.today) } },
                         Modifier.fillMaxWidth(),
-                    ) { Text(if (checked) "Undo today's check-in" else "Check in today") }
+                    ) { Text(if (goal.avoid) (if (checked) "Undo today's slip" else "I slipped today") else if (checked) "Undo today's check-in" else "Check in today") }
                 }
             }
         }
 
         if (!goal.archived) {
-            OutlinedButton(onClick = { pickingPastDay = true }, Modifier.fillMaxWidth()) { Text("Log a past day") }
+            OutlinedButton(onClick = { pickingPastDay = true }, Modifier.fillMaxWidth()) {
+                Text(if (goal.avoid) "Log a slip on a past day" else "Log a past day")
+            }
             if (goal.period != null) {
                 val skippedToday = controller.today in skipped
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
@@ -154,7 +158,14 @@ fun GoalDetailScreen(
 
         stats?.let { StreakTiles(it) }
 
-        if (goal.kind != GoalKind.YES_NO) {
+        if (showsCalendar(goal)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SectionTitle("Calendar")
+                GoalCalendar(controller, goal, skipped)
+            }
+        }
+
+        if (goal.kind != GoalKind.YES_NO && !goal.avoid) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionTitle("Progress")
                 PeriodChart(series, chartPeriod, goal.unit)
@@ -176,7 +187,7 @@ fun GoalDetailScreen(
 
         if (goal.kind != GoalKind.YES_NO) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SectionTitle("Activity")
+                SectionTitle(if (goal.avoid) "Slips" else "Activity")
                 Heatmap(controller, goalId)
             }
         }
@@ -199,7 +210,7 @@ fun GoalDetailScreen(
             }
             linkedTasks.forEach { task ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
+                    TickBox(
                         task.done,
                         { controller.toggleTaskWithUndo(task.id, task.title) },
                         Modifier.label(if (task.done) "Mark ${task.title} not done" else "Mark ${task.title} done"),
@@ -218,7 +229,7 @@ fun GoalDetailScreen(
             SectionTitle("Milestones")
             milestones.forEachIndexed { index, milestone ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
+                    TickBox(
                         checked = milestone.doneDate != null,
                         enabled = !goal.archived,
                         onCheckedChange = { controller.log { toggleMilestone(milestone.id, controller.today) } },
@@ -322,15 +333,19 @@ fun GoalDetailScreen(
     }
     if (confirmDelete) {
         ConfirmDialog(
-            title = "Delete this goal?",
-            body = "\"${goal.title}\" and all of its history and rewards will be permanently deleted. " +
-                (if (linkedTasks.isNotEmpty()) "Its ${countOf(linkedTasks.size, "task")} will stay in your Tasks tab, unlinked. " else "") +
-                "To keep the history, archive it instead.",
-            confirm = "Delete",
+            title = "Move this goal to the trash?",
+            body = "\"${goal.title}\" leaves your lists, stats and reminders. Its history and rewards are kept for 30 days, " +
+                "and you can restore it from the trash on the Tasks tab. " +
+                (if (linkedTasks.isNotEmpty()) "Its ${countOf(linkedTasks.size, "task")} will stay in your Tasks tab, unlinked." else ""),
+            confirm = "Move to trash",
             onConfirm = {
                 confirmDelete = false
+                if (controller.act { trashGoal(goalId, controller.today) }) {
+                    controller.undo = UndoOffer("\"${goal.title}\" moved to the trash.") {
+                        controller.act { restoreGoal(goalId) }
+                    }
+                }
                 onClose()
-                controller.act { deleteGoal(goalId) }
             },
             onDismiss = { confirmDelete = false },
         )
