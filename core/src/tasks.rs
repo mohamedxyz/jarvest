@@ -20,7 +20,7 @@ const TASK_COLUMNS: &str = "t.id, t.title, t.notes, t.due, t.priority, t.tag, t.
     t.goal_id,
     (SELECT g.title FROM goals g WHERE g.id = t.goal_id),
     t.milestone_id,
-    t.deleted_date, t.archived_date, t.pushed_count, t.repeat_every, t.repeat_days";
+    t.deleted_date, t.archived_date, t.pushed_count, t.repeat_every, t.repeat_days, t.icon, t.sample";
 
 /// What `toggle_task` reads first: done date, due, repeat, next copy, repeat every, repeat days.
 type ToggleRow = (
@@ -60,6 +60,8 @@ fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
         pushed_count: row.get(16)?,
         repeat_every: row.get(17)?,
         repeat_days: row.get(18)?,
+        icon: row.get(19)?,
+        sample: row.get(20)?,
     })
 }
 
@@ -471,7 +473,7 @@ pub fn list_tasks(
          ORDER BY t.rowid"
     ))?;
     let mut tasks: Vec<(i64, Task)> = stmt
-        .query_map([], |row| Ok((row.get(19)?, task_from_row(row, today)?)))?
+        .query_map([], |row| Ok((row.get(21)?, task_from_row(row, today)?)))?
         .collect::<Result<_, _>>()?;
 
     tasks.retain(|(_, t)| match filter {

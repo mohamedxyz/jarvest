@@ -200,7 +200,7 @@ const GOAL_COLUMNS: &str = "id, title, notes, kind, category, period, period_tar
     weekdays,
     (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id AND m.done_date IS NOT NULL),
     (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id),
-    avoid";
+    avoid, icon, sample";
 
 fn goal_from_row(row: &Row<'_>) -> rusqlite::Result<Goal> {
     let kind: GoalKind = row.get(3)?;
@@ -230,6 +230,8 @@ fn goal_from_row(row: &Row<'_>) -> rusqlite::Result<Goal> {
         milestones_done: row.get(14)?,
         milestones_total: row.get(15)?,
         avoid: row.get(16)?,
+        icon: row.get(17)?,
+        sample: row.get(18)?,
     })
 }
 

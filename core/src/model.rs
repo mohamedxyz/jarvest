@@ -108,6 +108,10 @@ pub struct Goal {
     pub milestones_total: u32,
     /// A quit habit: every entry is a slip, and a day with none is a clean day.
     pub avoid: bool,
+    /// A short emoji shown on cards and rows, if the user picked one.
+    pub icon: Option<String>,
+    /// True for goals made by "Try it with sample data".
+    pub sample: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -430,6 +434,10 @@ pub struct Task {
     pub repeat_every: u32,
     /// For a weekly repeat: the weekdays it falls on (Monday = 1 up to Sunday = 64), or None.
     pub repeat_days: Option<u8>,
+    /// A short emoji shown on rows, if the user picked one.
+    pub icon: Option<String>,
+    /// True for tasks made by "Try it with sample data".
+    pub sample: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
