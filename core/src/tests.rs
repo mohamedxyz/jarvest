@@ -2612,6 +2612,7 @@ fn theme_and_accent_travel_with_a_backup() {
         Some("DARK")
     );
     assert!(fixture.core.set_pref("seed".into(), "x".into()).is_err());
+}
 
 // Task power: archive, bulk edit, tags, custom repeat, search, trash details
 
