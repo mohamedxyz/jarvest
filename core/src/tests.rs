@@ -2507,3 +2507,110 @@ fn the_daily_summary_counts_tasks_and_calls_out_late_ones() {
         None
     );
 }
+
+// Icons, sample data and templates
+
+#[test]
+fn icons_can_be_set_cleared_and_are_limited() {
+    let (core, _dir) = core();
+    let goal = yes_no(&core, "Read");
+    let task = add_task(&core, new_task("Call"));
+    core.set_goal_icon(goal.clone(), Some("📚".into())).unwrap();
+    core.set_task_icon(task.clone(), Some(" ☎️ ".into()))
+        .unwrap();
+    assert_eq!(
+        core.get_goal(goal.clone()).unwrap().icon.as_deref(),
+        Some("📚")
+    );
+    assert_eq!(
+        core.get_task(task.clone(), DAY.into())
+            .unwrap()
+            .icon
+            .as_deref(),
+        Some("☎️")
+    );
+    core.set_goal_icon(goal.clone(), None).unwrap();
+    assert_eq!(core.get_goal(goal.clone()).unwrap().icon, None);
+    assert!(core.set_goal_icon(goal, Some("123456789".into())).is_err());
+    assert!(core.set_task_icon("nope".into(), None).is_err());
+}
+
+#[test]
+fn a_schema_8_database_upgrades_with_icon_and_sample_columns() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v8.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 8).unwrap();
+        conn.execute_batch(
+            "INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old', 'yes_no', '2026-01-01');
+             INSERT INTO tasks (id, title, created_date) VALUES ('t1', 'Old task', '2026-01-01');",
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    let goal = core.get_goal("g1".into()).unwrap();
+    assert!(!goal.sample && goal.icon.is_none());
+    let task = core.get_task("t1".into(), DAY.into()).unwrap();
+    assert!(!task.sample && task.icon.is_none());
+    core.set_goal_icon("g1".into(), Some("⭐".into())).unwrap();
+}
+
+#[test]
+fn sample_data_is_flagged_earns_nothing_and_clears_cleanly() {
+    let (core, _dir) = core();
+    let real = yes_no(&core, "Real goal");
+    let real_task = add_task(&core, new_task("Real task"));
+    assert!(!core.has_sample_data().unwrap());
+    core.create_sample_data(DAY.into()).unwrap();
+    assert!(core.has_sample_data().unwrap());
+    // Asking twice does not double up.
+    core.create_sample_data(DAY.into()).unwrap();
+
+    let goals = core.list_goals(false).unwrap();
+    assert_eq!(goals.iter().filter(|g| g.sample).count(), 2);
+    assert!(goals.iter().any(|g| g.sample && g.total_logged > 0.0));
+    // No rewards were rolled for the sample history.
+    assert!(core.list_draws().unwrap().is_empty());
+
+    let removed = core.clear_sample_data().unwrap();
+    assert_eq!(removed, 4);
+    assert!(!core.has_sample_data().unwrap());
+    let left = core.list_goals(false).unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].id, real);
+    assert!(core.get_task(real_task, DAY.into()).is_ok());
+}
+
+#[test]
+fn keeping_sample_data_makes_it_real() {
+    let (core, _dir) = core();
+    core.create_sample_data(DAY.into()).unwrap();
+    core.keep_sample_data().unwrap();
+    assert!(!core.has_sample_data().unwrap());
+    assert_eq!(core.clear_sample_data().unwrap(), 0);
+    assert_eq!(core.list_goals(false).unwrap().len(), 2);
+}
+
+#[test]
+fn sample_data_survives_a_backup_and_restore() {
+    let (core, dir) = core();
+    core.create_sample_data(DAY.into()).unwrap();
+    let backup = dir.path().join("s.sqlite").to_str().unwrap().to_string();
+    core.export_backup(backup.clone()).unwrap();
+    core.clear_sample_data().unwrap();
+    core.restore_backup(backup).unwrap();
+    assert!(core.has_sample_data().unwrap());
+}
+
+#[test]
+fn templates_create_goals_and_tasks_and_reject_unknown_keys() {
+    let (core, _dir) = core();
+    for key in ["get_fit", "learn_skill", "school_year"] {
+        assert!(core.create_template(key.into(), DAY.into()).unwrap() >= 4);
+    }
+    assert!(core.create_template("nope".into(), DAY.into()).is_err());
+    let goals = core.list_goals(false).unwrap();
+    assert_eq!(goals.len(), 6);
+    assert!(goals.iter().all(|g| g.icon.is_some() && !g.sample));
+}

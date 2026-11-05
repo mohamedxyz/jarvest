@@ -106,6 +106,10 @@ pub struct Goal {
     pub weekdays: Option<u8>,
     pub milestones_done: u32,
     pub milestones_total: u32,
+    /// A short emoji shown on cards and rows, if the user picked one.
+    pub icon: Option<String>,
+    /// True for goals made by "Try it with sample data".
+    pub sample: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -416,6 +420,10 @@ pub struct Task {
     /// Set when this task mirrors a milestone. Such a task is ticked, renamed and
     /// removed together with its milestone, on the goal's page.
     pub milestone_id: Option<String>,
+    /// A short emoji shown on rows, if the user picked one.
+    pub icon: Option<String>,
+    /// True for tasks made by "Try it with sample data".
+    pub sample: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

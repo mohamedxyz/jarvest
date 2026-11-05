@@ -19,7 +19,7 @@ const TASK_COLUMNS: &str = "t.id, t.title, t.notes, t.due, t.priority, t.tag, t.
     (SELECT COUNT(*) FROM task_items i WHERE i.task_id = t.id),
     t.goal_id,
     (SELECT g.title FROM goals g WHERE g.id = t.goal_id),
-    t.milestone_id";
+    t.milestone_id, t.icon, t.sample";
 
 fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
     let due: Option<String> = row.get(3)?;
@@ -44,6 +44,8 @@ fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
         goal_id: row.get(11)?,
         goal_title: row.get(12)?,
         milestone_id: row.get(13)?,
+        icon: row.get(14)?,
+        sample: row.get(15)?,
     })
 }
 
@@ -396,7 +398,7 @@ pub fn list_tasks(
         "SELECT {TASK_COLUMNS}, t.rowid FROM tasks t WHERE t.deleted_date IS NULL ORDER BY t.rowid"
     ))?;
     let mut tasks: Vec<(i64, Task)> = stmt
-        .query_map([], |row| Ok((row.get(14)?, task_from_row(row, today)?)))?
+        .query_map([], |row| Ok((row.get(16)?, task_from_row(row, today)?)))?
         .collect::<Result<_, _>>()?;
 
     tasks.retain(|(_, t)| match filter {

@@ -13,6 +13,7 @@ mod model;
 mod quickadd;
 mod reminders;
 mod rewards;
+mod samples;
 mod stats;
 mod tasks;
 
@@ -442,6 +443,39 @@ impl GoalCore {
 
     pub fn export_csv(&self, dest_path: String) -> Result<(), CoreError> {
         export::export_csv(&self.conn(), &dest_path)
+    }
+
+    // Icons, sample data and templates (first run)
+
+    pub fn set_goal_icon(&self, goal_id: String, icon: Option<String>) -> Result<(), CoreError> {
+        samples::set_goal_icon(&self.conn(), &goal_id, icon)
+    }
+
+    pub fn set_task_icon(&self, task_id: String, icon: Option<String>) -> Result<(), CoreError> {
+        samples::set_task_icon(&self.conn(), &task_id, icon)
+    }
+
+    pub fn has_sample_data(&self) -> Result<bool, CoreError> {
+        samples::has_sample_data(&self.conn())
+    }
+
+    pub fn create_sample_data(&self, today: String) -> Result<(), CoreError> {
+        samples::create_sample_data(&mut self.conn(), &today)
+    }
+
+    /// Deletes only flagged sample goals and tasks. Returns how many were removed.
+    pub fn clear_sample_data(&self) -> Result<u32, CoreError> {
+        samples::clear_sample_data(&mut self.conn())
+    }
+
+    /// Turns the sample items into ordinary ones.
+    pub fn keep_sample_data(&self) -> Result<(), CoreError> {
+        samples::keep_sample_data(&self.conn())
+    }
+
+    /// `get_fit`, `learn_skill` or `school_year`. Returns how many items were made.
+    pub fn create_template(&self, key: String, today: String) -> Result<u32, CoreError> {
+        samples::create_template(&mut self.conn(), &key, &today)
     }
 
     // Backup
