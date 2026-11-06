@@ -334,6 +334,25 @@ fun FeelSettings() {
             Text("Animate screens, lists and the score. Turn off for a calmer, instant app.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Switch(Feel.motion, { Feel.chooseMotion(it) }, modifier = Modifier.label("Motion"))
         }
+        Text("Sound profile", style = MaterialTheme.typography.labelLarge)
+        SoundProfile.entries.forEach { profile ->
+            Row(
+                Modifier.fillMaxWidth().clickable {
+                    Feel.chooseSoundProfile(profile)
+                    Feel.cue(view, Cue.GOAL, force = true)
+                },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.RadioButton(selected = Feel.soundProfile == profile, onClick = {
+                    Feel.chooseSoundProfile(profile)
+                    Feel.cue(view, Cue.GOAL, force = true)
+                })
+                Column {
+                    Text(profile.label, style = MaterialTheme.typography.bodyLarge)
+                    Text(profile.blurb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         FlowRowOfPreviews(view)
         if (Feel.reducedMotion(context)) {
             Text(
@@ -349,7 +368,7 @@ fun FeelSettings() {
 @Composable
 private fun FlowRowOfPreviews(view: android.view.View) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("Task" to Cue.TASK, "Habit" to Cue.HABIT, "Undo" to Cue.UNDO, "Goal" to Cue.GOAL).forEach { (name, cue) ->
+        listOf("Task" to Cue.TASK, "Habit" to Cue.HABIT, "Undo" to Cue.UNDO, "Goal" to Cue.GOAL, "Treat" to Cue.TREAT).forEach { (name, cue) ->
             OutlinedButton(onClick = { Feel.cue(view, cue, force = true) }) { Text("Preview $name") }
         }
     }

@@ -342,7 +342,7 @@ class AppController(private val app: GoalTrackerApp) {
             showJarPrompt = true
         }
         // A target was met (it rolled for a treat, won one, or found the jar empty): celebrate.
-        if (result.drew > 0u || result.noTreat > 0u || result.jarEmpty) Feel.celebrate(null)
+        if (result.drew > 0u || result.noTreat > 0u || result.jarEmpty) Feel.celebrate(null, treat = result.drew > 0u)
         if (result.treatsRemoved > 0u) {
             message = "Unticked. The treat that target won was removed too."
         } else if (result.noTreat > 0u) {

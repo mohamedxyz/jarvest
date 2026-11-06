@@ -37,7 +37,7 @@ import kotlin.math.exp
 import kotlin.math.sin
 
 /** The small moments the app can mark with a buzz and a sound. */
-enum class Cue { TASK, HABIT, UNDO, GOAL }
+enum class Cue { TASK, HABIT, UNDO, GOAL, TREAT }
 
 /**
  * "Feel" settings: haptics, sounds, and the remembered intro/settings state. They are
@@ -50,6 +50,10 @@ object Feel {
     var haptics by mutableStateOf(true)
         private set
     var sounds by mutableStateOf(false)
+        private set
+
+    /** Which set of sounds plays when sounds are on. */
+    var soundProfile by mutableStateOf(SoundProfile.CHIMES)
         private set
 
     /** The in-app Motion switch. The phone's "remove animations" setting always wins over it. */
@@ -68,6 +72,7 @@ object Feel {
         prefs = p
         haptics = p.getBoolean("haptics", true)
         sounds = p.getBoolean("sounds", false)
+        soundProfile = SoundProfile.entries.firstOrNull { it.name == p.getString("sound_profile", null) } ?: SoundProfile.CHIMES
         motion = p.getBoolean("motion", true)
     }
 
@@ -79,6 +84,11 @@ object Feel {
     fun chooseHaptics(on: Boolean) {
         haptics = on
         prefs?.edit()?.putBoolean("haptics", on)?.apply()
+    }
+
+    fun chooseSoundProfile(profile: SoundProfile) {
+        soundProfile = profile
+        prefs?.edit()?.putString("sound_profile", profile.name)?.apply()
     }
 
     fun chooseSounds(on: Boolean) {
@@ -110,41 +120,126 @@ object Feel {
             }
             view.performHapticFeedback(kind)
         }
-        if (sounds || force) Tones.play(cue)
+        if (sounds || force) Tones.play(soundProfile, cue)
     }
 
     /** A goal's target was met: a bigger moment than an ordinary tick. */
-    fun celebrate(view: View?) {
+    fun celebrate(view: View?, treat: Boolean = false) {
         celebration++
-        cue(view, Cue.GOAL)
+        cue(view, if (treat) Cue.TREAT else Cue.GOAL)
     }
 }
 
+/** A set of sounds the user can choose. Every profile has a sound for each [Cue]. */
+enum class SoundProfile(val label: String, val blurb: String) {
+    CHIMES("Soft chimes", "Warm, gentle bells"),
+    POP("Pop and bubble", "Short, round pops"),
+    RETRO("Retro game", "Soft 8-bit blips"),
+    WOOD("Wood and click", "Dry, quiet taps"),
+}
+
 /**
- * Short tones made in code, so the app needs no sound files. Each tone is a sine wave
- * that fades out. A task is one note, a habit two rising notes, undo one low note,
- * and a goal three rising notes.
+ * Short tones made in code, so the app needs no sound files. Each profile builds its notes
+ * from a different wave shape. To keep them gentle, every note starts with a quick fade-in
+ * (no click), fades out, and the sharper waves are smoothed with a low-pass filter.
  */
 object Tones {
     private const val RATE = 22050
 
-    private fun notes(cue: Cue): List<Pair<Double, Int>> = when (cue) {
-        Cue.TASK -> listOf(660.0 to 90)
-        Cue.HABIT -> listOf(523.0 to 80, 784.0 to 110)
-        Cue.UNDO -> listOf(330.0 to 100)
-        Cue.GOAL -> listOf(523.0 to 90, 659.0 to 90, 784.0 to 160)
+    /** One note: start pitch, optional end pitch (a slide), length, and silence after it. */
+    private class Note(val hz: Double, val ms: Int, val toHz: Double = hz, val gapMs: Int = 0)
+
+    private fun notes(profile: SoundProfile, cue: Cue): List<Note> = when (profile) {
+        SoundProfile.CHIMES -> when (cue) {
+            Cue.TASK -> listOf(Note(659.0, 380))
+            Cue.HABIT -> listOf(Note(523.0, 200, gapMs = 20), Note(784.0, 420))
+            Cue.UNDO -> listOf(Note(392.0, 260))
+            Cue.GOAL -> listOf(Note(523.0, 160), Note(659.0, 160), Note(784.0, 160), Note(1047.0, 520))
+            Cue.TREAT -> listOf(Note(523.0, 140), Note(659.0, 140), Note(784.0, 140), Note(1047.0, 140), Note(1319.0, 620))
+        }
+        SoundProfile.POP -> when (cue) {
+            Cue.TASK -> listOf(Note(420.0, 80, toHz = 760.0))
+            Cue.HABIT -> listOf(Note(420.0, 70, toHz = 700.0, gapMs = 30), Note(520.0, 80, toHz = 900.0))
+            Cue.UNDO -> listOf(Note(640.0, 90, toHz = 320.0))
+            Cue.GOAL -> listOf(Note(400.0, 70, toHz = 700.0, gapMs = 25), Note(480.0, 70, toHz = 820.0, gapMs = 25), Note(600.0, 110, toHz = 1000.0))
+            Cue.TREAT -> listOf(Note(400.0, 70, toHz = 700.0, gapMs = 20), Note(500.0, 70, toHz = 850.0, gapMs = 20), Note(620.0, 70, toHz = 1000.0, gapMs = 20), Note(780.0, 160, toHz = 1300.0))
+        }
+        SoundProfile.RETRO -> when (cue) {
+            Cue.TASK -> listOf(Note(587.0, 70))
+            Cue.HABIT -> listOf(Note(494.0, 60), Note(740.0, 90))
+            Cue.UNDO -> listOf(Note(392.0, 70), Note(294.0, 90))
+            Cue.GOAL -> listOf(Note(523.0, 70), Note(659.0, 70), Note(784.0, 120))
+            Cue.TREAT -> listOf(Note(523.0, 70), Note(659.0, 70), Note(784.0, 70), Note(1047.0, 70), Note(784.0, 60), Note(1047.0, 220))
+        }
+        SoundProfile.WOOD -> when (cue) {
+            Cue.TASK -> listOf(Note(880.0, 60))
+            Cue.HABIT -> listOf(Note(700.0, 55, gapMs = 40), Note(900.0, 70))
+            Cue.UNDO -> listOf(Note(500.0, 70))
+            Cue.GOAL -> listOf(Note(660.0, 60, gapMs = 50), Note(830.0, 60, gapMs = 50), Note(990.0, 90))
+            Cue.TREAT -> listOf(Note(523.0, 80, gapMs = 40), Note(659.0, 80, gapMs = 40), Note(784.0, 80, gapMs = 40), Note(1047.0, 160))
+        }
     }
 
-    fun play(cue: Cue) {
-        val samples = ArrayList<Short>()
-        for ((hz, ms) in notes(cue)) {
-            val n = RATE * ms / 1000
+    /** The wave at [phase] (radians). Each profile has its own shape. */
+    private fun wave(profile: SoundProfile, phase: Double): Double = when (profile) {
+        // A fundamental with two quiet overtones sounds like a bell.
+        SoundProfile.CHIMES -> (sin(phase) + 0.35 * sin(2 * phase) + 0.12 * sin(3 * phase)) / 1.47
+        SoundProfile.POP -> sin(phase)
+        // A narrow square wave, smoothed below. The classic 8-bit sound without the sting.
+        SoundProfile.RETRO -> if ((phase / (2 * PI)) % 1.0 < 0.25) 1.0 else -1.0
+        // A short tone with an inharmonic overtone, like a wooden block.
+        SoundProfile.WOOD -> (sin(phase) + 0.5 * sin(2.4 * phase)) / 1.5
+    }
+
+    private fun gain(profile: SoundProfile) = when (profile) {
+        SoundProfile.CHIMES -> 0.30
+        SoundProfile.POP -> 0.32
+        SoundProfile.RETRO -> 0.20
+        SoundProfile.WOOD -> 0.35
+    }
+
+    /** How fast a note dies away. Bigger is shorter and drier. */
+    private fun decay(profile: SoundProfile) = when (profile) {
+        SoundProfile.CHIMES -> 3.0
+        SoundProfile.POP -> 5.0
+        SoundProfile.RETRO -> 3.0
+        SoundProfile.WOOD -> 9.0
+    }
+
+    /** How much of the sharpness is kept: 1.0 is none removed, lower is softer. */
+    private fun brightness(profile: SoundProfile) = when (profile) {
+        SoundProfile.CHIMES -> 1.0
+        SoundProfile.POP -> 1.0
+        SoundProfile.RETRO -> 0.30
+        SoundProfile.WOOD -> 0.65
+    }
+
+    private fun render(profile: SoundProfile, cue: Cue): ShortArray {
+        val out = ArrayList<Short>()
+        val volume = gain(profile) * Short.MAX_VALUE
+        val k = decay(profile)
+        val smooth = brightness(profile)
+        val fadeIn = RATE * 6 / 1000
+        val fadeOut = RATE * 10 / 1000
+        for (note in notes(profile, cue)) {
+            val n = RATE * note.ms / 1000
+            var phase = 0.0
+            var filtered = 0.0
             for (i in 0 until n) {
-                val fade = exp(-4.0 * i / n)
-                samples.add((sin(2 * PI * hz * i / RATE) * fade * 0.4 * Short.MAX_VALUE).toInt().toShort())
+                val t = i.toDouble() / n
+                phase += 2 * PI * (note.hz + (note.toHz - note.hz) * t) / RATE
+                filtered += smooth * (wave(profile, phase) - filtered)
+                // Fade in over 6 ms (no click), die away, and fade out over the last 10 ms.
+                val envelope = minOf(1.0, i.toDouble() / fadeIn) * exp(-k * t) * minOf(1.0, (n - i).toDouble() / fadeOut)
+                out.add((filtered * envelope * volume).toInt().toShort())
             }
+            repeat(RATE * note.gapMs / 1000) { out.add(0) }
         }
-        val data = samples.toShortArray()
+        return out.toShortArray()
+    }
+
+    fun play(profile: SoundProfile, cue: Cue) {
+        val data = render(profile, cue)
         // Played on its own thread so a tap never waits for audio.
         Thread {
             try {
