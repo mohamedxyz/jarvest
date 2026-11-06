@@ -291,7 +291,9 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                 route == "newgoal" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.YES_NO, onDone = pop)
                 route == "newhabit" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.HABIT, onDone = pop)
                 route == "stats" -> StatsScreen(controller, onOpenGoal = { push("goal/$it") })
-                route == "treats" -> TreatsScreen(controller)
+                route == "treats" -> TreatsScreen(controller, onOpenMonsters = { push("monsters") })
+                route == "monsters" -> MonstersScreen(controller, onOpen = { push("monster/$it") })
+                route.startsWith("monster/") -> MonsterDetailScreen(controller, route.removePrefix("monster/"), onClose = pop)
                 route == "settings" -> SettingsScreen(controller)
                 route == "new" -> GoalEditorScreen(controller, goalId = null, onDone = pop)
                 route.startsWith("edit/") ->
@@ -309,12 +311,15 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
         }
     }
 
-    controller.pendingDraw?.let { RewardReveal(it, controller::dismissDraw) }
+    controller.monsterVictory?.let { MonsterVictoryDialog(it) { controller.monsterVictory = null } }
+    controller.pendingDraw?.let { RewardReveal(controller, it, controller::dismissDraw) }
     CelebrationBurst()
 }
 
 private fun titleFor(route: String): String = when {
     route == "settings" -> "Settings"
+    route == "monsters" -> "Monsters"
+    route.startsWith("monster/") -> "Monster"
     route == "new" || route == "newgoal" -> "New goal"
     route == "newhabit" -> "New habit"
     route == "newtask" || route.startsWith("newtask/") -> "New task"
@@ -326,7 +331,7 @@ private fun titleFor(route: String): String = when {
 }
 
 @Composable
-private fun RewardReveal(draw: RewardDraw, onDismiss: () -> Unit) {
+private fun RewardReveal(controller: AppController, draw: RewardDraw, onDismiss: () -> Unit) {
     var shown by remember(draw.id) { mutableStateOf(false) }
     // With animations off on the phone, the dialog simply appears at full size.
     val reduced = Feel.reducedMotion(androidx.compose.ui.platform.LocalContext.current)
@@ -355,7 +360,7 @@ private fun RewardReveal(draw: RewardDraw, onDismiss: () -> Unit) {
                 )
                 Text(
                     if (draw.comeback) "Comeback boost! You got back on track with ${draw.goalTitle}."
-                    else "Earned by ${draw.goalTitle}.",
+                    else "Earned by ${if (draw.fromMonster) controller.shownMonsterName(draw.goalTitle) else draw.goalTitle}.",
                     textAlign = TextAlign.Center,
                 )
             }

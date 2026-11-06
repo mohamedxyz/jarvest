@@ -379,6 +379,23 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.7.1",
+        listOf(
+            "Monsters: name a struggle and fight it with linked goals, habits and tasks. Beat it to win treats; it comes back stronger.",
+            "Permanent kill: turn a monster into a final boss, 5 times stronger, that never returns.",
+            "Find Monsters on the Rewards tab. Monster names are hidden outside the Monsters screens unless you turn that off.",
+        ),
+    ),
+    Release(
+        "0.7.0",
+        listOf(
+            "A day score on Today: points done out of points planned, with a Spark, Blaze or Titan level.",
+            "A softer, rounder look with animations for screens, lists and the score, and a Motion switch.",
+            "Sound profiles: Soft chimes, Pop and bubble, Retro game and Wood and click.",
+            "A Habits tab with a day grid, hide finished, and timeline separators.",
+        ),
+    ),
+    Release(
         "0.6.0",
         listOf(
             "A pop when you tick, optional haptics and sounds, and a bigger moment when a target is met.",

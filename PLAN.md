@@ -553,7 +553,7 @@ The day score answers "how is today going?" with one number. It is computed in t
 
 Not in 0.7.0 (planned for 0.8.0): hero XP and levels that never go down, the weekly boss and bestiary, a calendar of past day levels (needs a stored daily snapshot and a migration).
 
-## V0.8.0 plan: custom monsters
+## Custom monsters (shipped in 0.7.1)
 
 A monster stands for a struggle the person names, such as a habit they want to beat. They link habits, goals and tasks to it, and doing those things damages it. It is a display layer: it never changes goals, streaks, stats, or the treat odds.
 

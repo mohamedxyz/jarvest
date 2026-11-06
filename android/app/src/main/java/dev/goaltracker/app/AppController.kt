@@ -139,6 +139,21 @@ class AppController(private val app: GoalTrackerApp) {
         private set
     var compactTaskRows by mutableStateOf(prefs.getBoolean("task_compact", false))
         private set
+    /** Monster names can be sensitive, so outside the Monsters screens they show as "a monster". */
+    var hideMonsterNames by mutableStateOf(prefs.getBoolean("hide_monster_names", true))
+        private set
+    fun chooseHideMonsterNames(on: Boolean) { hideMonsterNames = on; prefs.edit().putBoolean("hide_monster_names", on).apply() }
+    /** The monster that was just beaten, until the person closes the dialog. */
+    var monsterVictory by mutableStateOf<dev.goaltracker.core.MonsterEvent?>(null)
+
+    /** Records beaten monsters and starts their next rounds. Each win is returned once. */
+    fun checkMonsters() {
+        val events = try { core.monsterTick(today) } catch (_: CoreException) { emptyList() }
+        if (events.isNotEmpty()) {
+            monsterVictory = events.first()
+            Feel.celebrate(null, treat = events.any { it.prizes > 0u })
+        }
+    }
     // "Hide finished" switches, one per screen. They only hide things in the list, never delete.
     var hideDoneTasks by mutableStateOf(prefs.getBoolean("hide_done_tasks", false))
     var hideDoneGoals by mutableStateOf(prefs.getBoolean("hide_done_goals", false))
@@ -357,6 +372,7 @@ class AppController(private val app: GoalTrackerApp) {
     fun onResume() {
         today = todayString()
         runAutoArchive()
+        checkMonsters()
         version++
         loadPendingDraw()
     }
@@ -366,6 +382,7 @@ class AppController(private val app: GoalTrackerApp) {
         Reminders.rescheduleAll(app)
         reloadLook()
         reloadBackupDate()
+        checkMonsters()
         version++
         loadPendingDraw()
         app.refreshWidgets()

@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TreatsScreen(controller: AppController) {
+fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
     val treats = remember(controller.version) { controller.read(emptyList()) { listTreats() } }
     val draws = remember(controller.version) { controller.read(emptyList()) { listDraws() } }
     val enabled = remember(controller.version) { controller.read(true) { rewardsEnabled() } }
@@ -61,6 +61,17 @@ fun TreatsScreen(controller: AppController) {
         } else {
             EmptyJarBanner(controller, onAddTreat = null)
             progress?.let { NextTreatCard(it) }
+        }
+
+        SoftCard(Modifier.fillMaxWidth(), onClick = onOpenMonsters) {
+            Column(Modifier.padding(16.dp)) {
+                Text("👾 Monsters", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Name a struggle and fight it with your goals, habits and tasks. Beating it wins treats.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -104,7 +115,7 @@ fun TreatsScreen(controller: AppController) {
                     Column(Modifier.weight(1f)) {
                         Text(draw.treatTitle)
                         Text(
-                            "${draw.goalTitle} · ${formatDate(draw.localDate)}" + if (draw.comeback) " · Comeback" else "",
+                            "${if (draw.fromMonster) controller.shownMonsterName(draw.goalTitle) else draw.goalTitle} · ${formatDate(draw.localDate)}" + if (draw.comeback) " · Comeback" else "",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
