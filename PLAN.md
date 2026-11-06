@@ -616,3 +616,113 @@ Schema went from 13 to 19 (migrations 014 to 019). Everything below compiles and
 ### Before 0.10.1
 
 Run the README "Device checklist before a release" on a phone, install over 0.9.0, and smoke test the release APK (R8 has broken things before).
+
+# V0.11.0 plan
+
+Starting point: `versionName` 0.10.0, `versionCode` 14, schema 19, 235 Rust tests passing, clippy clean. Nothing in this plan is built yet.
+
+One release in ten stages. It ends at `versionName` 0.11.0, `versionCode` 15, schema 23 (migrations 020 to 023).
+
+Effort: S is under half a day, M is one to two days, L is more.
+
+## Rules for every stage
+
+- One commit per stage, ending with `cargo test`, `cargo clippy --all-targets` and `cargo fmt`, and a debug build that installs.
+- 0.10.0 shipped without any of its screens tested on a device. So stage 1 comes first and needs a phone, and stage 10 repeats the check on the release APK. Anything not run is reported as unverified.
+- Each migration gets an upgrade test. Each new date column gets a check in `backup.rs`, gated on its schema version. Each query that lists goals skips trashed ones.
+- All the rules in `CLAUDE.md` stay. Nothing here changes reward odds or reads the clock in Rust.
+
+## Stage 1: prove 0.10.0 works and fix it (M)
+
+1. Run the README device checklist on a phone, over 0.9.0. Fix what breaks.
+2. Reproduce the "empty trash does nothing" report. The code path looks right: `TasksScreen.kt` calls the core, `refresh()` bumps `version`, and the lists reload on it. One lead: tasks and goals have separate Empty buttons, and each leaves the other kind in place. If that is the cause, make the screen clearer.
+3. `backup.rs` does not check the dates in `xp_bonuses` and `daily_quests`. Add the check, gated on `version >= 19`, with a test that rejects a bad date.
+4. `insights.rs` always starts the week on Monday and ignores `meta.week_start`. Make insights follow the setting. Weekly bosses stay on Monday.
+5. README: "Alarms are inexact" is out of date since 0.8.0, and Features does not mention the calendar, focus timer, monsters, XP or insights.
+
+## Stage 2: safety net (M)
+
+1. A CI workflow for pushes and pull requests (`release.yml` only runs on tags and by hand): `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `./gradlew testDebugUnitTest assembleDebug -Parm64Only=true`.
+2. A Compose test in a new `androidTest` folder that opens every tab with sample data and checks that every clickable control has a name. Run it with `./gradlew connectedDebugAndroidTest`.
+3. A Rust speed test with 5,000 tasks and three years of logs, covering `today_items`, `list_tasks`, `calendar_day` and `progress_tick`. Add indexes through a new migration only if a query is slow.
+4. Split `core/src/tests.rs` (5,045 lines) into one file per module. The test count must stay the same.
+
+## Stage 3: capture (S)
+
+1. Share to Jarvest: an intent filter for shared `text/plain` opens the quick-add box, filled in and parsed by `quickadd.rs`. Nothing is saved until the person confirms, because shared text is untrusted.
+2. App shortcuts: New task, Today, and Start focus. A focus session belongs to a task or goal, so Start focus opens a list to pick one. Build that list if the app has none.
+3. A quick settings tile (`TileService`) that opens quick add.
+
+## Stage 4: holiday mode (M, migration 020)
+
+`pause_goal` pauses one goal at a time. This pauses them all in one action.
+
+- Tables: `holidays` (id, start date, end date) and `holiday_skips` (holiday id, goal id, date), which records the `skips` rows the holiday added.
+- Ending a holiday removes only the rows in `holiday_skips`. A skip made by hand stays.
+- Each goal is paused only from its creation day onward. Goals created during a holiday are not included.
+- Tasks are not moved and still count in the day score.
+- Blaze streak: a holiday day with nothing done neither counts nor breaks the streak. This changes `day_records` in `progress.rs`, and needs tests for the streak and the 7-day XP bonus.
+- Monsters and quit habits: first write tests that show what happens today. The monster rules count a clean day when nothing is logged, so a quit habit may still damage a monster during a holiday. Decide from what the tests show.
+
+## Stage 5: day notes (M, migration 021)
+
+Table `day_notes` (date as the key, text up to 2,000 characters, optional mood 1 to 5).
+
+- Written from Today and from the History day detail. Shown in History.
+- It never changes score, XP, streaks or rewards.
+- Private: never shown on widgets, notifications or the insights share text. Included in backups and JSON export.
+- Insights adds average mood for the period, and for Blaze or Titan days against other days. It shows nothing with fewer than 7 notes.
+
+## Stage 6: weekly review (L, migration 022)
+
+Tables `week_reviews` (week start as the key, note, finished date, dismissed date) and `week_focus` (week start, kind, item id, position).
+
+- Offered once when a new week starts, using `meta.week_start`. Dismissing it saves the dismissed date, costs nothing, and it does not ask again that week.
+- Three steps: look back (`insights` plus records), clear up (overdue tasks with move, archive or trash, through `bulk_update`), choose up to three focus items.
+- Focus items show as a small card on Today. An item that gets trashed or deleted drops off the card.
+- It only plans. It gives no XP and changes no score, streak or reward.
+
+## Stage 7: routines (M, migration 023)
+
+An ordered list of goals done together, such as a morning routine. Tables `routines` and `routine_steps` (routine, goal, position, `ON DELETE CASCADE`).
+
+- A routine screen walks through the steps planned for today. A step ticks through the same path as Today, so rewards and streaks work as they do now. Finishing a routine gives no extra XP or reward.
+- Yes/no habits tick in one tap. Numeric goals open the counter. Quit habits and tasks cannot be steps.
+- Steps that are trashed, skipped, or off today are hidden. A routine with no steps left today is not shown.
+- Optional start time on the Calendar and an optional reminder, using the existing `Reminders.kt` code.
+
+## Stage 8: backup password (L)
+
+Save backup and Share backup both write the whole database unencrypted, and both files can leave the phone. Both get an optional password.
+
+- Encrypt in Rust with Argon2id and XChaCha20-Poly1305, using the RustCrypto crates. Do not write custom crypto. Check the APK size and the time on a phone, and tune Argon2 to about one second.
+- File layout: a magic header, format version, salt, nonce, Argon2 settings, then the ciphertext. The whole header is authenticated as AEAD associated data, so changing any of it fails decryption.
+- Set limits on the Argon2 settings before using them, because a backup is untrusted and huge values could freeze the phone.
+- Restore decrypts into the app's cache folder, then runs the existing `validate` and swap. The temporary file is always deleted, including after a failure.
+- The message for a failed decryption is "wrong password or damaged file", because the two look the same.
+- The app says clearly, before saving, that a lost password cannot be recovered.
+- Plain backups still restore. Automatic daily backups stay unencrypted, because they would need a stored password. Settings says so.
+- Tests: round trip, wrong password, any changed byte rejected (header included), oversized settings rejected, encrypted file with bad contents still rejected by `validate`.
+
+## Stage 9: accessibility, text, bestiary (M)
+
+1. TalkBack pass on every screen: the charts, the habit grid, calendar blocks and drag to move need a spoken alternative.
+2. Move texts containing values to `strings.xml`, using plurals for counts. Translations are still not planned.
+3. Large text and landscape pass on the newest screens.
+4. Bestiary: a read-only list of past weekly bosses and beaten monsters, from `weekly_bosses` and `monster_rounds`. It lives in the Monsters screens, so the "a monster" name rule holds.
+
+## Stage 10: release (S)
+
+1. Bump `versionCode` to 15 and `versionName` to 0.11.0. Add a `changelog` entry in `Onboarding.kt`.
+2. Update the schema line and the new rules in `CLAUDE.md`, and the Features list and device checklist in the README.
+3. Run the device checklist with the release APK installed over 0.10.0. R8 has broken things before.
+
+## Not in this release
+
+- Boss modifiers: they would change how points work.
+- Calendar file import and export (`.ics`), cloud sync, translations.
+- A foreground service: deliberately not used, as decided in 0.8.0.
+
+## If time runs short
+
+Cut in this order: bestiary, quick settings tile, routine calendar slot, mood in insights. Do not cut stage 1, stage 2 or the backup password.
