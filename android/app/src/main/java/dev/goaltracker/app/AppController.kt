@@ -156,6 +156,9 @@ class AppController(private val app: GoalTrackerApp) {
         checkProgress()
     }
 
+    /** The day shown on the Calendar tab (YYYY-MM-DD). It starts on today and is not saved. */
+    var calendarDate by mutableStateOf(todayString())
+
     /** The weekly boss that was just beaten, until the person closes the dialog. */
     var bossVictory by mutableStateOf<dev.goaltracker.core.BossEvent?>(null)
 

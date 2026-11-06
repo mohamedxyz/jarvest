@@ -52,6 +52,10 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
     var repeat by rememberSaveable { mutableStateOf(existing?.repeat) }
     var goalId by rememberSaveable { mutableStateOf(existing?.goalId ?: presetGoalId) }
     var pickDate by remember { mutableStateOf(false) }
+    // Optional start time and length on the due day. The Calendar tab shows them as a block.
+    var time by rememberSaveable { mutableStateOf(existing?.dueTime?.toInt()) }
+    var duration by rememberSaveable { mutableStateOf(existing?.duration?.toInt() ?: 30) }
+    var pickTime by remember { mutableStateOf(false) }
     var newItem by rememberSaveable { mutableStateOf("") }
     // New tasks collect checklist lines here. Existing tasks change their checklist right away.
     val draftItems = remember { mutableStateListOf<String>() }
@@ -78,17 +82,26 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
         val pending = newItem.trim()
         val steps = draftItems.toList() + if (taskId == null && pending.isNotEmpty()) listOf(pending) else emptyList()
         if (taskId != null && pending.isNotEmpty()) controller.act { addTaskItem(taskId, pending) }
-        val ok = if (taskId == null) {
-            controller.act {
+        val savedId: String? = if (taskId == null) {
+            controller.change {
                 createTask(
                     NewTask(title, notes, due, priority, tag.ifBlank { null }, repeat, steps, goalId),
                     controller.today,
                 )
             }
+        } else if (controller.act { updateTask(taskId, TaskEdit(title, notes, due, priority, tag.ifBlank { null }, repeat, goalId)) }) {
+            taskId
         } else {
-            controller.act { updateTask(taskId, TaskEdit(title, notes, due, priority, tag.ifBlank { null }, repeat, goalId)) }
+            null
         }
-        if (ok) onDone()
+        if (savedId != null) {
+            // A start time only exists together with a due day.
+            val start = if (due != null) time else null
+            if (start != null || existing?.dueTime != null || existing?.duration != null) {
+                controller.act { setTaskTime(savedId, start?.toUInt(), if (start != null) duration.toUInt() else null) }
+            }
+            onDone()
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -106,7 +119,22 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
             Text("Due date", style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { pickDate = true }) { Text(due?.let { formatDate(it) } ?: "No date") }
-                if (due != null) TextButton(onClick = { due = null }) { Text("Clear") }
+                if (due != null) TextButton(onClick = { due = null; time = null }) { Text("Clear") }
+            }
+            if (due != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { pickTime = true }) {
+                        Text(time?.let { "Starts ${Reminders.formatMinutes(it)}" } ?: "Add a start time")
+                    }
+                    if (time != null) TextButton(onClick = { time = null }) { Text("Clear") }
+                }
+                if (time != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(15, 30, 60, 90, 120).forEach { m ->
+                            FilterChip(selected = duration == m, onClick = { duration = m }, label = { Text("$m min") })
+                        }
+                    }
+                }
             }
 
             Text("Priority", style = MaterialTheme.typography.titleSmall)
@@ -202,6 +230,9 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
         ) { Text(if (title.isBlank()) "Type a name first" else if (taskId == null) "Add task" else "Save") }
     }
 
+    if (pickTime) {
+        TimePickerDialog(time ?: (9 * 60), onPick = { time = it; pickTime = false }, onDismiss = { pickTime = false })
+    }
     if (pickDate) {
         DayPickerDialog(
             min = "2000-01-01",

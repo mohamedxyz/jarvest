@@ -4241,3 +4241,201 @@ fn a_boss_prize_is_skipped_when_the_jar_is_empty() {
     let events = core.progress_tick(DAY.into()).unwrap();
     assert_eq!((events.len(), events[0].prizes), (1, 0));
 }
+
+// ---- Calendar and time blocking ----
+
+fn event(title: &str, date: &str, start: u32, minutes: u32) -> NewEvent {
+    NewEvent {
+        title: title.into(),
+        date: date.into(),
+        start_minutes: start,
+        minutes,
+        repeat: EventRepeat::None,
+        weekdays: None,
+    }
+}
+
+fn plain_task(core: &GoalCore, title: &str, due: Option<&str>) -> String {
+    core.create_task(
+        NewTask {
+            title: title.into(),
+            notes: String::new(),
+            due: due.map(String::from),
+            priority: Priority::Med,
+            tag: None,
+            repeat: None,
+            items: vec![],
+            goal_id: None,
+        },
+        DAY.into(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn an_event_shows_on_its_day_only() {
+    let (core, _dir) = core();
+    core.create_event(event("Dentist", DAY, 9 * 60, 45))
+        .unwrap();
+    let blocks = core.calendar_day(DAY.into()).unwrap();
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].kind, CalendarKind::Event);
+    assert_eq!(
+        (blocks[0].start_minutes, blocks[0].minutes),
+        (Some(540), 45)
+    );
+    assert!(core.calendar_day(d(1)).unwrap().is_empty());
+    assert!(core.calendar_day(d(0)).unwrap().len() == 1);
+}
+
+#[test]
+fn events_are_checked() {
+    let (core, _dir) = core();
+    assert!(core.create_event(event("  ", DAY, 60, 30)).is_err());
+    assert!(core.create_event(event("x", DAY, 60, 4)).is_err());
+    // Must end before midnight.
+    assert!(
+        core.create_event(event("x", DAY, 23 * 60 + 50, 30))
+            .is_err()
+    );
+    assert!(core.create_event(event("x", "2026-13-40", 60, 30)).is_err());
+    let mut weekly = event("x", DAY, 60, 30);
+    weekly.repeat = EventRepeat::Weekly;
+    weekly.weekdays = Some(0);
+    assert!(core.create_event(weekly).is_err());
+}
+
+#[test]
+fn repeating_events_follow_their_rule() {
+    let (core, _dir) = core();
+    // DAY is a Thursday.
+    let mut daily = event("Stand-up", DAY, 600, 15);
+    daily.repeat = EventRepeat::Daily;
+    core.create_event(daily).unwrap();
+    let mut weekly = event("Class", DAY, 700, 60);
+    weekly.repeat = EventRepeat::Weekly;
+    core.create_event(weekly).unwrap();
+    let mut mwf = event("Gym", DAY, 800, 60);
+    mwf.repeat = EventRepeat::Weekly;
+    mwf.weekdays = Some(1 | 4 | 16); // Monday, Wednesday, Friday
+    core.create_event(mwf).unwrap();
+    let titles = |date: String| -> Vec<String> {
+        core.calendar_day(date)
+            .unwrap()
+            .into_iter()
+            .map(|b| b.title)
+            .collect()
+    };
+    // Before the start nothing shows.
+    assert!(titles(d(0).replace("05", "04")).is_empty());
+    assert_eq!(titles(DAY.into()), ["Stand-up", "Class"]);
+    // Friday: stand-up and gym.
+    assert_eq!(titles(d(1)), ["Stand-up", "Gym"]);
+    // Next Thursday: stand-up and class again.
+    assert_eq!(titles(d(7)), ["Stand-up", "Class"]);
+}
+
+#[test]
+fn tasks_show_on_their_due_day_with_or_without_a_time() {
+    let (core, _dir) = core();
+    let timed = plain_task(&core, "Call mum", Some(DAY));
+    let untimed = plain_task(&core, "Buy milk", Some(DAY));
+    plain_task(&core, "Someday", None);
+    core.set_task_time(timed.clone(), Some(14 * 60), Some(20))
+        .unwrap();
+    let blocks = core.calendar_day(DAY.into()).unwrap();
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(blocks[0].id, timed);
+    assert_eq!(
+        (blocks[0].start_minutes, blocks[0].minutes),
+        (Some(840), 20)
+    );
+    // Untimed ones follow, as 30 minute "anytime" blocks.
+    assert_eq!(blocks[1].id, untimed);
+    assert_eq!((blocks[1].start_minutes, blocks[1].minutes), (None, 30));
+    // Done tasks stay, marked done.
+    core.toggle_task(untimed, DAY.into()).unwrap();
+    assert!(core.calendar_day(DAY.into()).unwrap()[1].done);
+}
+
+#[test]
+fn a_task_time_needs_a_due_day_and_clears_with_it() {
+    let (core, _dir) = core();
+    let none = plain_task(&core, "No day", None);
+    assert!(core.set_task_time(none, Some(60), None).is_err());
+    let task = plain_task(&core, "With day", Some(DAY));
+    core.set_task_time(task.clone(), Some(60), Some(45))
+        .unwrap();
+    let shown = core.get_task(task.clone(), DAY.into()).unwrap();
+    assert_eq!((shown.due_time, shown.duration), (Some(60), Some(45)));
+    // Removing the due day removes the start time.
+    let mut edit = TaskEdit {
+        title: shown.title.clone(),
+        notes: String::new(),
+        due: None,
+        priority: shown.priority,
+        tag: None,
+        repeat: None,
+        goal_id: None,
+    };
+    core.update_task(task.clone(), edit.clone()).unwrap();
+    assert_eq!(
+        core.get_task(task.clone(), DAY.into()).unwrap().due_time,
+        None
+    );
+    edit.due = Some(DAY.into());
+    core.update_task(task.clone(), edit).unwrap();
+    assert_eq!(core.get_task(task, DAY.into()).unwrap().due_time, None);
+}
+
+#[test]
+fn goals_with_a_block_show_at_that_time_and_others_anytime() {
+    let (core, _dir) = core();
+    let run = daily_habit(&core, "Run");
+    let read = daily_habit(&core, "Read");
+    core.set_goal_block(run.clone(), Some(7 * 60), Some(40))
+        .unwrap();
+    assert_eq!(
+        core.goal_block(run.clone()).unwrap(),
+        GoalBlock {
+            start_minutes: Some(420),
+            minutes: 40
+        }
+    );
+    let blocks = core.calendar_day(DAY.into()).unwrap();
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(
+        (blocks[0].id.as_str(), blocks[0].start_minutes),
+        (run.as_str(), Some(420))
+    );
+    assert_eq!(
+        (blocks[1].id.as_str(), blocks[1].start_minutes),
+        (read.as_str(), None)
+    );
+    // A block needs a start time, and clearing works.
+    assert!(core.set_goal_block(read, None, Some(30)).is_err());
+    core.set_goal_block(run.clone(), None, None).unwrap();
+    assert_eq!(core.goal_block(run).unwrap().start_minutes, None);
+}
+
+#[test]
+fn calendar_items_never_touch_the_score_or_xp() {
+    let (core, _dir) = core();
+    core.create_event(event("Party", DAY, 600, 60)).unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.set_goal_block(goal, Some(480), Some(30)).unwrap();
+    let before = core.day_score(DAY.into()).unwrap();
+    assert_eq!(before.possible, 10);
+    core.progress_tick(DAY.into()).unwrap();
+    assert_eq!(core.hero().unwrap().xp, 0);
+}
+
+#[test]
+fn deleting_an_event_removes_it() {
+    let (core, _dir) = core();
+    let id = core.create_event(event("Temp", DAY, 60, 30)).unwrap();
+    assert!(core.get_event(id.clone()).unwrap().is_some());
+    core.delete_event(id.clone()).unwrap();
+    assert!(core.get_event(id).unwrap().is_none());
+    assert!(core.calendar_day(DAY.into()).unwrap().is_empty());
+}

@@ -224,6 +224,19 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // The calendar arrived in schema version 15.
+    if version >= 15 {
+        let bad_event_dates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE date(start_date) IS NOT start_date",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_event_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

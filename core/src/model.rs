@@ -471,6 +471,10 @@ pub struct Task {
     pub icon: Option<String>,
     /// True for tasks made by "Try it with sample data".
     pub sample: bool,
+    /// Start time on the due day, as minutes after midnight, if one was set.
+    pub due_time: Option<u32>,
+    /// Length in minutes for the calendar, if one was set. The calendar shows 30 when it is not set.
+    pub duration: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -715,4 +719,66 @@ pub struct BossEvent {
     pub name: String,
     pub week_start: String,
     pub prizes: u32,
+}
+
+// Calendar and time blocking. See "V0.9.0 plan" in PLAN.md.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum CalendarKind {
+    Event,
+    Task,
+    Goal,
+}
+
+/// One block on a day of the calendar. Blocks without a start time go in the "anytime" strip.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct CalendarBlock {
+    pub kind: CalendarKind,
+    /// The event's, task's or goal's id.
+    pub id: String,
+    pub title: String,
+    /// Minutes after midnight, or nothing for "anytime".
+    pub start_minutes: Option<u32>,
+    pub minutes: u32,
+    /// A finished task or a goal that needs nothing more for now.
+    pub done: bool,
+    pub icon: Option<String>,
+    /// An event that repeats, or a goal that comes back.
+    pub repeating: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum EventRepeat {
+    None,
+    Daily,
+    Weekly,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct NewEvent {
+    pub title: String,
+    pub date: String,
+    pub start_minutes: u32,
+    pub minutes: u32,
+    pub repeat: EventRepeat,
+    /// For a weekly event: weekdays (Monday = 1 up to Sunday = 64). Nothing means the date's weekday.
+    pub weekdays: Option<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct CalendarEvent {
+    pub id: String,
+    pub title: String,
+    pub date: String,
+    pub start_minutes: u32,
+    pub minutes: u32,
+    pub repeat: EventRepeat,
+    pub weekdays: Option<u8>,
+}
+
+/// A goal's or habit's time block.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct GoalBlock {
+    pub start_minutes: Option<u32>,
+    pub minutes: u32,
 }

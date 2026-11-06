@@ -581,3 +581,13 @@ A monster stands for a struggle the person names, such as a habit they want to b
 - The day score shows in the Today widget and in the evening check-in text.
 - Reliability: exact alarms when allowed, battery-optimization exemption button, alarms rebuilt after reboot, update, time or time zone change. No foreground service (chosen over a persistent notification to save battery).
 - Moved to 0.8.1: day-level calendar (data is already stored in `day_scores`), task calendar, custom repeat and checklist editing UI.
+
+## V0.9.0 (shipped): calendar and time blocking
+
+- New Calendar tab: a week strip to pick a day, and that day hour by hour. Overlapping blocks share the row width. A line marks the current time on today.
+- Blocks: events (title, day, start, length, repeat none/daily/weekly on chosen days), tasks on their due day (optional start time and length), goals and habits on the days they are planned (optional time block).
+- Anything without a start time sits in an "Anytime" strip and counts as 30 minutes.
+- Tap a block to finish a task, set a start time and length, or open it. Dragging blocks and event reminders are not built.
+- The bottom bar became Today, Tasks, Calendar, Goals, Habits, More. Stats and Rewards (and Settings) live under More.
+- Task rows keep the relative due label (Today, Tomorrow, "3 days left", then "Nov 12") and add the start time when set.
+- Not built: custom repeat and checklist-editing screens, goal time block inside the goal editor (set from the calendar sheet), drag to move blocks, event reminders.

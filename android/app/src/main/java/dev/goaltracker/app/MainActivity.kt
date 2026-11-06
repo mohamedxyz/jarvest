@@ -34,6 +34,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Flag
@@ -82,11 +84,14 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val tabs = listOf(
     Tab("today", "Today", Icons.Filled.Today),
     Tab("tasks", "Tasks", Icons.Filled.Checklist),
+    Tab("calendar", "Calendar", Icons.Filled.CalendarMonth),
     Tab("goals", "Goals", Icons.Filled.Flag),
     Tab("habits", "Habits", Icons.Filled.Repeat),
-    Tab("stats", "Stats", Icons.Filled.BarChart),
-    Tab("treats", "Rewards", Icons.Filled.CardGiftcard),
+    Tab("more", "More", Icons.Filled.MoreHoriz),
 )
+
+/** Screens opened from the More tab. They still show the bottom bar, with More selected. */
+private val moreRoutes = setOf("more", "stats", "treats")
 
 class MainActivity : ComponentActivity() {
     private val controller get() = (application as GoalTrackerApp).controller
@@ -123,7 +128,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
     val route = stack.last()
     // Hide the bottom bar while the keyboard is up, so it does not eat the screen.
     val imeVisible = WindowInsets.isImeVisible
-    val isTab = tabs.any { it.route == route }
+    val isTab = tabs.any { it.route == route } || route in moreRoutes
     val push: (String) -> Unit = { stack.add(it) }
     val pop: () -> Unit = { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
     val selectTab: (String) -> Unit = { tab ->
@@ -188,7 +193,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
             if (isTab && !imeVisible) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
                     tabs.forEach { tab ->
-                        val selected = route == tab.route
+                        val selected = route == tab.route || (tab.route == "more" && route in moreRoutes)
                         // The selected icon grows a little, so the active tab is easy to spot.
                         val scale by animateFloatAsState(
                             if (selected) 1.15f else 1f, motionTween(LocalMotion.current, 200), label = "tab",
@@ -237,6 +242,11 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                     onClick = { push("newtask") },
                     icon = { Icon(Icons.Filled.Add, null) },
                     text = { Text("New task") },
+                )
+                "calendar" -> ExtendedFloatingActionButton(
+                    onClick = { push("newevent") },
+                    icon = { Icon(Icons.Filled.Add, null) },
+                    text = { Text("New event") },
                 )
             }
         },
@@ -290,6 +300,15 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                 route == "habits" -> GoalsScreen(controller, habits = true, onOpenGoal = { push("goal/$it") })
                 route == "newgoal" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.YES_NO, onDone = pop)
                 route == "newhabit" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.HABIT, onDone = pop)
+                route == "more" -> MoreScreen(onOpen = { push(it) })
+                route == "calendar" -> CalendarScreen(
+                    controller,
+                    onEditEvent = { push("event/$it") },
+                    onEditTask = { push("edittask/$it") },
+                    onOpenGoal = { push("goal/$it") },
+                )
+                route == "newevent" -> EventEditorScreen(controller, eventId = null, onDone = pop)
+                route.startsWith("event/") -> EventEditorScreen(controller, eventId = route.removePrefix("event/"), onDone = pop)
                 route == "stats" -> StatsScreen(controller, onOpenGoal = { push("goal/$it") })
                 route == "treats" -> TreatsScreen(controller, onOpenMonsters = { push("monsters") })
                 route == "monsters" -> MonstersScreen(controller, onOpen = { push("monster/$it") })
@@ -319,6 +338,10 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
 
 private fun titleFor(route: String): String = when {
     route == "settings" -> "Settings"
+    route == "stats" -> "Stats"
+    route == "treats" -> "Rewards"
+    route == "newevent" -> "New event"
+    route.startsWith("event/") -> "Edit event"
     route == "monsters" -> "Monsters"
     route.startsWith("monster/") -> "Monster"
     route == "new" || route == "newgoal" -> "New goal"

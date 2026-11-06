@@ -5,6 +5,7 @@
 
 mod backup;
 mod badges;
+mod calendar;
 mod dates;
 mod db;
 mod export;
@@ -553,6 +554,51 @@ impl GoalCore {
     /// Every weekly boss so far, newest first, for the bestiary.
     pub fn boss_history(&self) -> Result<Vec<BossRecord>, CoreError> {
         progress::boss_history(&self.conn())
+    }
+
+    /// Everything planned on one day: events, tasks due that day, and goals planned that day.
+    pub fn calendar_day(&self, date: String) -> Result<Vec<CalendarBlock>, CoreError> {
+        calendar::day(&self.conn(), &date)
+    }
+
+    pub fn create_event(&self, event: NewEvent) -> Result<String, CoreError> {
+        calendar::create_event(&self.conn(), &event)
+    }
+
+    pub fn update_event(&self, event_id: String, event: NewEvent) -> Result<(), CoreError> {
+        calendar::update_event(&self.conn(), &event_id, &event)
+    }
+
+    pub fn delete_event(&self, event_id: String) -> Result<(), CoreError> {
+        calendar::delete_event(&self.conn(), &event_id)
+    }
+
+    pub fn get_event(&self, event_id: String) -> Result<Option<CalendarEvent>, CoreError> {
+        calendar::get_event(&self.conn(), &event_id)
+    }
+
+    /// Sets or clears a task's start time and length (minutes). A start time needs a due day.
+    pub fn set_task_time(
+        &self,
+        task_id: String,
+        start_minutes: Option<u32>,
+        minutes: Option<u32>,
+    ) -> Result<(), CoreError> {
+        calendar::set_task_time(&self.conn(), &task_id, start_minutes, minutes)
+    }
+
+    /// Sets or clears the time block of a goal or habit.
+    pub fn set_goal_block(
+        &self,
+        goal_id: String,
+        start_minutes: Option<u32>,
+        minutes: Option<u32>,
+    ) -> Result<(), CoreError> {
+        calendar::set_goal_block(&self.conn(), &goal_id, start_minutes, minutes)
+    }
+
+    pub fn goal_block(&self, goal_id: String) -> Result<GoalBlock, CoreError> {
+        calendar::goal_block(&self.conn(), &goal_id)
     }
 
     /// How close the next treat is, for the meter on the Treats screen.

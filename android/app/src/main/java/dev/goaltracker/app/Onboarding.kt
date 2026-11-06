@@ -379,6 +379,15 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.9.0",
+        listOf(
+            "New Calendar tab for time blocking: a week strip and the day hour by hour, with events, tasks and goals as blocks.",
+            "Events: things that are not tasks, with a start time, a length and an optional repeat. They never change your score or XP.",
+            "Tasks can have a start time and a length. Tasks and goals without a time show as 30-minute blocks in an Anytime strip. Tap a block to set its time.",
+            "Stats and Rewards moved into a new More tab, to make room for the calendar.",
+        ),
+    ),
+    Release(
         "0.8.0",
         listOf(
             "Hero levels: your day-score points become XP that never goes down. Level up from Rookie to Legend.",

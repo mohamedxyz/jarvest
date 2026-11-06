@@ -507,7 +507,7 @@ private fun TaskRow(controller: AppController, task: Task, today: String, select
                     }
                     task.due?.let {
                         Text(
-                            dueLabel(it, today),
+                            dueLabel(it, today) + (task.dueTime?.let { t -> " · ${Reminders.formatMinutes(t.toInt())}" } ?: ""),
                             style = MaterialTheme.typography.bodySmall,
                             color = if (task.done) MaterialTheme.colorScheme.onSurfaceVariant else dueColor(it, today),
                         )

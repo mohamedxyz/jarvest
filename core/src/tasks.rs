@@ -20,7 +20,8 @@ const TASK_COLUMNS: &str = "t.id, t.title, t.notes, t.due, t.priority, t.tag, t.
     (SELECT g.id FROM goals g WHERE g.id = t.goal_id AND g.deleted_date IS NULL),
     (SELECT g.title FROM goals g WHERE g.id = t.goal_id AND g.deleted_date IS NULL),
     t.milestone_id,
-    t.deleted_date, t.archived_date, t.pushed_count, t.repeat_every, t.repeat_days, t.icon, t.sample";
+    t.deleted_date, t.archived_date, t.pushed_count, t.repeat_every, t.repeat_days, t.icon, t.sample,
+    t.due_time, t.duration";
 
 /// What `toggle_task` reads first: done date, due, repeat, next copy, repeat every, repeat days.
 type ToggleRow = (
@@ -68,6 +69,8 @@ fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
         repeat_days: row.get(18)?,
         icon: row.get(19)?,
         sample: row.get(20)?,
+        due_time: row.get(21)?,
+        duration: row.get(22)?,
     })
 }
 
@@ -186,7 +189,9 @@ pub fn update_task(conn: &Connection, task_id: &str, edit: TaskEdit) -> Result<(
              pushed_count = pushed_count + ?9,
              -- Dropping the repeat, or changing its unit, clears the custom rule.
              repeat_every = CASE WHEN ?7 IS NULL OR ?7 <> repeat THEN 1 ELSE repeat_every END,
-             repeat_days = CASE WHEN ?7 = 'weekly' THEN repeat_days ELSE NULL END
+             repeat_days = CASE WHEN ?7 = 'weekly' THEN repeat_days ELSE NULL END,
+             -- A start time only makes sense with a due day.
+             due_time = CASE WHEN ?4 IS NULL THEN NULL ELSE due_time END
          WHERE id = ?1 AND deleted_date IS NULL",
         params![
             task_id,
@@ -365,8 +370,9 @@ pub fn toggle_task(
             let new = new_id();
             tx.execute(
                 "INSERT INTO tasks (id, title, notes, due, priority, tag, repeat, created_date, prev_id, goal_id,
-                                    repeat_every, repeat_days)
-                 SELECT ?2, title, notes, ?3, priority, tag, repeat, ?4, id, goal_id, repeat_every, repeat_days
+                                    repeat_every, repeat_days, due_time, duration)
+                 SELECT ?2, title, notes, ?3, priority, tag, repeat, ?4, id, goal_id, repeat_every, repeat_days,
+                        due_time, duration
                  FROM tasks WHERE id = ?1",
                 params![task_id, new, due_next, today],
             )?;
@@ -479,7 +485,7 @@ pub fn list_tasks(
          WHERE t.deleted_date IS NULL AND t.archived_date IS NULL AND {VISIBLE} ORDER BY t.rowid"
     ))?;
     let mut tasks: Vec<(i64, Task)> = stmt
-        .query_map([], |row| Ok((row.get(21)?, task_from_row(row, today)?)))?
+        .query_map([], |row| Ok((row.get(23)?, task_from_row(row, today)?)))?
         .collect::<Result<_, _>>()?;
 
     tasks.retain(|(_, t)| match filter {
@@ -683,7 +689,8 @@ pub fn bulk_update(
         if edit.change_due {
             let pushed = was_pushed(old_due.as_deref(), edit.due.as_deref());
             tx.execute(
-                "UPDATE tasks SET due = ?2, pushed_count = pushed_count + ?3 WHERE id = ?1",
+                "UPDATE tasks SET due = ?2, pushed_count = pushed_count + ?3,
+                    due_time = CASE WHEN ?2 IS NULL THEN NULL ELSE due_time END WHERE id = ?1",
                 params![id, edit.due, pushed],
             )?;
         }
