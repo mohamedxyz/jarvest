@@ -6076,3 +6076,95 @@ fn plain_backups_still_restore_and_are_not_mistaken_for_protected_ones() {
             .is_err()
     );
 }
+
+// ---- 0.11.0: speed with a lot of data ----
+
+/// A big, old database: 20 daily habits with three years of check-ins, and 5,000 tasks.
+fn big_database(path: &str) {
+    let mut conn = db::open(path).unwrap();
+    let tx = conn.transaction().unwrap();
+    let start = chrono::NaiveDate::parse_from_str("2023-11-05", "%Y-%m-%d").unwrap();
+    for g in 0..20 {
+        tx.execute(
+            "INSERT INTO goals (id, title, kind, period, period_target, created_date)
+             VALUES (?1, ?2, 'habit', 'day', 1, '2023-11-05')",
+            rusqlite::params![format!("g{g}"), format!("Habit {g}")],
+        )
+        .unwrap();
+        for day in 0..1096 {
+            // Most days are done, some are missed, so streaks and rates have something to chew on.
+            if (day + g) % 7 == 3 {
+                continue;
+            }
+            let date = (start + chrono::Days::new(day as u64)).to_string();
+            tx.execute(
+                "INSERT INTO entries (id, goal_id, local_date, amount, single_per_day, seq)
+                 VALUES (?1, ?2, ?3, 1, 1, ?4)",
+                rusqlite::params![format!("e{g}-{day}"), format!("g{g}"), date, day],
+            )
+            .unwrap();
+        }
+    }
+    for t in 0..5000 {
+        let due = (start + chrono::Days::new((t % 1200) as u64)).to_string();
+        let done = (t % 3 == 0).then(|| due.clone());
+        tx.execute(
+            "INSERT INTO tasks (id, title, due, priority, created_date, done_date)
+             VALUES (?1, ?2, ?3, ?4, '2023-11-05', ?5)",
+            rusqlite::params![
+                format!("t{t}"),
+                format!("Task {t}"),
+                due,
+                ["low", "med", "high"][t % 3],
+                done
+            ],
+        )
+        .unwrap();
+    }
+    tx.commit().unwrap();
+}
+
+#[test]
+fn the_busy_screens_stay_fast_with_three_years_of_logs_and_five_thousand_tasks() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("big.db").to_str().unwrap().to_string();
+    big_database(&path);
+    let core = GoalCore::open(path).unwrap();
+    let today = "2026-11-05";
+    // Debug builds run these several times slower than the phone does, so the limit is generous.
+    let limit = std::time::Duration::from_secs(3);
+    let timed = |name: &str, run: &dyn Fn()| {
+        let started = std::time::Instant::now();
+        run();
+        let took = started.elapsed();
+        assert!(took < limit, "{name} took {took:?}");
+    };
+    timed("today", &|| {
+        assert_eq!(core.today(today.into()).unwrap().len(), 20);
+    });
+    timed("list_tasks", &|| {
+        let all = core
+            .list_tasks(TaskFilter::All, TaskSort::Due, today.into())
+            .unwrap();
+        assert!(all.len() > 1000);
+    });
+    timed("overdue tasks", &|| {
+        core.list_tasks(TaskFilter::Overdue, TaskSort::Due, today.into())
+            .unwrap();
+    });
+    timed("calendar_day", &|| {
+        core.calendar_day(today.into()).unwrap();
+    });
+    timed("progress_tick", &|| {
+        core.progress_tick(today.into()).unwrap();
+    });
+    timed("day_records", &|| {
+        core.day_records(today.into()).unwrap();
+    });
+    timed("insights", &|| {
+        core.insights(Period::Month, 0, today.into()).unwrap();
+    });
+    timed("search", &|| {
+        core.search("Task 49".into(), today.into()).unwrap();
+    });
+}
