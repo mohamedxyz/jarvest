@@ -5863,3 +5863,216 @@ fn routines_survive_backup_and_restore() {
     fixture.core.restore_backup(path).unwrap();
     assert_eq!(fixture.core.list_routines(DAY.into()).unwrap().len(), 1);
 }
+
+// ---- 0.11.0: password-protected backups ----
+
+/// Fast settings, so tests that try many files don't wait on the real, deliberately slow ones.
+const FAST_KDF: crate::crypto::Kdf = crate::crypto::Kdf {
+    memory_kib: 8,
+    passes: 1,
+    lanes: 1,
+};
+
+fn protected_copy(fixture: &Fixture, password: &str) -> String {
+    let plain = fixture.backup();
+    let out = fixture.path("protected.jvbk");
+    crate::crypto::encrypt_file(&plain, &out, password, FAST_KDF).unwrap();
+    out
+}
+
+#[test]
+fn a_protected_backup_round_trips_with_the_real_settings() {
+    let fixture = Fixture::new();
+    let path = fixture.path("real.jvbk");
+    fixture
+        .core
+        .export_backup_encrypted(path.clone(), "correct horse".into())
+        .unwrap();
+    assert!(fixture.core.is_encrypted_backup(path.clone()).unwrap());
+    assert!(!fixture.core.is_encrypted_backup(fixture.backup()).unwrap());
+    // The side file used while writing is gone, and the file does not contain readable data.
+    assert!(!std::path::Path::new(&format!("{path}.plain")).exists());
+    assert!(!std::path::Path::new(&format!("{path}.part")).exists());
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(!bytes.windows(15).any(|w| w == b"SQLite format 3"));
+    assert!(!bytes.windows(8).any(|w| w == b"Original"));
+
+    // Change the data, then bring the protected backup back.
+    fixture.core.delete_goal(fixture.goal.clone()).unwrap();
+    assert!(fixture.core.list_goals(false).unwrap().is_empty());
+    let preview = fixture
+        .core
+        .preview_encrypted_backup(path.clone(), "correct horse".into())
+        .unwrap();
+    assert_eq!(preview.goals, 1);
+    fixture
+        .core
+        .restore_encrypted_backup(path.clone(), "correct horse".into())
+        .unwrap();
+    fixture.assert_data_unchanged();
+    assert!(!std::path::Path::new(&format!("{path}.dec")).exists());
+}
+
+#[test]
+fn a_protected_backup_needs_the_right_password() {
+    let fixture = Fixture::new();
+    let path = protected_copy(&fixture, "correct horse");
+    fixture.core.delete_goal(fixture.goal.clone()).unwrap();
+    for wrong in ["wrong password", "Correct horse", "correct horse ", ""] {
+        let result = crate::crypto::decrypt_file(&path, wrong, &fixture.path("out.db"));
+        assert_invalid_backup(result, "wrong password or damaged file");
+    }
+    // Nothing was restored and no decrypted copy was left behind.
+    assert!(fixture.core.list_goals(false).unwrap().is_empty());
+    assert_invalid_backup(
+        fixture
+            .core
+            .restore_encrypted_backup(path.clone(), "nope nope".into()),
+        "wrong password or damaged file",
+    );
+    assert!(!std::path::Path::new(&format!("{path}.dec")).exists());
+    assert!(fixture.core.list_goals(false).unwrap().is_empty());
+}
+
+#[test]
+fn changing_any_header_byte_or_part_of_the_ciphertext_is_rejected() {
+    let fixture = Fixture::new();
+    let path = protected_copy(&fixture, "correct horse");
+    let original = std::fs::read(&path).unwrap();
+    let out = fixture.path("out.db");
+    let positions: Vec<usize> = (0..57)
+        .chain([
+            57,
+            100,
+            original.len() / 2,
+            original.len() - 17,
+            original.len() - 1,
+        ])
+        .collect();
+    for at in positions {
+        let mut tampered = original.clone();
+        tampered[at] ^= 0x01;
+        let file = fixture.path("tampered.jvbk");
+        std::fs::write(&file, tampered).unwrap();
+        assert!(
+            crate::crypto::decrypt_file(&file, "correct horse", &out).is_err(),
+            "changing byte {at} was accepted"
+        );
+    }
+    // The untouched file still works.
+    crate::crypto::decrypt_file(&path, "correct horse", &out).unwrap();
+}
+
+#[test]
+fn oversized_or_invalid_settings_in_a_file_are_refused_before_use() {
+    let fixture = Fixture::new();
+    let path = protected_copy(&fixture, "correct horse");
+    let original = std::fs::read(&path).unwrap();
+    let out = fixture.path("out.db");
+    // (offset, value): memory, passes and lanes far beyond what the app uses, or zero.
+    let cases: [(usize, u32); 6] = [
+        (5, u32::MAX),
+        (5, 64 * 1024 + 1),
+        (9, 7),
+        (9, 0),
+        (13, 5),
+        (13, 0),
+    ];
+    for (at, value) in cases {
+        let mut file = original.clone();
+        file[at..at + 4].copy_from_slice(&value.to_be_bytes());
+        let name = fixture.path("settings.jvbk");
+        std::fs::write(&name, file).unwrap();
+        assert_invalid_backup(
+            crate::crypto::decrypt_file(&name, "correct horse", &out),
+            "settings this app does not accept",
+        );
+    }
+}
+
+#[test]
+fn short_foreign_and_newer_protected_files_get_clear_messages() {
+    let fixture = Fixture::new();
+    let path = protected_copy(&fixture, "correct horse");
+    let original = std::fs::read(&path).unwrap();
+    let out = fixture.path("out.db");
+    let file = fixture.path("x.jvbk");
+    std::fs::write(&file, &original[..40]).unwrap();
+    assert_invalid_backup(
+        crate::crypto::decrypt_file(&file, "correct horse", &out),
+        "cut short",
+    );
+    std::fs::write(&file, b"SQLite format 3\0 and then some").unwrap();
+    assert_invalid_backup(
+        crate::crypto::decrypt_file(&file, "correct horse", &out),
+        "isn't a protected backup",
+    );
+    let mut newer = original.clone();
+    newer[4] = 2;
+    std::fs::write(&file, newer).unwrap();
+    assert_invalid_backup(
+        crate::crypto::decrypt_file(&file, "correct horse", &out),
+        "newer version",
+    );
+    assert!(!std::path::Path::new(&out).exists());
+}
+
+#[test]
+fn a_protected_file_with_bad_contents_is_still_rejected_by_validation() {
+    let fixture = Fixture::new();
+    // Properly encrypted, but what is inside is not a backup.
+    let junk = fixture.path("junk.bin");
+    std::fs::write(&junk, vec![7u8; 4096]).unwrap();
+    let path = fixture.path("junk.jvbk");
+    crate::crypto::encrypt_file(&junk, &path, "correct horse", FAST_KDF).unwrap();
+    // The settings are read from the file, so the fast ones are used here too.
+    let result = fixture
+        .core
+        .restore_encrypted_backup(path.clone(), "correct horse".into());
+    assert!(matches!(result, Err(CoreError::InvalidBackup { .. })));
+    // The decrypted copy is always removed, even when validation fails.
+    assert!(!std::path::Path::new(&format!("{path}.dec")).exists());
+    fixture.assert_data_unchanged();
+}
+
+#[test]
+fn a_protected_backup_needs_a_long_enough_password_and_is_new_each_time() {
+    let fixture = Fixture::new();
+    let plain = fixture.backup();
+    let out = fixture.path("a.jvbk");
+    for short in ["", "1234567", "     "] {
+        assert!(crate::crypto::encrypt_file(&plain, &out, short, FAST_KDF).is_err());
+    }
+    assert!(!std::path::Path::new(&out).exists());
+    // Eight letters outside plain ASCII still count as eight.
+    crate::crypto::encrypt_file(&plain, &out, "ééééééé!", FAST_KDF).unwrap();
+    // Two files from the same data differ, because the salt and nonce are random.
+    let other = fixture.path("b.jvbk");
+    crate::crypto::encrypt_file(&plain, &other, "ééééééé!", FAST_KDF).unwrap();
+    assert_ne!(std::fs::read(&out).unwrap(), std::fs::read(&other).unwrap());
+    // A password that is too short through the app is refused and leaves no files.
+    let dest = fixture.path("c.jvbk");
+    assert!(
+        fixture
+            .core
+            .export_backup_encrypted(dest.clone(), "short".into())
+            .is_err()
+    );
+    assert!(!std::path::Path::new(&dest).exists());
+    assert!(!std::path::Path::new(&format!("{dest}.plain")).exists());
+}
+
+#[test]
+fn plain_backups_still_restore_and_are_not_mistaken_for_protected_ones() {
+    let fixture = Fixture::new();
+    let path = fixture.backup();
+    assert!(!fixture.core.is_encrypted_backup(path.clone()).unwrap());
+    fixture.core.restore_backup(path).unwrap();
+    fixture.assert_data_unchanged();
+    assert!(
+        fixture
+            .core
+            .is_encrypted_backup("/nonexistent/file".into())
+            .is_err()
+    );
+}
