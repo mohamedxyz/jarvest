@@ -152,9 +152,11 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
     }
     LaunchedEffect(controller.undo) {
         controller.undo?.let { offer ->
-            controller.undo = null
+            // The offer is cleared only after the snackbar is gone. Clearing it first would change this
+            // effect's key, which cancels the coroutine and dismisses the snackbar the moment it appears.
             val result = snackbar.showSnackbar(offer.text, actionLabel = "Undo", duration = SnackbarDuration.Long)
             if (result == SnackbarResult.ActionPerformed) offer.action()
+            if (controller.undo === offer) controller.undo = null
         }
     }
     LaunchedEffect(controller.showJarPrompt) {

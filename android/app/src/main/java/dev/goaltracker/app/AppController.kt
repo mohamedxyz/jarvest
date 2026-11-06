@@ -348,17 +348,26 @@ class AppController(private val app: GoalTrackerApp) {
             return
         }
         val changed = before.filter { it.milestoneId == null || edit.done }
-        undo = UndoOffer("$verb ${countOf(result.changed.toInt(), "task")}.$skipped") {
+        // "{n}" in the verb marks where the count goes: "Moved {n} to today" reads "Moved 3 tasks to today."
+        val count = countOf(result.changed.toInt(), "task")
+        val sentence = if ("{n}" in verb) verb.replace("{n}", count) else "$verb $count"
+        undo = UndoOffer("$sentence.$skipped") {
             act {
                 changed.forEach { old ->
                     when {
                         edit.done -> if (!old.done) toggleTask(old.id, today)
                         edit.trash -> restoreTask(old.id)
                         edit.archive -> if (old.archivedDate == null) unarchiveTask(old.id)
-                        else -> updateTask(
-                            old.id,
-                            TaskEdit(old.title, old.notes, old.due, old.priority, old.tag, old.repeat, old.goalId),
-                        )
+                        else -> {
+                            updateTask(
+                                old.id,
+                                TaskEdit(old.title, old.notes, old.due, old.priority, old.tag, old.repeat, old.goalId),
+                            )
+                            // Clearing a day also cleared its start time, so put that back too.
+                            if (edit.changeDue && old.due != null && old.dueTime != null) {
+                                setTaskTime(old.id, old.dueTime, old.duration)
+                            }
+                        }
                     }
                 }
             }

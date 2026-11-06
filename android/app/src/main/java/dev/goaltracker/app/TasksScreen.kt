@@ -5,6 +5,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.outlined.Repeat
@@ -117,6 +119,9 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
     var selected by remember { mutableStateOf(setOf<String>()) }
     var confirmEmptyTasks by remember { mutableStateOf(false) }
     var showTemplates by remember { mutableStateOf(false) }
+    var dueMenu by remember { mutableStateOf(false) }
+    var priorityMenu by remember { mutableStateOf(false) }
+    var pickBulkDate by remember { mutableStateOf(false) }
 
     // Tasks deleted a month ago or more are removed for good.
     LaunchedEffect(Unit) {
@@ -197,16 +202,70 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
         }
         if (selected.isNotEmpty()) {
             val picked = tasks.filter { it.id in selected }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = { selected = emptySet() }) { Icon(Icons.Filled.Close, "Clear selection") }
-                Text("${selected.size} selected", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                TextButton(onClick = { controller.bulkTasks(picked, bulk(done = true), "Finished"); selected = emptySet() }) { Text(stringResource(R.string.ui_done)) }
-                TextButton(onClick = { controller.bulkTasks(picked, bulk(archive = true), "Archived"); selected = emptySet() }) { Text(stringResource(R.string.ui_archive)) }
-                TextButton(onClick = { controller.bulkTasks(picked, bulk(trash = true), "Deleted"); selected = emptySet() }) {
-                    Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error)
+            val finish = { selected = emptySet() }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = finish) { Icon(Icons.Filled.Close, "Clear selection") }
+                    Text("${selected.size} selected", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                    TextButton(onClick = {
+                        selected = if (picked.size == tasks.size) emptySet() else tasks.map { it.id }.toSet()
+                    }) { Text(if (picked.size == tasks.size) "Select none" else "Select all") }
+                }
+                // Like Todoist: the same few actions for every task picked, each applied in one step.
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AssistChip(onClick = { controller.bulkTasks(picked, bulk(done = true), "Finished"); finish() }, label = { Text(stringResource(R.string.ui_done)) })
+                    Box {
+                        AssistChip(
+                            onClick = { dueMenu = true },
+                            label = { Text("Due date") },
+                            leadingIcon = { Icon(Icons.Filled.Event, null, Modifier.size(18.dp)) },
+                        )
+                        DropdownMenu(dueMenu, { dueMenu = false }) {
+                            bulkDueChoices(controller.today).forEach { choice ->
+                                DropdownMenuItem(
+                                    text = { Text(choice.label) },
+                                    onClick = {
+                                        dueMenu = false
+                                        controller.bulkTasks(picked, bulk(due = choice.date, changeDue = true), choice.verb)
+                                        finish()
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Pick a date…") },
+                                onClick = { dueMenu = false; pickBulkDate = true },
+                            )
+                        }
+                    }
+                    Box {
+                        AssistChip(
+                            onClick = { priorityMenu = true },
+                            label = { Text(stringResource(R.string.ui_priority)) },
+                            leadingIcon = { Icon(Icons.Filled.SignalCellularAlt, null, Modifier.size(18.dp)) },
+                        )
+                        DropdownMenu(priorityMenu, { priorityMenu = false }) {
+                            Priority.entries.reversed().forEach { level ->
+                                DropdownMenuItem(
+                                    text = { Text(level.label(), color = priorityColor(level)) },
+                                    leadingIcon = { Icon(Icons.Filled.SignalCellularAlt, null, Modifier.size(18.dp), tint = priorityColor(level)) },
+                                    onClick = {
+                                        priorityMenu = false
+                                        controller.bulkTasks(picked, bulk(priority = level), "Set ${level.label().lowercase()} priority on {n}")
+                                        finish()
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    AssistChip(onClick = { controller.bulkTasks(picked, bulk(archive = true), "Archived"); finish() }, label = { Text(stringResource(R.string.ui_archive)) })
+                    AssistChip(
+                        onClick = { controller.bulkTasks(picked, bulk(trash = true), "Deleted"); finish() },
+                        label = { Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error) },
+                    )
                 }
             }
         }
@@ -425,6 +484,20 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
         }
     }
 
+    if (pickBulkDate) {
+        val today = LocalDate.parse(controller.today)
+        DayPickerDialog(
+            min = today.minusYears(1).toString(),
+            max = today.plusYears(5).toString(),
+            onPick = { date ->
+                pickBulkDate = false
+                val picked = tasks.filter { it.id in selected }
+                controller.bulkTasks(picked, bulk(due = date, changeDue = true), "Moved {n}")
+                selected = emptySet()
+            },
+            onDismiss = { pickBulkDate = false },
+        )
+    }
     goalToDelete?.let { goal ->
         ConfirmDialog(
             title = "Delete this goal forever?",
@@ -646,6 +719,28 @@ private fun ArchiveRow(task: Task, onUnarchive: () -> Unit) {
 }
 
 /** A bulk change that does nothing unless you switch one thing on. */
-private fun bulk(done: Boolean = false, archive: Boolean = false, trash: Boolean = false) = BulkEdit(
-    done, archive, trash, false, null, null, false, null, false, null,
-)
+private fun bulk(
+    done: Boolean = false,
+    archive: Boolean = false,
+    trash: Boolean = false,
+    changeDue: Boolean = false,
+    due: String? = null,
+    priority: Priority? = null,
+) = BulkEdit(done, archive, trash, changeDue, due, priority, false, null, false, null)
+
+/** One quick choice in the bulk "Due date" menu. A null [date] clears the due date. */
+internal data class DueChoice(val label: String, val date: String?, val verb: String)
+
+/** Today, Tomorrow, the coming weekend, next week and No date, worked out from [today]. */
+internal fun bulkDueChoices(today: String): List<DueChoice> {
+    val now = LocalDate.parse(today)
+    val saturday = now.plusDays(((java.time.DayOfWeek.SATURDAY.value - now.dayOfWeek.value + 7) % 7).let { if (it == 0) 7 else it }.toLong())
+    val monday = now.plusDays(((java.time.DayOfWeek.MONDAY.value - now.dayOfWeek.value + 7) % 7).let { if (it == 0) 7 else it }.toLong())
+    return listOf(
+        DueChoice("Today", now.toString(), "Moved {n} to today"),
+        DueChoice("Tomorrow", now.plusDays(1).toString(), "Moved {n} to tomorrow"),
+        DueChoice("This weekend", saturday.toString(), "Moved {n} to the weekend"),
+        DueChoice("Next week", monday.toString(), "Moved {n} to next week"),
+        DueChoice("No date", null, "Cleared the date of {n}"),
+    )
+}

@@ -2780,6 +2780,148 @@ fn bulk_edit_rejects_bad_input() {
 }
 
 #[test]
+fn bulk_priority_changes_only_the_priority() {
+    let (core, _dir) = core();
+    let a = add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-08".into()),
+            tag: Some("uni".into()),
+            ..new_task("A")
+        },
+    );
+    let b = add_task(&core, new_task("B"));
+    let edit = BulkEdit {
+        priority: Some(Priority::High),
+        ..BulkEdit::default()
+    };
+    let result = core
+        .bulk_update_tasks(vec![a.clone(), b.clone()], edit, DAY.into())
+        .unwrap();
+    assert_eq!(result.changed, 2);
+    let task_a = core.get_task(a, DAY.into()).unwrap();
+    assert_eq!(task_a.priority, Priority::High);
+    assert_eq!(task_a.due.as_deref(), Some("2026-11-08"));
+    assert_eq!(task_a.tag.as_deref(), Some("uni"));
+    assert_eq!(task_a.pushed_count, 0);
+    assert_eq!(
+        core.get_task(b, DAY.into()).unwrap().priority,
+        Priority::High
+    );
+    // Every level can be set, including the lowest.
+    let all = open_tasks(&core);
+    assert_eq!(all.len(), 2);
+}
+
+#[test]
+fn bulk_due_date_moves_clears_and_counts_only_later_moves() {
+    let (core, _dir) = core();
+    let a = add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-08".into()),
+            ..new_task("A")
+        },
+    );
+    core.set_task_time(a.clone(), Some(9 * 60), Some(45))
+        .unwrap();
+    let b = add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-12".into()),
+            ..new_task("B")
+        },
+    );
+    let ids = vec![a.clone(), b.clone()];
+    // Moving both to the 10th: A moves later (a push), B moves earlier (not a push).
+    let move_to = BulkEdit {
+        change_due: true,
+        due: Some("2026-11-10".into()),
+        ..BulkEdit::default()
+    };
+    core.bulk_update_tasks(ids.clone(), move_to, DAY.into())
+        .unwrap();
+    let task_a = core.get_task(a.clone(), DAY.into()).unwrap();
+    assert_eq!(task_a.due.as_deref(), Some("2026-11-10"));
+    assert_eq!(task_a.pushed_count, 1);
+    // The start time and length stay when only the day changes.
+    assert_eq!((task_a.due_time, task_a.duration), (Some(540), Some(45)));
+    let task_b = core.get_task(b.clone(), DAY.into()).unwrap();
+    assert_eq!(
+        (task_b.due.as_deref(), task_b.pushed_count),
+        (Some("2026-11-10"), 0)
+    );
+    // "No date" clears the day, and the start time goes with it.
+    let clear = BulkEdit {
+        change_due: true,
+        due: None,
+        ..BulkEdit::default()
+    };
+    core.bulk_update_tasks(ids, clear, DAY.into()).unwrap();
+    let task_a = core.get_task(a, DAY.into()).unwrap();
+    assert_eq!((task_a.due, task_a.due_time), (None, None));
+    assert_eq!(core.get_task(b, DAY.into()).unwrap().due, None);
+}
+
+#[test]
+fn bulk_priority_and_due_skip_milestone_tasks_and_trashed_ones() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline"]);
+    let milestone = milestone_task(&core, &goal, "Outline");
+    let plain = add_task(&core, new_task("Plain"));
+    let gone = add_task(&core, new_task("Gone"));
+    core.delete_task(gone.clone(), DAY.into()).unwrap();
+    let edit = BulkEdit {
+        change_due: true,
+        due: Some("2026-11-20".into()),
+        priority: Some(Priority::Low),
+        ..BulkEdit::default()
+    };
+    let result = core
+        .bulk_update_tasks(
+            vec![milestone.id.clone(), plain.clone(), gone.clone()],
+            edit,
+            DAY.into(),
+        )
+        .unwrap();
+    assert_eq!((result.changed, result.skipped_milestones), (1, 1));
+    let after = milestone_task(&core, &goal, "Outline");
+    assert_eq!(
+        (after.due, after.priority),
+        (milestone.due, milestone.priority)
+    );
+    assert_eq!(
+        core.get_task(plain, DAY.into()).unwrap().priority,
+        Priority::Low
+    );
+    // A trashed task is left alone.
+    core.restore_task(gone.clone()).unwrap();
+    assert_eq!(core.get_task(gone, DAY.into()).unwrap().due, None);
+}
+
+#[test]
+fn bulk_edit_with_no_tasks_changes_nothing_and_a_missing_id_is_ignored() {
+    let (core, _dir) = core();
+    let a = add_task(&core, new_task("A"));
+    let edit = BulkEdit {
+        priority: Some(Priority::High),
+        ..BulkEdit::default()
+    };
+    let none = core
+        .bulk_update_tasks(Vec::new(), edit.clone(), DAY.into())
+        .unwrap();
+    assert_eq!((none.changed, none.skipped_milestones), (0, 0));
+    let result = core
+        .bulk_update_tasks(vec!["missing".into(), a.clone()], edit, DAY.into())
+        .unwrap();
+    assert_eq!(result.changed, 1);
+    assert_eq!(
+        core.get_task(a, DAY.into()).unwrap().priority,
+        Priority::High
+    );
+}
+
+#[test]
 fn bulk_done_and_trash_can_be_undone_by_restoring() {
     let (core, _dir) = core();
     let a = add_task(&core, new_task("A"));
