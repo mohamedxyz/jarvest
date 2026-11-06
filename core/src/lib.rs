@@ -10,6 +10,7 @@ mod db;
 mod export;
 mod goals;
 mod model;
+mod monsters;
 mod quickadd;
 mod reminders;
 mod rewards;
@@ -459,6 +460,72 @@ impl GoalCore {
 
     pub fn set_rewards_enabled(&self, enabled: bool) -> Result<(), CoreError> {
         rewards::set_enabled(&self.conn(), enabled)
+    }
+
+    // Monsters
+
+    pub fn create_monster(
+        &self,
+        name: String,
+        health: u32,
+        today: String,
+    ) -> Result<String, CoreError> {
+        monsters::create_monster(&mut self.conn(), &name, health, &today)
+    }
+
+    pub fn rename_monster(&self, monster_id: String, name: String) -> Result<(), CoreError> {
+        monsters::rename_monster(&self.conn(), &monster_id, &name)
+    }
+
+    pub fn delete_monster(&self, monster_id: String) -> Result<(), CoreError> {
+        monsters::delete_monster(&self.conn(), &monster_id)
+    }
+
+    /// The treat that is the prize for beating the monster, or `None` for no set prize.
+    pub fn set_monster_prize(
+        &self,
+        monster_id: String,
+        treat_id: Option<String>,
+    ) -> Result<(), CoreError> {
+        monsters::set_prize_treat(&self.conn(), &monster_id, treat_id.as_deref())
+    }
+
+    /// Links a goal, habit or task. Linking again changes the power (5, 10 or 20).
+    pub fn link_monster_item(
+        &self,
+        monster_id: String,
+        kind: MonsterLinkKind,
+        item_id: String,
+        power: u32,
+    ) -> Result<(), CoreError> {
+        monsters::link_item(&self.conn(), &monster_id, kind, &item_id, power)
+    }
+
+    pub fn unlink_monster_item(
+        &self,
+        monster_id: String,
+        kind: MonsterLinkKind,
+        item_id: String,
+    ) -> Result<(), CoreError> {
+        monsters::unlink_item(&self.conn(), &monster_id, kind, &item_id)
+    }
+
+    pub fn list_monsters(&self, today: String) -> Result<Vec<Monster>, CoreError> {
+        monsters::list_monsters(&self.conn(), &today)
+    }
+
+    /// Records beaten rounds and starts new ones. Call it after changes; each win is returned once.
+    pub fn monster_tick(&self, today: String) -> Result<Vec<MonsterEvent>, CoreError> {
+        monsters::tick(&mut self.conn(), &today)
+    }
+
+    /// The permanent kill: the monster becomes a final boss with 5 times the health and never respawns.
+    pub fn make_final_boss(&self, monster_id: String, today: String) -> Result<(), CoreError> {
+        monsters::final_boss(&mut self.conn(), &monster_id, &today)
+    }
+
+    pub fn monster_trophies(&self) -> Result<Vec<MonsterTrophy>, CoreError> {
+        monsters::trophies(&self.conn())
     }
 
     /// How today is going: points done out of points planned, and the level that gives.

@@ -3810,3 +3810,318 @@ fn the_score_rejects_a_bad_date() {
     let (core, _dir) = core();
     assert!(core.day_score("nope".into()).is_err());
 }
+
+// Monsters
+
+/// `DAY` plus `n` days, as text.
+fn d(n: u64) -> String {
+    (chrono::NaiveDate::parse_from_str(DAY, "%Y-%m-%d").unwrap() + chrono::Days::new(n)).to_string()
+}
+
+fn daily_habit(core: &GoalCore, title: &str) -> String {
+    habit(core, title, Period::Day, 1.0, DAY)
+}
+
+fn health_of(core: &GoalCore, monster: &str, today: &str) -> Monster {
+    core.list_monsters(today.into())
+        .unwrap()
+        .into_iter()
+        .find(|m| m.id == monster)
+        .unwrap()
+}
+
+/// Treats won by beating monsters, newest first.
+fn monster_draws(core: &GoalCore) -> Vec<RewardDraw> {
+    core.list_draws()
+        .unwrap()
+        .into_iter()
+        .filter(|d| d.from_monster)
+        .collect()
+}
+
+#[test]
+fn a_monster_needs_a_name_and_sensible_health() {
+    let (core, _dir) = core();
+    assert!(core.create_monster("  ".into(), 100, DAY.into()).is_err());
+    assert!(core.create_monster("Big".into(), 5, DAY.into()).is_err());
+    assert!(
+        core.create_monster("Big".into(), 20_000, DAY.into())
+            .is_err()
+    );
+    assert!(
+        core.create_monster("x".repeat(61), 100, DAY.into())
+            .is_err()
+    );
+    let id = core
+        .create_monster("Sugar".into(), 100, DAY.into())
+        .unwrap();
+    let monster = health_of(&core, &id, DAY);
+    assert_eq!(
+        (monster.round, monster.health, monster.max_health),
+        (1, 100, 100)
+    );
+    assert_eq!(monster.status, MonsterStatus::Fighting);
+}
+
+#[test]
+fn linked_goals_deal_their_power_once_per_day_and_undo_takes_it_back() {
+    let (core, _dir) = core();
+    let monster = core
+        .create_monster("Sugar".into(), 100, DAY.into())
+        .unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Goal, goal.clone(), 10)
+        .unwrap();
+    assert_eq!(health_of(&core, &monster, DAY).health, 100);
+    tick(&core, &goal, DAY);
+    assert_eq!(health_of(&core, &monster, DAY).health, 90);
+    // Ticking again is an undo, so the damage goes back.
+    tick(&core, &goal, DAY);
+    assert_eq!(health_of(&core, &monster, DAY).health, 100);
+    // A new link power replaces the old one.
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Goal, goal.clone(), 20)
+        .unwrap();
+    tick(&core, &goal, DAY);
+    assert_eq!(health_of(&core, &monster, DAY).health, 80);
+    assert!(
+        core.link_monster_item(monster, MonsterLinkKind::Goal, goal, 7)
+            .is_err()
+    );
+}
+
+#[test]
+fn finished_tasks_deal_damage() {
+    let (core, _dir) = core();
+    let monster = core.create_monster("Delay".into(), 50, DAY.into()).unwrap();
+    let task = add_task(&core, new_task("Write"));
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Task, task.clone(), 20)
+        .unwrap();
+    core.toggle_task(task, DAY.into()).unwrap();
+    assert_eq!(health_of(&core, &monster, DAY).health, 30);
+}
+
+#[test]
+fn a_beaten_monster_is_recorded_once_pays_a_treat_then_rests_and_respawns_stronger() {
+    let (core, _dir) = core();
+    core.add_treat("Ice cream".into()).unwrap();
+    let monster = core.create_monster("Sugar".into(), 20, DAY.into()).unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Goal, goal.clone(), 10)
+        .unwrap();
+    tick(&core, &goal, &d(0));
+    tick(&core, &goal, &d(1));
+    let events = core.monster_tick(d(1)).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        (events[0].round, events[0].final_boss, events[0].prizes),
+        (1, false, 1)
+    );
+    // Recorded once only.
+    assert!(core.monster_tick(d(1)).unwrap().is_empty());
+    let resting = health_of(&core, &monster, &d(2));
+    assert_eq!(resting.status, MonsterStatus::Resting);
+    assert_eq!(resting.returns_date, Some(d(5)));
+    assert_eq!(core.monster_trophies().unwrap().len(), 1);
+    // The prize shows up in the treat list.
+    // Ticking a goal can also win an ordinary treat, so look at monster prizes only.
+    let draws = monster_draws(&core);
+    assert_eq!(draws.len(), 1);
+    assert_eq!(draws[0].goal_title, "Sugar");
+
+    // Damage during the rest does not count, and round 2 has a quarter more health (20 -> 25).
+    tick(&core, &goal, &d(2));
+    assert!(core.monster_tick(d(4)).unwrap().is_empty());
+    assert_eq!(
+        health_of(&core, &monster, &d(4)).status,
+        MonsterStatus::Resting
+    );
+    core.monster_tick(d(5)).unwrap();
+    let round2 = health_of(&core, &monster, &d(5));
+    assert_eq!(
+        (
+            round2.status,
+            round2.round,
+            round2.max_health,
+            round2.health
+        ),
+        (MonsterStatus::Fighting, 2, 25, 25)
+    );
+}
+
+#[test]
+fn undoing_after_a_win_never_takes_the_trophy_back() {
+    let (core, _dir) = core();
+    let monster = core.create_monster("Sugar".into(), 10, DAY.into()).unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.link_monster_item(monster, MonsterLinkKind::Goal, goal.clone(), 10)
+        .unwrap();
+    tick(&core, &goal, DAY);
+    assert_eq!(core.monster_tick(DAY.into()).unwrap().len(), 1);
+    tick(&core, &goal, DAY);
+    assert_eq!(core.monster_trophies().unwrap().len(), 1);
+}
+
+#[test]
+fn a_slip_heals_half_the_power_and_clean_days_deal_damage() {
+    let (core, _dir) = core();
+    let monster = core
+        .create_monster("Habit".into(), 100, DAY.into())
+        .unwrap();
+    let quit = core
+        .create_avoid_goal("No sugar".into(), String::new(), None, DAY.into())
+        .unwrap();
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Goal, quit.clone(), 20)
+        .unwrap();
+    // Today is not clean until it is over.
+    assert_eq!(health_of(&core, &monster, DAY).health, 100);
+    assert_eq!(health_of(&core, &monster, &d(1)).health, 80);
+    // Clean days 0 and 1, a slip on day 2, and day 3 is today: -20, -20, +10.
+    core.toggle_check_in_on(quit, d(2), d(3)).unwrap();
+    assert_eq!(health_of(&core, &monster, &d(3)).health, 70);
+}
+
+#[test]
+fn the_final_boss_is_five_times_stronger_pays_three_treats_and_never_returns() {
+    let (core, _dir) = core();
+    core.add_treat("Cake".into()).unwrap();
+    let monster = core.create_monster("Sugar".into(), 10, DAY.into()).unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Goal, goal.clone(), 20)
+        .unwrap();
+    core.make_final_boss(monster.clone(), DAY.into()).unwrap();
+    let boss = health_of(&core, &monster, DAY);
+    assert_eq!(
+        (boss.final_boss, boss.max_health, boss.health),
+        (true, 50, 50)
+    );
+    assert!(core.make_final_boss(monster.clone(), DAY.into()).is_err());
+    tick(&core, &goal, &d(0));
+    tick(&core, &goal, &d(1));
+    assert!(core.monster_tick(d(1)).unwrap().is_empty());
+    tick(&core, &goal, &d(2));
+    let events = core.monster_tick(d(2)).unwrap();
+    assert_eq!(
+        (events.len(), events[0].final_boss, events[0].prizes),
+        (1, true, 3)
+    );
+    let gone = health_of(&core, &monster, &d(2));
+    assert_eq!(gone.status, MonsterStatus::Retired);
+    assert!(gone.links.is_empty());
+    // No respawn, ever.
+    assert!(core.monster_tick(d(60)).unwrap().is_empty());
+    assert_eq!(health_of(&core, &monster, &d(60)).round, 1);
+    let trophies = core.monster_trophies().unwrap();
+    assert_eq!((trophies.len(), trophies[0].slain_forever), (1, true));
+    assert_eq!(monster_draws(&core).len(), 3);
+    assert!(
+        core.link_monster_item(monster, MonsterLinkKind::Goal, goal, 10)
+            .is_err()
+    );
+}
+
+#[test]
+fn the_final_boss_can_replace_a_resting_monsters_next_round() {
+    let (core, _dir) = core();
+    let monster = core.create_monster("Sugar".into(), 10, DAY.into()).unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Goal, goal.clone(), 10)
+        .unwrap();
+    tick(&core, &goal, DAY);
+    core.monster_tick(DAY.into()).unwrap();
+    core.make_final_boss(monster.clone(), d(1)).unwrap();
+    let boss = health_of(&core, &monster, &d(1));
+    // The next normal round would have 13 (10 + a quarter, rounded up), so the boss has 65.
+    assert_eq!(
+        (boss.round, boss.final_boss, boss.max_health),
+        (2, true, 65)
+    );
+}
+
+#[test]
+fn trashed_goals_do_not_hurt_a_monster() {
+    let (core, _dir) = core();
+    let monster = core
+        .create_monster("Sugar".into(), 100, DAY.into())
+        .unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Goal, goal.clone(), 10)
+        .unwrap();
+    tick(&core, &goal, DAY);
+    trash(&core, &goal);
+    assert_eq!(health_of(&core, &monster, DAY).health, 100);
+}
+
+#[test]
+fn with_no_treat_in_the_jar_a_win_pays_nothing_and_prizes_can_be_enjoyed() {
+    let (core, _dir) = core();
+    let monster = core.create_monster("Sugar".into(), 10, DAY.into()).unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.link_monster_item(monster.clone(), MonsterLinkKind::Goal, goal.clone(), 10)
+        .unwrap();
+    tick(&core, &goal, DAY);
+    assert_eq!(core.monster_tick(DAY.into()).unwrap()[0].prizes, 0);
+    drop(core);
+
+    let (core2, _dir2) = self::core();
+    let core = core2;
+    let treat = {
+        core.add_treat("Movie".into()).unwrap();
+        core.list_treats().unwrap()[0].id.clone()
+    };
+    let monster = core.create_monster("Sugar".into(), 10, DAY.into()).unwrap();
+    core.set_monster_prize(monster.clone(), Some(treat))
+        .unwrap();
+    let goal = daily_habit(&core, "Walk");
+    core.link_monster_item(monster, MonsterLinkKind::Goal, goal.clone(), 10)
+        .unwrap();
+    tick(&core, &goal, DAY);
+    core.monster_tick(DAY.into()).unwrap();
+    let draw = monster_draws(&core).remove(0);
+    assert_eq!(draw.treat_title, "Movie");
+    let unseen = |core: &GoalCore| {
+        core.unseen_draws()
+            .unwrap()
+            .iter()
+            .filter(|d| d.from_monster)
+            .count()
+    };
+    assert_eq!(unseen(&core), 1);
+    core.mark_draw_seen(draw.id.clone()).unwrap();
+    assert_eq!(unseen(&core), 0);
+    core.toggle_redeemed(draw.id.clone(), DAY.into()).unwrap();
+    assert!(monster_draws(&core)[0].redeemed_date.is_some());
+}
+
+#[test]
+fn monsters_survive_a_backup_and_bad_monster_dates_are_rejected() {
+    let (core, dir) = core();
+    let monster = core.create_monster("Sugar".into(), 40, DAY.into()).unwrap();
+    let path = dir.path().join("b.sqlite").to_str().unwrap().to_string();
+    core.export_backup(path.clone()).unwrap();
+    core.delete_monster(monster.clone()).unwrap();
+    core.restore_backup(path.clone()).unwrap();
+    assert_eq!(health_of(&core, &monster, DAY).max_health, 40);
+
+    let conn = Connection::open(&path).unwrap();
+    conn.execute("UPDATE monster_rounds SET start_date = 'whenever'", [])
+        .unwrap();
+    drop(conn);
+    assert_invalid_backup(core.restore_backup(path), "invalid dates");
+}
+
+#[test]
+fn upgrading_from_schema_12_adds_monsters() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v12.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 12).unwrap();
+        conn.execute_batch(
+            "INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old', 'yes_no', '2026-01-01');",
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    assert!(core.list_monsters(DAY.into()).unwrap().is_empty());
+    assert!(core.get_goal("g1".into()).is_ok());
+}

@@ -38,6 +38,11 @@ fn meta(conn: &Connection, key: &str) -> Result<String, CoreError> {
     )
 }
 
+/// The install's secret seed, which fixes every roll.
+pub(crate) fn seed(conn: &Connection) -> Result<String, CoreError> {
+    meta(conn, SEED_KEY)
+}
+
 pub fn enabled(conn: &Connection) -> Result<bool, CoreError> {
     Ok(meta(conn, ENABLED_KEY)? == "1")
 }
@@ -210,7 +215,7 @@ fn draws_where(conn: &Connection, condition: &str) -> Result<Vec<RewardDraw>, Co
          WHERE g.deleted_date IS NULL AND {condition}
          ORDER BY c.seq DESC"
     ))?;
-    let draws = stmt
+    let mut draws: Vec<RewardDraw> = stmt
         .query_map([], |r| {
             Ok(RewardDraw {
                 id: r.get(0)?,
@@ -220,9 +225,36 @@ fn draws_where(conn: &Connection, condition: &str) -> Result<Vec<RewardDraw>, Co
                 comeback: r.get(4)?,
                 seen: r.get(5)?,
                 redeemed_date: r.get(6)?,
+                from_monster: false,
             })
         })?
         .collect::<Result<_, _>>()?;
+    // Treats won by beating a monster. The same condition works because the columns share names.
+    let mut stmt = conn.prepare(&format!(
+        "SELECT d.id, t.title, m.name, d.local_date, d.seen, d.redeemed_date
+         FROM monster_prizes d
+         JOIN treats t ON t.id = d.treat_id
+         JOIN monsters m ON m.id = d.monster_id
+         WHERE {condition}
+         ORDER BY d.local_date DESC, d.round DESC, d.slot"
+    ))?;
+    let prizes = stmt
+        .query_map([], |r| {
+            Ok(RewardDraw {
+                id: r.get(0)?,
+                treat_title: r.get(1)?,
+                goal_title: r.get(2)?,
+                local_date: r.get(3)?,
+                comeback: false,
+                seen: r.get(4)?,
+                redeemed_date: r.get(5)?,
+                from_monster: true,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    draws.extend(prizes);
+    // Newest first. The sort is stable, so each source keeps its own order within a day.
+    draws.sort_by(|a, b| b.local_date.cmp(&a.local_date));
     Ok(draws)
 }
 
@@ -237,6 +269,10 @@ pub fn unseen_draws(conn: &Connection) -> Result<Vec<RewardDraw>, CoreError> {
 pub fn mark_draw_seen(conn: &Connection, draw_id: &str) -> Result<(), CoreError> {
     conn.execute(
         "UPDATE reward_draws SET seen = 1 WHERE id = ?1",
+        params![draw_id],
+    )?;
+    conn.execute(
+        "UPDATE monster_prizes SET seen = 1 WHERE id = ?1",
         params![draw_id],
     )?;
     Ok(())
@@ -255,6 +291,22 @@ pub fn toggle_redeemed(conn: &Connection, draw_id: &str, today: &str) -> Result<
         let next = if current.is_some() { None } else { Some(today) };
         conn.execute(
             "UPDATE reward_draws SET redeemed_date = ?2 WHERE id = ?1",
+            params![draw_id, next],
+        )?;
+        return Ok(());
+    }
+    // Otherwise it may be a monster prize.
+    let current: Option<Option<String>> = conn
+        .query_row(
+            "SELECT redeemed_date FROM monster_prizes WHERE id = ?1",
+            params![draw_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(current) = current {
+        let next = if current.is_some() { None } else { Some(today) };
+        conn.execute(
+            "UPDATE monster_prizes SET redeemed_date = ?2 WHERE id = ?1",
             params![draw_id, next],
         )?;
     }

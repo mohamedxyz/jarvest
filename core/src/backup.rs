@@ -182,6 +182,28 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // Monsters arrived in schema version 13.
+    if version >= 13 {
+        let bad_monster_dates: i64 = conn
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM monsters
+                    WHERE date(created_date) IS NOT created_date
+                       OR (retired_date IS NOT NULL AND date(retired_date) IS NOT retired_date))
+                 + (SELECT COUNT(*) FROM monster_rounds
+                    WHERE date(start_date) IS NOT start_date
+                       OR (defeated_date IS NOT NULL AND date(defeated_date) IS NOT defeated_date))
+                 + (SELECT COUNT(*) FROM monster_prizes
+                    WHERE date(local_date) IS NOT local_date
+                       OR (redeemed_date IS NOT NULL AND date(redeemed_date) IS NOT redeemed_date))",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_monster_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

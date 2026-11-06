@@ -229,6 +229,8 @@ pub struct RewardDraw {
     pub comeback: bool,
     pub seen: bool,
     pub redeemed_date: Option<String>,
+    /// True when the treat was won by beating a monster, so `goal_title` is the monster's name.
+    pub from_monster: bool,
 }
 
 /// What a logging action caused. Won treats are read through `unseen_draws`, so
@@ -604,4 +606,68 @@ pub struct DayScore {
     pub tasks_total: u32,
     /// Points still needed for the next level. 0 at Titan or when nothing is planned.
     pub points_to_next: u32,
+}
+
+// Monsters. See "V0.8.0 plan: custom monsters" in PLAN.md (shipped in 0.7.1).
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MonsterLinkKind {
+    Goal,
+    Task,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MonsterLink {
+    pub kind: MonsterLinkKind,
+    pub item_id: String,
+    /// The goal's or task's title, or an empty text if it no longer exists.
+    pub title: String,
+    /// Damage dealt each time: 5 (light), 10 (medium) or 20 (heavy).
+    pub power: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum MonsterStatus {
+    Fighting,
+    /// Beaten, and waiting a few days before the next round.
+    Resting,
+    /// The final boss was beaten. The monster is gone for good.
+    Retired,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Monster {
+    pub id: String,
+    pub name: String,
+    pub status: MonsterStatus,
+    pub round: u32,
+    pub max_health: u32,
+    pub health: u32,
+    pub final_boss: bool,
+    /// While resting: the day the next round starts.
+    pub returns_date: Option<String>,
+    pub retired_date: Option<String>,
+    pub defeats: u32,
+    pub prize_treat: Option<String>,
+    pub links: Vec<MonsterLink>,
+}
+
+/// A monster was beaten. Returned once, by `monster_tick`, so the app can celebrate.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MonsterEvent {
+    pub monster_id: String,
+    pub name: String,
+    pub round: u32,
+    pub final_boss: bool,
+    /// Treats won. 0 when the jar was empty or rewards are off.
+    pub prizes: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct MonsterTrophy {
+    pub monster_name: String,
+    pub round: u32,
+    pub defeated_date: String,
+    /// True for a final boss: the monster was slain for good.
+    pub slain_forever: bool,
 }
