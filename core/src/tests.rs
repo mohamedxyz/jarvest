@@ -4792,3 +4792,50 @@ fn suggested_blocks_use_free_gaps_and_save_nothing() {
     // Asking again gives the same answer, because nothing was saved.
     assert_eq!(core.suggest_blocks(DAY.into()).unwrap(), first);
 }
+
+// ---- Export and import ----
+
+#[test]
+fn tasks_and_json_export_and_the_csv_comes_back_in() {
+    let (first, dir) = core();
+    let core = first;
+    core.create_task(
+        NewTask {
+            title: "Essay, \"final\"".into(),
+            notes: "line one\nline two".into(),
+            due: Some(DAY.into()),
+            priority: Priority::High,
+            tag: Some("uni".into()),
+            repeat: None,
+            items: vec![],
+            goal_id: None,
+        },
+        DAY.into(),
+    )
+    .unwrap();
+    daily_habit(&core, "Read");
+    let csv = dir.path().join("tasks.csv").to_str().unwrap().to_string();
+    core.export_tasks_csv(csv.clone()).unwrap();
+    let json = dir.path().join("all.json").to_str().unwrap().to_string();
+    core.export_json(json.clone()).unwrap();
+    let text = std::fs::read_to_string(&json).unwrap();
+    assert!(text.contains("\"goals\"") && text.contains("\"Read\"") && text.contains("line one\\nline two"));
+
+    // Into a fresh app, the same task arrives with its details.
+    let (other, _dir2) = crate::tests::core();
+    assert_eq!(other.import_tasks_csv(csv, DAY.into()).unwrap(), 1);
+    let task = &other.list_tasks(TaskFilter::All, TaskSort::Due, DAY.into()).unwrap()[0];
+    assert_eq!(task.title, "Essay, \"final\"");
+    assert_eq!(task.notes, "line one\nline two");
+    assert_eq!(task.priority, Priority::High);
+}
+
+#[test]
+fn importing_skips_bad_rows_and_needs_a_title_column() {
+    let (core, dir) = core();
+    let path = dir.path().join("in.csv");
+    std::fs::write(&path, "title,due\nGood,2026-12-01\n,2026-12-02\nBad date,someday\n").unwrap();
+    assert_eq!(core.import_tasks_csv(path.to_str().unwrap().into(), DAY.into()).unwrap(), 2);
+    std::fs::write(&path, "name\nx\n").unwrap();
+    assert!(core.import_tasks_csv(path.to_str().unwrap().into(), DAY.into()).is_err());
+}

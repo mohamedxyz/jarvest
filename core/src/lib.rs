@@ -833,6 +833,64 @@ impl GoalCore {
         export::export_csv(&self.conn(), &dest_path)
     }
 
+    pub fn export_tasks_csv(&self, dest_path: String) -> Result<(), CoreError> {
+        export::export_tasks_csv(&self.conn(), &dest_path)
+    }
+
+    pub fn export_json(&self, dest_path: String) -> Result<(), CoreError> {
+        export::export_json(&self.conn(), &dest_path)
+    }
+
+    /// Adds tasks from a CSV file with a `title` column (and optionally `due`, `priority`, `tag`,
+    /// `notes`). Returns how many were added. Rows without a title are skipped, and a bad due
+    /// date is dropped rather than failing the whole file. At most 1000 rows are read.
+    pub fn import_tasks_csv(&self, source_path: String, today: String) -> Result<u32, CoreError> {
+        let text = std::fs::read_to_string(&source_path).map_err(|e| CoreError::Invalid {
+            reason: format!("That file couldn't be read as text: {e}"),
+        })?;
+        let rows = export::parse_csv(&text);
+        let Some((header, body)) = rows.split_first() else {
+            return Ok(0);
+        };
+        let col = |name: &str| header.iter().position(|h| h.trim().eq_ignore_ascii_case(name));
+        let Some(title_col) = col("title") else {
+            return Err(CoreError::Invalid {
+                reason: "The first row must name the columns, and one must be \"title\"".into(),
+            });
+        };
+        let (due_col, pri_col, tag_col, notes_col) =
+            (col("due"), col("priority"), col("tag"), col("notes"));
+        let get = |row: &Vec<String>, c: Option<usize>| {
+            c.and_then(|i| row.get(i)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+        };
+        let mut conn = self.conn();
+        let mut added = 0;
+        for row in body.iter().take(1000) {
+            let Some(title) = get(row, Some(title_col)) else { continue };
+            let due = get(row, due_col).filter(|d| dates::parse_date(d).is_ok());
+            let priority = match get(row, pri_col).map(|p| p.to_lowercase()).as_deref() {
+                Some("high") => Priority::High,
+                Some("low") => Priority::Low,
+                _ => Priority::Med,
+            };
+            let task = NewTask {
+                title,
+                notes: get(row, notes_col).unwrap_or_default(),
+                due,
+                priority,
+                tag: get(row, tag_col),
+                repeat: None,
+                items: vec![],
+                goal_id: None,
+            };
+            // A row that fails a rule (a very long title, say) is skipped, not fatal.
+            if tasks::create_task(&mut conn, task, &today).is_ok() {
+                added += 1;
+            }
+        }
+        Ok(added)
+    }
+
     // Icons, sample data and templates (first run)
 
     pub fn set_goal_icon(&self, goal_id: String, icon: Option<String>) -> Result<(), CoreError> {

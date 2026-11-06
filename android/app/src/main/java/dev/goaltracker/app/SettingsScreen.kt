@@ -81,6 +81,36 @@ fun SettingsScreen(controller: AppController) {
             }
         }
     }
+    val tasksCsvExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) {
+            busy = true
+            scope.launch {
+                val error = withContext(Dispatchers.IO) { writeExport(context, uri, "tasks.csv") { controller.core.exportTasksCsv(it) } }
+                controller.message = error ?: "Tasks exported"
+                busy = false
+            }
+        }
+    }
+    val jsonExporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) {
+            busy = true
+            scope.launch {
+                val error = withContext(Dispatchers.IO) { writeExport(context, uri, "all.json") { controller.core.exportJson(it) } }
+                controller.message = error ?: "Data exported"
+                busy = false
+            }
+        }
+    }
+    val tasksCsvImporter = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            busy = true
+            scope.launch {
+                controller.message = withContext(Dispatchers.IO) { importTasksCsv(context, controller.core, uri, controller.today) }
+                controller.refresh()
+                busy = false
+            }
+        }
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             // Read the file first, so the dialog can show what it holds (or why it can't be used).
@@ -316,6 +346,14 @@ fun SettingsScreen(controller: AppController) {
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 importer.launch(arrayOf("*/*"))
             }) { Text("Restore from backup") }
+            OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                busy = true
+                scope.launch {
+                    val error = withContext(Dispatchers.IO) { shareBackup(context, controller.core, controller.today) }
+                    if (error != null) controller.message = error
+                    busy = false
+                }
+            }) { Text("Share backup") }
         }
 
         AutoBackupSection(controller)
@@ -329,7 +367,21 @@ fun SettingsScreen(controller: AppController) {
             )
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 csvExporter.launch("jarvest-logs-${controller.today}.csv")
-            }) { Text("Export to CSV") }
+            }) { Text("Export logs to CSV") }
+            OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                tasksCsvExporter.launch("jarvest-tasks-${controller.today}.csv")
+            }) { Text("Export tasks to CSV") }
+            OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                jsonExporter.launch("jarvest-data-${controller.today}.json")
+            }) { Text("Export everything to JSON") }
+            OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
+                tasksCsvImporter.launch(arrayOf("text/*", "*/*"))
+            }) { Text("Import tasks from CSV") }
+            Text(
+                "A task CSV needs a first row naming the columns. Only title is required; due (YYYY-MM-DD), priority, tag and notes are optional.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         }
 
@@ -422,5 +474,64 @@ private fun exportCsvTo(context: Context, core: GoalCore, uri: Uri): String? {
         "The file couldn't be saved to that location."
     } finally {
         temp.delete()
+    }
+}
+
+/** Makes a file with `make`, then copies it to the place the person picked. Returns an error message or null. */
+private fun writeExport(context: Context, uri: Uri, name: String, make: (String) -> Unit): String? {
+    val temp = File(context.cacheDir, name)
+    return try {
+        make(temp.path)
+        val output = context.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("no output")
+        output.use { out -> temp.inputStream().use { it.copyTo(out) } }
+        null
+    } catch (e: CoreException) {
+        e.userMessage()
+    } catch (_: IOException) {
+        "The file couldn't be saved to that location."
+    } finally {
+        temp.delete()
+    }
+}
+
+/** Adds the tasks in a CSV file. Returns what to tell the person. */
+private fun importTasksCsv(context: Context, core: GoalCore, uri: Uri, today: String): String {
+    val temp = File(context.cacheDir, "import.csv")
+    return try {
+        val input = context.contentResolver.openInputStream(uri) ?: throw IOException("no input")
+        input.use { source -> temp.outputStream().use { source.copyTo(it) } }
+        val added = core.importTasksCsv(temp.path, today)
+        if (added == 1u) "Added 1 task" else "Added $added tasks"
+    } catch (e: CoreException) {
+        e.userMessage()
+    } catch (_: IOException) {
+        "That file couldn't be read."
+    } finally {
+        temp.delete()
+    }
+}
+
+/** Opens the share sheet with a fresh backup file. Old shared copies are deleted first. Returns an error or null. */
+private fun shareBackup(context: Context, core: GoalCore, today: String): String? {
+    val dir = File(context.cacheDir, "share")
+    return try {
+        dir.deleteRecursively()
+        dir.mkdirs()
+        val file = File(dir, "jarvest-backup-$today.sqlite")
+        core.exportBackup(file.path)
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.share", file)
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/octet-stream"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(
+            android.content.Intent.createChooser(send, "Share backup").addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        null
+    } catch (e: CoreException) {
+        e.userMessage()
+    } catch (_: IOException) {
+        "The backup couldn't be prepared."
     }
 }
