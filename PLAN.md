@@ -591,3 +591,28 @@ A monster stands for a struggle the person names, such as a habit they want to b
 - The bottom bar became Today, Tasks, Calendar, Goals, Habits, More. Stats and Rewards (and Settings) live under More.
 - Task rows keep the relative due label (Today, Tomorrow, "3 days left", then "Nov 12") and add the start time when set.
 - Not built: custom repeat and checklist-editing screens, goal time block inside the goal editor (set from the calendar sheet), drag to move blocks, event reminders.
+
+## V0.10.0 (shipped): the 0.10 to 0.20 roadmap built as one release
+
+Schema went from 13 to 19 (migrations 014 to 019). Everything below compiles and is covered by Rust tests (235), but none of the screens were tested on a device.
+
+- **Calendar, finished:** events with end dates, reminders and "skip this day" for one repeat, a month overview, drag to move blocks, a goal time block in the goal editor, and suggested times for plans without one (`insights.rs`, nothing saved until Apply).
+- **Tasks:** quick-add times and lengths ("Essay tomorrow 3pm 1h"), templates (`templates.rs`, migration 017), custom repeat, editable steps, grouping by tag, clearer empty-trash messages.
+- **History and insights:** history calendar with day details, records and Blaze streaks; weekly and monthly insights with a share sentence. Both only read data.
+- **Focus timer** (`focus.rs`, migration 018): sessions for a task or goal, countdown in an ongoing notification, bars in history. No foreground service. Focus never changes score, XP, streaks or rewards.
+- **Gamification II** (migration 019): `xp_bonuses` pays a Titan day (+10), a finished daily quest (+10), each full week of Blaze days (+20), a boss defeat (+25), a monster round (+15) and a final monster (+60). Titan, quest and streak bonuses are taken back if the day is undone; boss and monster bonuses stay. The daily quest (`daily_quests`) is picked once per day by hash and never changes. Missing it costs nothing. Seven new badges.
+- **Notifications and widgets:** quiet hours (silent, never skipped), a reminder sound switch, a Snooze 10 min button, Score and Agenda widgets. These are phone-side prefs in `Reminders.kt`.
+- **Data:** tasks CSV export, JSON export, tasks CSV import (bad rows skipped, 1000 rows at most), share backup through a cache-only `FileProvider`.
+- **Polish:** 164 plain texts moved to `strings.xml`, content centered at 720dp on tablets and in landscape, an upgrade test that opens a database from every older schema version, backs it up and restores it.
+
+### Not built or cut
+
+- Backup password: needs encryption libraries. Not built.
+- Boss modifiers and the bestiary: cut.
+- Texts that contain values (counts, dates) are still in the Kotlin code. No translations were planned.
+- A TalkBack pass on every screen: only checked that icon buttons have descriptions.
+- The empty-trash "does nothing" report is still not reproduced. Core tests pass.
+
+### Before 0.10.1
+
+Run the README "Device checklist before a release" on a phone, install over 0.9.0, and smoke test the release APK (R8 has broken things before).
