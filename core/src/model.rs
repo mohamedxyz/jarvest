@@ -889,3 +889,34 @@ pub struct DailyQuest {
     /// XP for finishing it.
     pub bonus: u32,
 }
+
+// Insights
+
+/// A look back at one week or month.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Insights {
+    pub from: String,
+    pub to: String,
+    pub points: u32,
+    pub possible: u32,
+    pub active_days: u32,
+    pub titan_days: u32,
+    pub focus_minutes: u32,
+    pub bonus_xp: u32,
+    pub best_date: Option<String>,
+    pub best_points: u32,
+    /// Points in the period before this one, to compare with.
+    pub previous_points: u32,
+    /// A short sentence the person can share.
+    pub share_text: String,
+}
+
+/// A suggested start time for a goal or task that has none. Nothing is saved.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct SuggestedBlock {
+    pub kind: CalendarKind,
+    pub id: String,
+    pub title: String,
+    pub start_minutes: u32,
+    pub minutes: u32,
+}

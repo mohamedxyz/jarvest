@@ -146,6 +146,7 @@ fun CalendarScreen(
     }
     var selected by remember { mutableStateOf<CalendarBlock?>(null) }
     var showMonth by rememberSaveable { mutableStateOf(false) }
+    var showSuggest by remember { mutableStateOf(false) }
     val anytime = blocks.filter { it.startMinutes == null }
     val placed = remember(blocks) { place(blocks) }
 
@@ -165,6 +166,10 @@ fun CalendarScreen(
             TextButton(onClick = { showMonth = !showMonth }) { Text(if (showMonth) "Week" else "Month") }
             TextButton(onClick = { controller.calendarDate = controller.today }) { Text("Today") }
         }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            TextButton(onClick = { showSuggest = true }) { Text("Suggest times") }
+        }
+        if (showSuggest) SuggestTimesDialog(controller, date) { showSuggest = false }
         if (showMonth) MonthOverview(controller, day) { picked ->
             controller.calendarDate = picked
             showMonth = false

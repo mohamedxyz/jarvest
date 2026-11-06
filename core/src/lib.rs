@@ -11,6 +11,7 @@ mod db;
 mod export;
 mod focus;
 mod goals;
+mod insights;
 mod model;
 mod monsters;
 mod progress;
@@ -758,6 +759,16 @@ impl GoalCore {
     /// Activity in the week or month `back` periods before the current one.
     pub fn recap(&self, period: Period, back: u32, today: String) -> Result<Recap, CoreError> {
         stats::recap(&self.conn(), period, back, &today)
+    }
+
+    /// A look back at a week or month (`back` periods ago), with a sentence to share.
+    pub fn insights(&self, period: Period, back: u32, today: String) -> Result<Insights, CoreError> {
+        insights::insights(&self.conn(), period, back, &today)
+    }
+
+    /// Free-slot suggestions for today's plans without a start time. Nothing is saved.
+    pub fn suggest_blocks(&self, date: String) -> Result<Vec<SuggestedBlock>, CoreError> {
+        insights::suggest_blocks(&self.conn(), &date)
     }
 
     pub fn badges(&self, today: String) -> Result<Vec<Badge>, CoreError> {

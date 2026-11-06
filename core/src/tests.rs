@@ -4755,3 +4755,40 @@ fn bonus_badges_follow_the_data() {
     core.progress_tick(DAY.into()).unwrap();
     assert!(earned(&core, "titan_1"));
 }
+
+// ---- Insights ----
+
+#[test]
+fn insights_add_up_a_week_and_compare_with_the_last() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 1);
+    // DAY is Thursday 2026-11-05, so the habit exists from then. Log Thursday, Friday and next Monday.
+    for date in ["2026-11-05", "2026-11-06", "2026-11-09"] {
+        tick(&core, &ids[0], date);
+        core.progress_tick(date.into()).unwrap();
+    }
+    let week = core.insights(Period::Week, 0, DAY.into()).unwrap();
+    assert_eq!((week.from.as_str(), week.to.as_str()), ("2026-11-02", "2026-11-08"));
+    assert_eq!((week.points, week.active_days, week.titan_days), (20, 2, 2));
+    assert_eq!(week.previous_points, 0);
+    assert_eq!(week.best_date.as_deref(), Some("2026-11-05"));
+    assert!(week.share_text.contains("20 points"));
+    // A week later, the first week is the one to compare with.
+    let next = core.insights(Period::Week, 0, d(7)).unwrap();
+    assert_eq!((next.points, next.previous_points), (10, 20));
+    assert!(core.insights(Period::Day, 0, DAY.into()).is_err());
+    let month = core.insights(Period::Month, 0, DAY.into()).unwrap();
+    assert_eq!((month.from.as_str(), month.points), ("2026-11-01", 30));
+}
+
+#[test]
+fn suggested_blocks_use_free_gaps_and_save_nothing() {
+    let (core, _dir) = core();
+    assert!(core.suggest_blocks(DAY.into()).unwrap().is_empty());
+    let id = daily_habit(&core, "Read");
+    let first = core.suggest_blocks(DAY.into()).unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!((first[0].id.as_str(), first[0].start_minutes), (id.as_str(), 9 * 60));
+    // Asking again gives the same answer, because nothing was saved.
+    assert_eq!(core.suggest_blocks(DAY.into()).unwrap(), first);
+}
