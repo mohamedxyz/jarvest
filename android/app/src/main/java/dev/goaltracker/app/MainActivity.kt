@@ -273,12 +273,14 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
 
 private fun titleFor(route: String): String = when {
     route == "settings" -> "Settings"
-    route == "new" -> "New goal"
+    route == "new" || route == "newgoal" -> "New goal"
+    route == "newhabit" -> "New habit"
     route == "newtask" || route.startsWith("newtask/") -> "New task"
     route.startsWith("edittask/") -> "Edit task"
     route.startsWith("edit/") -> "Edit goal"
     route.startsWith("goal/") -> "Goal"
-    else -> tabs.first { it.route == route }.label
+    // firstOrNull, not first: an unlisted route must show a plain title, never crash the app.
+    else -> tabs.firstOrNull { it.route == route }?.label ?: "Jarvest"
 }
 
 @Composable
