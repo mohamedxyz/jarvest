@@ -128,11 +128,7 @@ fn new_boss_health(conn: &Connection, week: NaiveDate) -> Result<u32, CoreError>
 }
 
 fn pick_treat(conn: &Connection, week: &str) -> Result<Option<String>, CoreError> {
-    let treats: Vec<String> = {
-        let mut stmt = conn.prepare("SELECT id FROM treats WHERE removed = 0 ORDER BY seq")?;
-        stmt.query_map([], |r| r.get(0))?
-            .collect::<Result<_, _>>()?
-    };
+    let treats = rewards::jar_treats(conn)?;
     if treats.is_empty() {
         return Ok(None);
     }

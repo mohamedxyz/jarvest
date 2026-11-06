@@ -1,5 +1,7 @@
 package dev.goaltracker.app
 
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.draw.clip
@@ -46,7 +48,9 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
     val enabled = remember(controller.version) { controller.read(true) { rewardsEnabled() } }
     val badges = remember(controller.version, controller.today) { controller.read(emptyList()) { badges(controller.today) } }
     val progress = remember(controller.version) { controller.read(null) { rewardProgress() } }
+    val stock = remember(controller.version) { controller.read(emptyList()) { treatStock() } }
     var newTreat by rememberSaveable { mutableStateOf("") }
+    var newOnce by rememberSaveable { mutableStateOf(false) }
     var treatToRemove by remember { mutableStateOf<dev.goaltracker.core.Treat?>(null) }
 
     Column(
@@ -75,29 +79,64 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
             }
         }
 
+        // Treats won but not used yet. Using one marks the oldest win as enjoyed.
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SectionTitle("Your stock")
+            if (stock.isEmpty()) {
+                Text("Nothing saved up. Treats you win wait here until you use them.", style = MaterialTheme.typography.bodyMedium)
+            }
+            stock.forEach { item ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(item.treatTitle, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Text("×${item.count}", Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.titleMedium)
+                    OutlinedButton(onClick = {
+                        val id = item.nextDrawId
+                        if (controller.act { toggleRedeemed(id, controller.today) }) {
+                            controller.undo = UndoOffer("Enjoy your ${item.treatTitle}!") {
+                                controller.act { toggleRedeemed(id, controller.today) }
+                            }
+                        }
+                    }) { Text("Use one") }
+                }
+            }
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SectionTitle("Your jar")
             if (treats.isEmpty()) Text(stringResource(R.string.ui_your_jar_is_empty), style = MaterialTheme.typography.bodyMedium)
             treats.forEach { treat ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(treat.title, Modifier.weight(1f))
+                    // Tap to switch: a one-time treat leaves the jar once won.
+                    FilterChip(
+                        selected = treat.once,
+                        onClick = { controller.act { setTreatOnce(treat.id, !treat.once) } },
+                        label = { Text(if (treat.once) "1× only" else "Repeat") },
+                        modifier = Modifier.label(if (treat.once) "${treat.title}: one time only. Tap to make it repeatable" else "${treat.title}: repeatable. Tap to make it one time only"),
+                    )
                     IconButton(onClick = { treatToRemove = treat }) {
                         Icon(Icons.Filled.Close, "Remove ${treat.title}")
                     }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                val addTreat = { if (newTreat.isNotBlank() && controller.act { addTreat(newTreat) }) newTreat = "" }
+                val addTreat = {
+                    if (newTreat.isNotBlank() && controller.act { addTreatOnce(newTreat, newOnce) }) {
+                        newTreat = ""
+                        newOnce = false
+                    }
+                }
                 OutlinedTextField(
                     newTreat, { newTreat = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.ui_new_treat_for_example_a_movie_ni)) }, singleLine = true,
                     keyboardOptions = doneKey, keyboardActions = onDone(addTreat),
                 )
                 TextButton(enabled = newTreat.isNotBlank(), onClick = { addTreat() }) { Text(stringResource(R.string.ui_add)) }
             }
+            FilterChip(selected = newOnce, onClick = { newOnce = !newOnce }, label = { Text("One time only") })
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SectionTitle("Treats you've won")
+            SectionTitle("History")
             if (draws.isNotEmpty()) {
                 Text(
                     "${draws.size} won, ${draws.count { it.redeemedDate != null }} enjoyed",

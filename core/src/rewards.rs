@@ -93,11 +93,27 @@ fn misses_since_draw(conn: &Connection) -> Result<u32, CoreError> {
     )?)
 }
 
+/// Treats that can still be drawn, in jar order: not removed, and not a one-time treat
+/// that was already won (from a target, a weekly boss or a monster). Undoing a win
+/// deletes its row, so the treat comes back by itself.
+pub(crate) const JAR_SQL: &str = "SELECT t.id FROM treats t WHERE t.removed = 0
+    AND NOT (t.once = 1 AND (
+        EXISTS (SELECT 1 FROM reward_draws d WHERE d.treat_id = t.id)
+        OR EXISTS (SELECT 1 FROM monster_prizes m WHERE m.treat_id = t.id)
+        OR EXISTS (SELECT 1 FROM boss_prizes b WHERE b.treat_id = t.id)))
+    ORDER BY t.seq";
+
+pub(crate) fn jar_treats(conn: &Connection) -> Result<Vec<String>, CoreError> {
+    let mut stmt = conn.prepare(JAR_SQL)?;
+    let ids = stmt
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(ids)
+}
+
 pub fn progress(conn: &Connection) -> Result<RewardProgress, CoreError> {
     let misses = misses_since_draw(conn)?;
-    let treats: u32 = conn.query_row("SELECT COUNT(*) FROM treats WHERE removed = 0", [], |r| {
-        r.get(0)
-    })?;
+    let treats = jar_treats(conn)?.len() as u32;
     Ok(RewardProgress {
         enabled: enabled(conn)?,
         treats_in_jar: treats,
@@ -117,11 +133,7 @@ pub fn complete_target(
     today: &str,
 ) -> Result<Outcome, CoreError> {
     let completion_id = uuid::Uuid::new_v4().to_string();
-    let treats: Vec<String> = {
-        let mut stmt = conn.prepare("SELECT id FROM treats WHERE removed = 0 ORDER BY seq")?;
-        stmt.query_map([], |r| r.get(0))?
-            .collect::<Result<_, _>>()?
-    };
+    let treats = jar_treats(conn)?;
 
     let mut draw = None;
     let outcome = if !enabled(conn)? {
@@ -171,16 +183,60 @@ pub fn complete_target(
 }
 
 pub fn add_treat(conn: &Connection, title: &str) -> Result<(), CoreError> {
+    add_treat_once(conn, title, false).map(|_| ())
+}
+
+/// Adds a treat. With `once`, it leaves the jar after it is won once.
+pub fn add_treat_once(conn: &Connection, title: &str, once: bool) -> Result<String, CoreError> {
     let title = title.trim();
     if title.is_empty() {
         return Err(invalid("A treat needs a name"));
     }
+    let id = uuid::Uuid::new_v4().to_string();
     conn.execute(
-        "INSERT INTO treats (id, title, seq)
-         VALUES (?1, ?2, (SELECT COALESCE(MAX(seq), 0) + 1 FROM treats))",
-        params![uuid::Uuid::new_v4().to_string(), title],
+        "INSERT INTO treats (id, title, seq, once)
+         VALUES (?1, ?2, (SELECT COALESCE(MAX(seq), 0) + 1 FROM treats), ?3)",
+        params![id, title, once],
     )?;
+    Ok(id)
+}
+
+/// Makes a treat one time only, or repeatable again. Past wins are kept either way.
+pub fn set_treat_once(conn: &Connection, treat_id: &str, once: bool) -> Result<(), CoreError> {
+    let n = conn.execute(
+        "UPDATE treats SET once = ?2 WHERE id = ?1 AND removed = 0",
+        params![treat_id, once],
+    )?;
+    if n == 0 {
+        return Err(invalid("That treat is not in the jar"));
+    }
     Ok(())
+}
+
+/// Won treats not used yet, one row per treat name, with how many are waiting.
+/// `next_draw_id` is the oldest one, which "Use one" marks as enjoyed.
+pub fn treat_stock(conn: &Connection) -> Result<Vec<StockItem>, CoreError> {
+    let mut draws = list_draws(conn)?;
+    draws.retain(|d| d.redeemed_date.is_none());
+    // Oldest first, so the oldest win is used first.
+    draws.sort_by(|a, b| a.local_date.cmp(&b.local_date));
+    let mut stock: Vec<StockItem> = Vec::new();
+    for draw in draws {
+        match stock.iter_mut().find(|s| s.treat_title == draw.treat_title) {
+            Some(item) => item.count += 1,
+            None => stock.push(StockItem {
+                treat_title: draw.treat_title,
+                count: 1,
+                next_draw_id: draw.id,
+            }),
+        }
+    }
+    stock.sort_by(|a, b| {
+        a.treat_title
+            .to_lowercase()
+            .cmp(&b.treat_title.to_lowercase())
+    });
+    Ok(stock)
 }
 
 /// Takes a treat out of the jar. Past draws keep showing its name.
@@ -192,16 +248,24 @@ pub fn remove_treat(conn: &Connection, treat_id: &str) -> Result<(), CoreError> 
     Ok(())
 }
 
+/// The treats in the jar. A one-time treat that was already won is left out: it sits
+/// in the stock until used.
 pub fn list_treats(conn: &Connection) -> Result<Vec<Treat>, CoreError> {
-    let mut stmt = conn.prepare("SELECT id, title FROM treats WHERE removed = 0 ORDER BY seq")?;
+    let in_jar = jar_treats(conn)?;
+    let mut stmt =
+        conn.prepare("SELECT id, title, once FROM treats WHERE removed = 0 ORDER BY seq")?;
     let treats = stmt
         .query_map([], |r| {
             Ok(Treat {
                 id: r.get(0)?,
                 title: r.get(1)?,
+                once: r.get(2)?,
             })
         })?
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|t| in_jar.contains(&t.id))
+        .collect();
     Ok(treats)
 }
 

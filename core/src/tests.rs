@@ -6006,3 +6006,99 @@ fn a_milestones_task_is_named_with_its_goal_in_monster_links_and_the_calendar() 
     blocks.sort();
     assert_eq!(blocks, vec!["100", "Read: 100", "Run: 100"]);
 }
+
+#[test]
+fn a_one_time_treat_leaves_the_jar_once_won_and_comes_back_on_undo() {
+    let (core, _dir) = core();
+    let once = core.add_treat_once("Concert".into(), true).unwrap();
+    assert!(core.list_treats().unwrap()[0].once);
+    let goal = win_one(&core);
+    // It was the only treat, so it was the one won, and now the jar is empty.
+    assert!(core.list_treats().unwrap().is_empty());
+    assert_eq!(core.reward_progress().unwrap().treats_in_jar, 0);
+    let next = yes_no(&core, "Next");
+    assert!(
+        tick(&core, &next, DAY).jar_empty,
+        "a won one-time treat can't be drawn again"
+    );
+    // Undoing the winning tick puts it back.
+    tick(&core, &goal, DAY);
+    let jar: Vec<String> = core
+        .list_treats()
+        .unwrap()
+        .into_iter()
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(jar, vec![once]);
+}
+
+#[test]
+fn a_repeatable_treat_stays_and_can_be_switched_to_one_time() {
+    let (core, _dir) = core();
+    core.add_treat("Coffee".into()).unwrap();
+    let id = core.list_treats().unwrap()[0].id.clone();
+    assert!(!core.list_treats().unwrap()[0].once);
+    win_one(&core);
+    assert_eq!(
+        core.list_treats().unwrap().len(),
+        1,
+        "repeatable treats stay in the jar"
+    );
+    // Switching it to one time only after a win takes it out of the jar.
+    core.set_treat_once(id.clone(), true).unwrap();
+    assert!(core.list_treats().unwrap().is_empty());
+    core.set_treat_once(id, false).unwrap();
+    assert_eq!(core.list_treats().unwrap().len(), 1);
+    assert!(core.set_treat_once("missing".into(), true).is_err());
+}
+
+#[test]
+fn the_stock_counts_unused_wins_per_treat_and_using_one_takes_the_oldest() {
+    let (core, _dir) = core();
+    core.add_treat("Coffee".into()).unwrap();
+    // Win two coffees.
+    let mut wins = 0;
+    for n in 0..30 {
+        let id = yes_no(&core, &format!("G{n}"));
+        wins += tick(&core, &id, DAY).drew;
+        if wins == 2 {
+            break;
+        }
+    }
+    assert_eq!(wins, 2);
+    let stock = core.treat_stock().unwrap();
+    assert_eq!(stock.len(), 1);
+    assert_eq!(
+        (stock[0].treat_title.as_str(), stock[0].count),
+        ("Coffee", 2)
+    );
+
+    // "Use one" marks one as enjoyed; the stock goes down by one.
+    core.toggle_redeemed(stock[0].next_draw_id.clone(), DAY.into())
+        .unwrap();
+    let stock = core.treat_stock().unwrap();
+    assert_eq!(stock[0].count, 1);
+    core.toggle_redeemed(stock[0].next_draw_id.clone(), DAY.into())
+        .unwrap();
+    assert!(core.treat_stock().unwrap().is_empty());
+    assert_eq!(
+        core.list_draws().unwrap().len(),
+        2,
+        "used treats stay in the history"
+    );
+}
+
+#[test]
+fn upgrading_from_schema_23_makes_every_treat_repeatable() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v23.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 23).unwrap();
+        conn.execute_batch("INSERT INTO treats (id, title, seq) VALUES ('t1', 'Old', 1);")
+            .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    let treats = core.list_treats().unwrap();
+    assert_eq!((treats[0].title.as_str(), treats[0].once), ("Old", false));
+}

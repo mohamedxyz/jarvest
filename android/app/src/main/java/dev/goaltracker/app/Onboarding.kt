@@ -384,6 +384,7 @@ private val changelog = listOf(
         listOf(
             "A goal page lists only its milestones. Tasks are no longer linked to goals from the app; ones you linked before stay in your Tasks tab.",
             "Habits are no longer called goals: their own pages, buttons, titles and a Habits list on Today.",
+            "Rewards: a Stock of treats you've won but not used yet, with a count and a Use one button. A treat can be one time only: once won, it leaves the jar.",
             "A milestone shows its goal's name outside the goal, such as \"Read: 100\", so two milestones called 100 can be told apart (monsters, calendar, Today).",
         ),
     ),

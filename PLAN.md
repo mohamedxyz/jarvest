@@ -740,3 +740,12 @@ Not built, and moved to a later release:
 - Splitting `core/src/tests.rs` into one file per module.
 - Plurals in `strings.xml`, and the TalkBack pass.
 - Bestiary: the Monsters screens already list past bosses and beaten monsters, so nothing new was needed.
+
+## Treat stock (0.11.2, migration 024)
+
+- `treats.once`: a one-time treat leaves the jar once it is won from a target, a weekly boss or a monster.
+  Undoing the win deletes its row, so the treat is back in the jar. Repeatable is the default, and the
+  switch can be flipped at any time without touching past wins.
+- All draws pick from `rewards::jar_treats`. With only won one-time treats left, the jar counts as empty.
+- Stock: wins with no `redeemed_date`, grouped by treat name with a count. "Use one" marks the oldest one
+  enjoyed (`toggle_redeemed`), with Undo. The full list stays under History.

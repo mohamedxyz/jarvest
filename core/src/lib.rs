@@ -830,6 +830,20 @@ impl GoalCore {
         rewards::remove_treat(&self.conn(), &treat_id)
     }
 
+    /// Adds a treat that leaves the jar once won (`once`), or a repeatable one.
+    pub fn add_treat_once(&self, title: String, once: bool) -> Result<String, CoreError> {
+        rewards::add_treat_once(&self.conn(), &title, once)
+    }
+
+    pub fn set_treat_once(&self, treat_id: String, once: bool) -> Result<(), CoreError> {
+        rewards::set_treat_once(&self.conn(), &treat_id, once)
+    }
+
+    /// Won treats not used yet, with counts, for the Stock list.
+    pub fn treat_stock(&self) -> Result<Vec<StockItem>, CoreError> {
+        rewards::treat_stock(&self.conn())
+    }
+
     pub fn list_treats(&self) -> Result<Vec<Treat>, CoreError> {
         rewards::list_treats(&self.conn())
     }

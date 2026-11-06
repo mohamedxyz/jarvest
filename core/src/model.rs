@@ -218,6 +218,17 @@ pub struct HeatmapDay {
 pub struct Treat {
     pub id: String,
     pub title: String,
+    /// One time only: it leaves the jar once won.
+    pub once: bool,
+}
+
+/// Won treats not used yet, grouped by name.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct StockItem {
+    pub treat_title: String,
+    pub count: u32,
+    /// The oldest unused win. Pass it to `toggle_redeemed` to use one.
+    pub next_draw_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

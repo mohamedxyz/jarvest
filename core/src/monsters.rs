@@ -480,11 +480,7 @@ fn pick_treat(
     round: u32,
     slot: u32,
 ) -> Result<Option<String>, CoreError> {
-    let treats: Vec<String> = {
-        let mut stmt = conn.prepare("SELECT id FROM treats WHERE removed = 0 ORDER BY seq")?;
-        stmt.query_map([], |r| r.get(0))?
-            .collect::<Result<_, _>>()?
-    };
+    let treats = rewards::jar_treats(conn)?;
     if treats.is_empty() {
         return Ok(None);
     }
