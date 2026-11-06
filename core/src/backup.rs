@@ -279,6 +279,49 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // Holidays, day notes and weekly reviews arrived in schema versions 20, 21 and 22.
+    if version >= 20 {
+        let bad_holiday_dates: i64 = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM holidays
+                         WHERE date(start_date) IS NOT start_date OR date(end_date) IS NOT end_date)
+                      + (SELECT COUNT(*) FROM holiday_skips WHERE date(local_date) IS NOT local_date)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_holiday_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
+    if version >= 21 {
+        let bad_note_dates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM day_notes WHERE date(local_date) IS NOT local_date",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_note_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
+    if version >= 22 {
+        let bad_review_dates: i64 = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM week_reviews
+                         WHERE date(week_start) IS NOT week_start
+                            OR (finished_date IS NOT NULL AND date(finished_date) IS NOT finished_date)
+                            OR (dismissed_date IS NOT NULL AND date(dismissed_date) IS NOT dismissed_date))
+                      + (SELECT COUNT(*) FROM week_focus WHERE date(week_start) IS NOT week_start)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_review_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

@@ -180,6 +180,12 @@ pub fn export_json(conn: &Connection, dest: &str) -> Result<(), CoreError> {
         "focus_sessions",
         "SELECT title, local_date AS date, start_minutes, minutes FROM focus_sessions ORDER BY local_date, start_minutes",
         4,
+        false,
+    )?;
+    list(
+        "day_notes",
+        "SELECT local_date AS date, body, mood FROM day_notes ORDER BY local_date",
+        3,
         true,
     )?;
     out.push_str("}\n");

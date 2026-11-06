@@ -11,13 +11,17 @@ mod db;
 mod export;
 mod focus;
 mod goals;
+mod holiday;
 mod insights;
 mod model;
 mod monsters;
+mod notes;
 mod progress;
 mod quickadd;
 mod reminders;
+mod review;
 mod rewards;
+mod routines;
 mod samples;
 mod score;
 mod search;
@@ -605,6 +609,106 @@ impl GoalCore {
     /// Today's small suggested target, or nothing before the first `progress_tick` of a day with a plan.
     pub fn daily_quest(&self, today: String) -> Result<Option<DailyQuest>, CoreError> {
         progress::daily_quest(&self.conn(), &today)
+    }
+
+    // Holiday mode
+
+    /// Pauses every active goal from `from` to `to`. Returns the holiday's id.
+    pub fn start_holiday(
+        &self,
+        from: String,
+        to: String,
+        today: String,
+    ) -> Result<String, CoreError> {
+        holiday::start(&mut self.conn(), &from, &to, &today)
+    }
+
+    /// Ends a holiday today. Days already past stay as they were.
+    pub fn end_holiday(&self, holiday_id: String, today: String) -> Result<(), CoreError> {
+        holiday::end(&mut self.conn(), &holiday_id, &today)
+    }
+
+    pub fn list_holidays(&self, today: String) -> Result<Vec<Holiday>, CoreError> {
+        holiday::list(&self.conn(), &today)
+    }
+
+    // Day notes
+
+    /// Saves a note and mood for a day. A note with no text and no mood is removed.
+    pub fn set_day_note(
+        &self,
+        date: String,
+        body: String,
+        mood: Option<u8>,
+        today: String,
+    ) -> Result<(), CoreError> {
+        notes::set(&self.conn(), &date, &body, mood, &today)
+    }
+
+    pub fn day_note(&self, date: String) -> Result<Option<DayNote>, CoreError> {
+        notes::get(&self.conn(), &date)
+    }
+
+    // Weekly review
+
+    /// The first day of this week, if the weekly review should be offered now.
+    pub fn review_due(&self, today: String) -> Result<Option<String>, CoreError> {
+        review::due(&self.conn(), &today)
+    }
+
+    /// "Not now": the review is not offered again this week.
+    pub fn dismiss_review(&self, today: String) -> Result<(), CoreError> {
+        review::dismiss(&self.conn(), &today)
+    }
+
+    /// Saves the review note and up to three things to focus on this week.
+    pub fn finish_review(
+        &self,
+        today: String,
+        note: String,
+        focus: Vec<FocusPick>,
+    ) -> Result<(), CoreError> {
+        review::finish(&mut self.conn(), &today, &note, &focus)
+    }
+
+    pub fn set_week_focus(&self, today: String, focus: Vec<FocusPick>) -> Result<(), CoreError> {
+        review::set_focus(&mut self.conn(), &today, &focus)
+    }
+
+    pub fn week_focus(&self, today: String) -> Result<Vec<WeekFocusItem>, CoreError> {
+        review::focus(&self.conn(), &today)
+    }
+
+    // Routines
+
+    pub fn create_routine(&self, name: String, goal_ids: Vec<String>) -> Result<String, CoreError> {
+        routines::create(&mut self.conn(), &name, &goal_ids)
+    }
+
+    pub fn update_routine(
+        &self,
+        routine_id: String,
+        name: String,
+        goal_ids: Vec<String>,
+    ) -> Result<(), CoreError> {
+        routines::update(&mut self.conn(), &routine_id, &name, &goal_ids)
+    }
+
+    pub fn delete_routine(&self, routine_id: String) -> Result<(), CoreError> {
+        routines::delete(&self.conn(), &routine_id)
+    }
+
+    pub fn list_routines(&self, today: String) -> Result<Vec<Routine>, CoreError> {
+        routines::list(&self.conn(), &today)
+    }
+
+    /// The steps of a routine that are planned today, ready to tick like cards on Today.
+    pub fn routine_items(
+        &self,
+        routine_id: String,
+        today: String,
+    ) -> Result<Vec<TodayItem>, CoreError> {
+        routines::items(&self.conn(), &routine_id, &today)
     }
 
     /// Every weekly boss so far, newest first, for the bestiary.

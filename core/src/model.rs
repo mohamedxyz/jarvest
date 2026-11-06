@@ -907,8 +907,14 @@ pub struct Insights {
     pub best_points: u32,
     /// Points in the period before this one, to compare with.
     pub previous_points: u32,
-    /// A short sentence the person can share.
+    /// A short sentence the person can share. It never mentions notes or moods.
     pub share_text: String,
+    /// Days with a mood in the period. The mood lines below are empty with fewer than 7.
+    pub mood_notes: u32,
+    pub average_mood: Option<f64>,
+    /// Average mood on Blaze and Titan days, and on all other days.
+    pub mood_good_days: Option<f64>,
+    pub mood_other_days: Option<f64>,
 }
 
 /// A suggested start time for a goal or task that has none. Nothing is saved.
@@ -919,4 +925,51 @@ pub struct SuggestedBlock {
     pub title: String,
     pub start_minutes: u32,
     pub minutes: u32,
+}
+
+// Holiday mode, day notes, weekly review and routines. See "V0.11.0 plan" in PLAN.md.
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Holiday {
+    pub id: String,
+    pub start_date: String,
+    pub end_date: String,
+    /// Today falls inside it.
+    pub active: bool,
+    /// How many goals it paused.
+    pub goals_covered: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DayNote {
+    pub date: String,
+    pub body: String,
+    /// 1 (rough) to 5 (great), if the person gave one.
+    pub mood: Option<u8>,
+}
+
+/// A goal or task picked as a focus for the week.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct FocusPick {
+    pub kind: FocusKind,
+    pub item_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct WeekFocusItem {
+    pub kind: FocusKind,
+    pub item_id: String,
+    pub title: String,
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Routine {
+    pub id: String,
+    pub name: String,
+    /// The steps, in order.
+    pub goal_ids: Vec<String>,
+    /// How many steps are planned today, and how many of those are done.
+    pub steps_today: u32,
+    pub steps_done: u32,
 }

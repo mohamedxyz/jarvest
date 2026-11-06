@@ -28,6 +28,10 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/017_task_templates.sql"),
     include_str!("sql/018_focus.sql"),
     include_str!("sql/019_xp_bonuses.sql"),
+    include_str!("sql/020_holidays.sql"),
+    include_str!("sql/021_day_notes.sql"),
+    include_str!("sql/022_week_review.sql"),
+    include_str!("sql/023_routines.sql"),
 ];
 
 pub const SCHEMA_VERSION: i32 = MIGRATIONS.len() as i32;

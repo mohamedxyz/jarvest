@@ -5211,10 +5211,655 @@ fn a_database_from_every_older_version_opens_works_and_backs_up() {
         core.daily_quest("2026-11-05".into()).unwrap();
         core.insights(Period::Week, 0, "2026-11-05".into()).unwrap();
         core.calendar_day("2026-11-05".into()).unwrap();
+        core.list_holidays("2026-11-05".into()).unwrap();
+        core.list_routines("2026-11-05".into()).unwrap();
+        core.review_due("2026-11-05".into()).unwrap();
+        core.day_note("2026-11-05".into()).unwrap();
         // And what it saves is a backup the app accepts again.
         let backup = dir.path().join("out.db").to_str().unwrap().to_string();
         core.export_backup(backup.clone()).unwrap();
         core.restore_backup(backup)
             .unwrap_or_else(|e| panic!("restoring a backup made from version {version}: {e:?}"));
     }
+}
+
+// ---- 0.11.0: holiday mode ----
+
+#[test]
+fn a_holiday_pauses_every_goal_and_ending_it_removes_only_its_own_days() {
+    let (core, _dir) = core();
+    let a = daily_habit(&core, "A");
+    let b = daily_habit(&core, "B");
+    // A day the person skipped by hand, inside the holiday.
+    core.pause_goal(a.clone(), d(1), d(1)).unwrap();
+    let id = core.start_holiday(d(1), d(3), DAY.into()).unwrap();
+    assert_eq!(core.skipped_days(a.clone()).unwrap(), [d(1), d(2), d(3)]);
+    assert_eq!(core.skipped_days(b.clone()).unwrap(), [d(1), d(2), d(3)]);
+    assert!(titles(&core, &d(2)).is_empty());
+    assert_eq!(titles(&core, DAY).len(), 2);
+
+    let before = core.list_holidays(DAY.into()).unwrap();
+    assert_eq!(before.len(), 1);
+    assert_eq!((before[0].goals_covered, before[0].active), (2, false));
+    assert!(core.list_holidays(d(2)).unwrap()[0].active);
+
+    // Ending it on day 2: days 2 and 3 come back. Day 1 is in the past and stays skipped.
+    core.end_holiday(id, d(2)).unwrap();
+    assert_eq!(core.skipped_days(a.clone()).unwrap(), [d(1)]);
+    assert_eq!(core.skipped_days(b).unwrap(), [d(1)]);
+    assert_eq!(titles(&core, &d(2)).len(), 2);
+    let after = core.list_holidays(d(2)).unwrap();
+    assert_eq!(
+        (after[0].start_date.as_str(), after[0].end_date.as_str()),
+        (d(1).as_str(), d(1).as_str())
+    );
+}
+
+#[test]
+fn ending_a_holiday_that_has_not_started_leaves_hand_made_skips() {
+    let (core, _dir) = core();
+    let a = daily_habit(&core, "A");
+    let b = daily_habit(&core, "B");
+    core.pause_goal(a.clone(), d(2), d(2)).unwrap();
+    let id = core.start_holiday(d(1), d(3), DAY.into()).unwrap();
+    core.end_holiday(id, DAY.into()).unwrap();
+    // The holiday is gone, and so are the days it added. The one made by hand stays.
+    assert!(core.list_holidays(DAY.into()).unwrap().is_empty());
+    assert_eq!(core.skipped_days(a).unwrap(), [d(2)]);
+    assert!(core.skipped_days(b).unwrap().is_empty());
+    assert!(core.end_holiday("missing".into(), DAY.into()).is_err());
+}
+
+#[test]
+fn a_holiday_starts_from_each_goals_creation_day_and_skips_trashed_and_archived_goals() {
+    let (core, _dir) = core();
+    let late = habit(&core, "Late", Period::Day, 1.0, &d(2));
+    let archived = daily_habit(&core, "Archived");
+    core.set_archived(archived.clone(), true).unwrap();
+    let trashed = daily_habit(&core, "Trashed");
+    core.trash_goal(trashed.clone(), DAY.into()).unwrap();
+    core.start_holiday(DAY.into(), d(4), DAY.into()).unwrap();
+    // The goal made on day 2 can't be paused before it existed.
+    assert_eq!(core.skipped_days(late.clone()).unwrap(), [d(2), d(3), d(4)]);
+    assert!(core.skipped_days(archived).unwrap().is_empty());
+    assert!(core.skipped_days(trashed).unwrap().is_empty());
+    // A goal made after the holiday began is not part of it.
+    let newer = habit(&core, "Newer", Period::Day, 1.0, &d(1));
+    assert!(core.skipped_days(newer).unwrap().is_empty());
+}
+
+#[test]
+fn a_holiday_rejects_bad_ranges_and_overlaps() {
+    let (core, _dir) = core();
+    daily_habit(&core, "A");
+    assert!(core.start_holiday(d(3), d(1), DAY.into()).is_err());
+    assert!(core.start_holiday("soon".into(), d(1), DAY.into()).is_err());
+    // It can't be over before it starts.
+    assert!(core.start_holiday(d(1), d(2), d(5)).is_err());
+    assert!(core.start_holiday(DAY.into(), d(400), DAY.into()).is_err());
+    core.start_holiday(d(1), d(3), DAY.into()).unwrap();
+    assert!(core.start_holiday(d(3), d(5), DAY.into()).is_err());
+    core.start_holiday(d(4), d(5), DAY.into()).unwrap();
+    assert_eq!(core.list_holidays(DAY.into()).unwrap().len(), 2);
+}
+
+#[test]
+fn a_holiday_day_with_nothing_done_neither_counts_nor_breaks_a_blaze_streak() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 1);
+    for n in [0, 1] {
+        tick(&core, &ids[0], &d(n));
+        core.progress_tick(d(n)).unwrap();
+    }
+    // Days 2 to 4 are a holiday. Nothing is planned, so nothing is done.
+    core.start_holiday(d(2), d(4), d(1)).unwrap();
+    for n in 2..=4 {
+        core.progress_tick(d(n)).unwrap();
+    }
+    // Inside the holiday the streak is not broken and not extended.
+    assert_eq!(core.day_records(d(3)).unwrap().blaze_streak, 2);
+    tick(&core, &ids[0], &d(5));
+    core.progress_tick(d(5)).unwrap();
+    let after = core.day_records(d(5)).unwrap();
+    assert_eq!((after.blaze_streak, after.longest_blaze_streak), (3, 3));
+    // Without the holiday the same gap would have broken it.
+    let (plain, _dir2) = crate::tests::core();
+    let ids = habits(&plain, 1);
+    for n in [0, 1, 5] {
+        tick(&plain, &ids[0], &d(n));
+        plain.progress_tick(d(n)).unwrap();
+    }
+    assert_eq!(plain.day_records(d(5)).unwrap().blaze_streak, 1);
+}
+
+#[test]
+fn a_gap_after_a_holiday_still_breaks_a_blaze_streak() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 1);
+    for n in [0, 1] {
+        tick(&core, &ids[0], &d(n));
+        core.progress_tick(d(n)).unwrap();
+    }
+    core.start_holiday(d(2), d(3), d(1)).unwrap();
+    // Day 4 is a normal day with nothing done, so the streak ends there.
+    for n in 2..=4 {
+        core.progress_tick(d(n)).unwrap();
+    }
+    tick(&core, &ids[0], &d(5));
+    core.progress_tick(d(5)).unwrap();
+    let records = core.day_records(d(5)).unwrap();
+    assert_eq!((records.blaze_streak, records.longest_blaze_streak), (1, 2));
+}
+
+#[test]
+fn a_holiday_pauses_quit_habits_but_a_slip_can_still_be_logged() {
+    let (core, _dir) = core();
+    let quit = core
+        .create_avoid_goal("No sugar".into(), String::new(), None, DAY.into())
+        .unwrap();
+    core.start_holiday(d(1), d(2), DAY.into()).unwrap();
+    assert_eq!(core.skipped_days(quit.clone()).unwrap(), [d(1), d(2)]);
+    core.toggle_check_in_on(quit, d(1), d(1)).unwrap();
+}
+
+#[test]
+fn a_holiday_never_changes_tasks() {
+    let (core, _dir) = core();
+    daily_habit(&core, "A");
+    let task = add_task(
+        &core,
+        NewTask {
+            due: Some(d(1)),
+            ..new_task("Pay rent")
+        },
+    );
+    core.start_holiday(d(1), d(2), DAY.into()).unwrap();
+    assert_eq!(core.get_task(task, DAY.into()).unwrap().due, Some(d(1)));
+    // The task is still planned on its day, so it still counts in the score.
+    assert_eq!(core.day_score(d(1)).unwrap().possible, 10);
+}
+
+#[test]
+fn holidays_survive_backup_and_restore_and_bad_dates_are_rejected() {
+    let fixture = Fixture::new();
+    fixture.core.start_holiday(d(1), d(2), DAY.into()).unwrap();
+    let path = fixture.backup();
+    fixture.core.restore_backup(path.clone()).unwrap();
+    assert_eq!(fixture.core.list_holidays(DAY.into()).unwrap().len(), 1);
+    for sql in [
+        "INSERT INTO holidays (id, start_date, end_date) VALUES ('x', 'soon', 'soon')",
+        "INSERT INTO day_notes (local_date, body) VALUES ('soon', 'x')",
+        "INSERT INTO week_reviews (week_start) VALUES ('soon')",
+        "INSERT INTO week_focus (week_start, position, kind, item_id) VALUES ('soon', 1, 'goal', 'g')",
+    ] {
+        let bad = fixture.path("bad.db");
+        std::fs::copy(&path, &bad).unwrap();
+        let conn = Connection::open(&bad).unwrap();
+        conn.execute(sql, []).unwrap();
+        drop(conn);
+        assert_invalid_backup(fixture.core.restore_backup(bad), "invalid dates");
+    }
+    assert_eq!(fixture.core.list_holidays(DAY.into()).unwrap().len(), 1);
+}
+
+// ---- 0.11.0: day notes and mood ----
+
+#[test]
+fn a_day_note_is_saved_trimmed_replaced_and_removed_when_empty() {
+    let (core, _dir) = core();
+    assert!(core.day_note(DAY.into()).unwrap().is_none());
+    core.set_day_note(DAY.into(), "  Good run  ".into(), Some(4), DAY.into())
+        .unwrap();
+    let note = core.day_note(DAY.into()).unwrap().unwrap();
+    assert_eq!((note.body.as_str(), note.mood), ("Good run", Some(4)));
+    // A mood alone is a note too, and saving again replaces the first one.
+    core.set_day_note(DAY.into(), "".into(), Some(2), DAY.into())
+        .unwrap();
+    let note = core.day_note(DAY.into()).unwrap().unwrap();
+    assert_eq!((note.body.as_str(), note.mood), ("", Some(2)));
+    // Nothing at all removes it.
+    core.set_day_note(DAY.into(), " ".into(), None, DAY.into())
+        .unwrap();
+    assert!(core.day_note(DAY.into()).unwrap().is_none());
+}
+
+#[test]
+fn a_day_note_rejects_the_future_bad_moods_and_long_text() {
+    let (core, _dir) = core();
+    assert!(
+        core.set_day_note(d(1), "x".into(), None, DAY.into())
+            .is_err()
+    );
+    assert!(
+        core.set_day_note("soon".into(), "x".into(), None, DAY.into())
+            .is_err()
+    );
+    for mood in [0, 6] {
+        assert!(
+            core.set_day_note(DAY.into(), "x".into(), Some(mood), DAY.into())
+                .is_err()
+        );
+    }
+    let long = "a".repeat(2001);
+    assert!(
+        core.set_day_note(DAY.into(), long, None, DAY.into())
+            .is_err()
+    );
+    let max = "é".repeat(2000);
+    core.set_day_note(DAY.into(), max, None, DAY.into())
+        .unwrap();
+}
+
+#[test]
+fn notes_never_change_the_score_xp_or_streaks() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 1);
+    tick(&core, &ids[0], DAY);
+    core.progress_tick(DAY.into()).unwrap();
+    let (xp, score, records) = (
+        core.hero().unwrap().xp,
+        core.day_score(DAY.into()).unwrap(),
+        core.day_records(DAY.into()).unwrap(),
+    );
+    core.set_day_note(DAY.into(), "Rough day".into(), Some(1), DAY.into())
+        .unwrap();
+    core.progress_tick(DAY.into()).unwrap();
+    assert_eq!(core.hero().unwrap().xp, xp);
+    assert_eq!(core.day_score(DAY.into()).unwrap(), score);
+    assert_eq!(core.day_records(DAY.into()).unwrap(), records);
+}
+
+fn week_of_moods(core: &GoalCore, moods: &[u8]) {
+    // DAY is Thursday, so the week of DAY runs from 2026-11-02 to 2026-11-08.
+    let days = [
+        "2026-11-02",
+        "2026-11-03",
+        "2026-11-04",
+        DAY,
+        "2026-11-06",
+        "2026-11-07",
+        "2026-11-08",
+    ];
+    for (day, mood) in days.iter().zip(moods) {
+        core.set_day_note(
+            day.to_string(),
+            String::new(),
+            Some(*mood),
+            "2026-11-08".into(),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn mood_insights_need_seven_notes_and_compare_good_days_with_the_rest() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 1);
+    for n in [0, 1] {
+        tick(&core, &ids[0], &d(n));
+        core.progress_tick(d(n)).unwrap();
+    }
+    // Six notes are not enough to say anything.
+    week_of_moods(&core, &[2, 2, 2, 5, 4, 2]);
+    let few = core.insights(Period::Week, 0, d(3)).unwrap();
+    assert_eq!(few.mood_notes, 6);
+    assert_eq!(
+        (few.average_mood, few.mood_good_days, few.mood_other_days),
+        (None, None, None)
+    );
+    // The seventh note unlocks the lines. Days 0 and 1 were Titan days (moods 5 and 4).
+    week_of_moods(&core, &[2, 2, 2, 5, 4, 2, 2]);
+    let week = core.insights(Period::Week, 0, d(3)).unwrap();
+    assert_eq!(week.mood_notes, 7);
+    assert!((week.average_mood.unwrap() - 19.0 / 7.0).abs() < 1e-9);
+    assert_eq!(week.mood_good_days, Some(4.5));
+    assert_eq!(week.mood_other_days, Some(2.0));
+    // The sentence to share never mentions mood or notes.
+    assert!(!week.share_text.to_lowercase().contains("mood"));
+    // Another week has no notes, so no lines.
+    let last = core.insights(Period::Week, 1, d(3)).unwrap();
+    assert_eq!((last.mood_notes, last.average_mood), (0, None));
+}
+
+#[test]
+fn notes_are_in_the_json_export_and_survive_backup() {
+    let fixture = Fixture::new();
+    fixture
+        .core
+        .set_day_note(DAY.into(), "Quiet \"day\"".into(), Some(3), DAY.into())
+        .unwrap();
+    let json = fixture.path("all.json");
+    fixture.core.export_json(json.clone()).unwrap();
+    let text = std::fs::read_to_string(json).unwrap();
+    assert!(text.contains("\"day_notes\"") && text.contains("Quiet \\\"day\\\""));
+    let path = fixture.backup();
+    fixture.core.restore_backup(path).unwrap();
+    assert_eq!(
+        fixture.core.day_note(DAY.into()).unwrap().unwrap().mood,
+        Some(3)
+    );
+}
+
+// ---- 0.11.0: weekly review ----
+
+#[test]
+fn the_weekly_review_is_offered_once_a_week_and_only_with_history() {
+    let (core, _dir) = core();
+    // A fresh app has nothing to look back on.
+    assert_eq!(core.review_due(DAY.into()).unwrap(), None);
+    habit(&core, "Run", Period::Day, 1.0, "2026-10-01");
+    // DAY is Thursday 2026-11-05, so the week started on Monday the 2nd.
+    assert_eq!(
+        core.review_due(DAY.into()).unwrap().as_deref(),
+        Some("2026-11-02")
+    );
+    core.dismiss_review(DAY.into()).unwrap();
+    assert_eq!(core.review_due(DAY.into()).unwrap(), None);
+    assert_eq!(core.review_due(d(2)).unwrap(), None);
+    // Dismissing twice is harmless, and the next Monday offers it again.
+    core.dismiss_review(DAY.into()).unwrap();
+    assert_eq!(
+        core.review_due(d(4)).unwrap().as_deref(),
+        Some("2026-11-09")
+    );
+}
+
+#[test]
+fn the_review_follows_the_week_start_setting() {
+    let (core, _dir) = core();
+    habit(&core, "Run", Period::Day, 1.0, "2026-10-01");
+    core.set_week_start(7).unwrap();
+    // With weeks starting on Sunday, the week of Thursday the 5th began on Sunday the 1st.
+    assert_eq!(
+        core.review_due(DAY.into()).unwrap().as_deref(),
+        Some("2026-11-01")
+    );
+    core.dismiss_review(DAY.into()).unwrap();
+    assert_eq!(
+        core.review_due(d(3)).unwrap().as_deref(),
+        Some("2026-11-08")
+    );
+}
+
+#[test]
+fn finishing_the_review_saves_a_note_and_up_to_three_focus_items() {
+    let (core, _dir) = core();
+    let run = habit(&core, "Run", Period::Day, 1.0, "2026-10-01");
+    let read = daily_habit(&core, "Read");
+    let task = add_task(&core, new_task("Tax form"));
+    let pick = |kind, id: &str| FocusPick {
+        kind,
+        item_id: id.into(),
+    };
+    core.finish_review(
+        DAY.into(),
+        "  A calm week  ".into(),
+        vec![pick(FocusKind::Goal, &run), pick(FocusKind::Task, &task)],
+    )
+    .unwrap();
+    assert_eq!(core.review_due(DAY.into()).unwrap(), None);
+    let focus = core.week_focus(DAY.into()).unwrap();
+    assert_eq!(
+        focus.iter().map(|f| f.title.as_str()).collect::<Vec<_>>(),
+        ["Run", "Tax form"]
+    );
+    assert!(focus.iter().all(|f| !f.done));
+    // A finished task shows as done.
+    core.toggle_task(task.clone(), DAY.into()).unwrap();
+    assert!(core.week_focus(DAY.into()).unwrap()[1].done);
+    // The focus can change later without a review.
+    core.set_week_focus(DAY.into(), vec![pick(FocusKind::Goal, &read)])
+        .unwrap();
+    assert_eq!(core.week_focus(DAY.into()).unwrap().len(), 1);
+    // Another week starts with an empty focus.
+    assert!(core.week_focus(d(4)).unwrap().is_empty());
+    core.set_week_focus(DAY.into(), vec![]).unwrap();
+    assert!(core.week_focus(DAY.into()).unwrap().is_empty());
+}
+
+#[test]
+fn the_review_rejects_too_many_duplicate_and_missing_focus_items() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 4);
+    let goal = |i: usize| FocusPick {
+        kind: FocusKind::Goal,
+        item_id: ids[i].clone(),
+    };
+    assert!(
+        core.finish_review(DAY.into(), String::new(), (0..4).map(goal).collect())
+            .is_err()
+    );
+    assert!(
+        core.finish_review(DAY.into(), String::new(), vec![goal(0), goal(0)])
+            .is_err()
+    );
+    let missing = FocusPick {
+        kind: FocusKind::Task,
+        item_id: "nope".into(),
+    };
+    assert!(
+        core.finish_review(DAY.into(), String::new(), vec![missing])
+            .is_err()
+    );
+    assert!(
+        core.finish_review(DAY.into(), "x".repeat(2001), vec![])
+            .is_err()
+    );
+    core.trash_goal(ids[1].clone(), DAY.into()).unwrap();
+    assert!(
+        core.finish_review(DAY.into(), String::new(), vec![goal(1)])
+            .is_err()
+    );
+    // After all those failures nothing was saved.
+    assert!(core.week_focus(DAY.into()).unwrap().is_empty());
+}
+
+#[test]
+fn a_focus_item_that_is_deleted_or_trashed_drops_off_the_card() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 2);
+    let task = add_task(&core, new_task("Call mum"));
+    let picks = vec![
+        FocusPick {
+            kind: FocusKind::Goal,
+            item_id: ids[0].clone(),
+        },
+        FocusPick {
+            kind: FocusKind::Goal,
+            item_id: ids[1].clone(),
+        },
+        FocusPick {
+            kind: FocusKind::Task,
+            item_id: task.clone(),
+        },
+    ];
+    core.set_week_focus(DAY.into(), picks).unwrap();
+    core.trash_goal(ids[0].clone(), DAY.into()).unwrap();
+    core.delete_task(task, DAY.into()).unwrap();
+    let focus = core.week_focus(DAY.into()).unwrap();
+    assert_eq!(focus.len(), 1);
+    assert_eq!(focus[0].title, "Habit 1");
+    // Restoring the goal brings it back to the card.
+    core.restore_goal(ids[0].clone()).unwrap();
+    assert_eq!(core.week_focus(DAY.into()).unwrap().len(), 2);
+}
+
+#[test]
+fn the_review_gives_no_xp_and_changes_no_score() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 1);
+    tick(&core, &ids[0], DAY);
+    core.progress_tick(DAY.into()).unwrap();
+    let (xp, score) = (core.hero().unwrap().xp, core.day_score(DAY.into()).unwrap());
+    core.finish_review(
+        DAY.into(),
+        "Done".into(),
+        vec![FocusPick {
+            kind: FocusKind::Goal,
+            item_id: ids[0].clone(),
+        }],
+    )
+    .unwrap();
+    core.progress_tick(DAY.into()).unwrap();
+    assert_eq!(core.hero().unwrap().xp, xp);
+    assert_eq!(core.day_score(DAY.into()).unwrap(), score);
+}
+
+// ---- 0.11.0: routines ----
+
+#[test]
+fn a_routine_lists_its_steps_planned_today_in_order() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 3);
+    let id = core
+        .create_routine("Morning".into(), vec![ids[2].clone(), ids[0].clone()])
+        .unwrap();
+    let steps = core.routine_items(id.clone(), DAY.into()).unwrap();
+    assert_eq!(
+        steps.iter().map(|s| s.title.as_str()).collect::<Vec<_>>(),
+        ["Habit 2", "Habit 0"]
+    );
+    let list = core.list_routines(DAY.into()).unwrap();
+    assert_eq!((list[0].steps_today, list[0].steps_done), (2, 0));
+    assert_eq!(list[0].goal_ids, [ids[2].clone(), ids[0].clone()]);
+    // Ticking a step is an ordinary tick, so the routine sees it as done.
+    tick(&core, &ids[2], DAY);
+    let list = core.list_routines(DAY.into()).unwrap();
+    assert_eq!((list[0].steps_today, list[0].steps_done), (2, 1));
+    assert!(core.routine_items(id, DAY.into()).unwrap()[0].complete);
+}
+
+#[test]
+fn a_routine_never_changes_xp_rewards_or_the_score() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 2);
+    let before = (core.hero().unwrap().xp, core.day_score(DAY.into()).unwrap());
+    core.create_routine("Morning".into(), ids.clone()).unwrap();
+    tick(&core, &ids[0], DAY);
+    tick(&core, &ids[1], DAY);
+    core.progress_tick(DAY.into()).unwrap();
+    // The same two ticks without a routine give the same result.
+    let (plain, _dir2) = crate::tests::core();
+    let plain_ids = habits(&plain, 2);
+    tick(&plain, &plain_ids[0], DAY);
+    tick(&plain, &plain_ids[1], DAY);
+    plain.progress_tick(DAY.into()).unwrap();
+    assert_eq!(core.hero().unwrap().xp, plain.hero().unwrap().xp);
+    assert_eq!(
+        core.day_score(DAY.into()).unwrap(),
+        plain.day_score(DAY.into()).unwrap()
+    );
+    assert_eq!(before.0, 0);
+}
+
+#[test]
+fn a_routine_rejects_quit_habits_duplicates_and_bad_sizes() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 2);
+    let quit = core
+        .create_avoid_goal("No sugar".into(), String::new(), None, DAY.into())
+        .unwrap();
+    assert!(core.create_routine("R".into(), vec![quit]).is_err());
+    assert!(core.create_routine("R".into(), vec![]).is_err());
+    assert!(
+        core.create_routine(" ".into(), vec![ids[0].clone()])
+            .is_err()
+    );
+    assert!(
+        core.create_routine("R".into(), vec![ids[0].clone(), ids[0].clone()])
+            .is_err()
+    );
+    assert!(
+        core.create_routine("R".into(), vec!["missing".into()])
+            .is_err()
+    );
+    let many: Vec<String> = (0..13)
+        .map(|i| daily_habit(&core, &format!("G{i}")))
+        .collect();
+    assert!(core.create_routine("R".into(), many.clone()).is_err());
+    core.create_routine("R".into(), many[..12].to_vec())
+        .unwrap();
+    // An archived or trashed goal can't be added either.
+    core.set_archived(ids[0].clone(), true).unwrap();
+    assert!(
+        core.create_routine("R2".into(), vec![ids[0].clone()])
+            .is_err()
+    );
+    core.trash_goal(ids[1].clone(), DAY.into()).unwrap();
+    assert!(
+        core.create_routine("R2".into(), vec![ids[1].clone()])
+            .is_err()
+    );
+    assert!(core.list_routines(DAY.into()).unwrap().len() == 1);
+}
+
+#[test]
+fn a_routine_hides_steps_that_are_paused_trashed_or_off_today() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 3);
+    let id = core.create_routine("Morning".into(), ids.clone()).unwrap();
+    core.pause_goal(ids[0].clone(), DAY.into(), DAY.into())
+        .unwrap();
+    core.trash_goal(ids[1].clone(), DAY.into()).unwrap();
+    let steps = core.routine_items(id.clone(), DAY.into()).unwrap();
+    assert_eq!(steps.len(), 1);
+    assert_eq!(steps[0].title, "Habit 2");
+    let list = core.list_routines(DAY.into()).unwrap();
+    assert_eq!(list[0].goal_ids, [ids[0].clone(), ids[2].clone()]);
+    assert_eq!(list[0].steps_today, 1);
+    // A holiday hides all of them, so the routine has nothing left today.
+    core.start_holiday(d(1), d(1), DAY.into()).unwrap();
+    assert!(core.routine_items(id, d(1)).unwrap().is_empty());
+    assert_eq!(core.list_routines(d(1)).unwrap()[0].steps_today, 0);
+}
+
+#[test]
+fn a_routine_can_be_renamed_reordered_and_deleted_and_goes_with_its_goal() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 3);
+    let id = core
+        .create_routine("Morning".into(), ids[..2].to_vec())
+        .unwrap();
+    core.update_routine(
+        id.clone(),
+        "Evening".into(),
+        vec![ids[2].clone(), ids[1].clone()],
+    )
+    .unwrap();
+    let list = core.list_routines(DAY.into()).unwrap();
+    assert_eq!(
+        (list[0].name.as_str(), list[0].goal_ids.len()),
+        ("Evening", 2)
+    );
+    assert_eq!(list[0].goal_ids[0], ids[2]);
+    assert!(
+        core.update_routine("missing".into(), "x".into(), vec![ids[0].clone()])
+            .is_err()
+    );
+    // A failed update changes nothing.
+    assert!(
+        core.update_routine(id.clone(), "Bad".into(), vec![])
+            .is_err()
+    );
+    assert_eq!(core.list_routines(DAY.into()).unwrap()[0].name, "Evening");
+    // Deleting a goal for good removes its step.
+    core.delete_goal(ids[2].clone()).unwrap();
+    assert_eq!(
+        core.list_routines(DAY.into()).unwrap()[0].goal_ids,
+        [ids[1].clone()]
+    );
+    core.delete_routine(id).unwrap();
+    assert!(core.list_routines(DAY.into()).unwrap().is_empty());
+}
+
+#[test]
+fn routines_survive_backup_and_restore() {
+    let fixture = Fixture::new();
+    fixture
+        .core
+        .create_routine("Morning".into(), vec![fixture.goal.clone()])
+        .unwrap();
+    let path = fixture.backup();
+    fixture.core.restore_backup(path).unwrap();
+    assert_eq!(fixture.core.list_routines(DAY.into()).unwrap().len(), 1);
 }

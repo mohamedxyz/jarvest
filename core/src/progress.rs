@@ -486,6 +486,20 @@ pub fn day_records(conn: &Connection, today: &str) -> Result<DayRecords, CoreErr
         .map(|(d, e, l)| Ok((parse_date(&d)?, e, l)))
         .collect::<Result<_, CoreError>>()?;
 
+    // A day inside a holiday with nothing finished neither counts nor breaks a Blaze streak.
+    let holidays = crate::holiday::ranges(conn)?;
+    let off = |day: NaiveDate| holidays.iter().any(|(a, b)| *a <= day && day <= *b);
+    // True when every day between the two is a holiday day, so the streak carries across.
+    let bridged = |from: NaiveDate, to: NaiveDate| {
+        let mut day = from + Days::new(1);
+        while day < to {
+            if !off(day) {
+                return false;
+            }
+            day = day + Days::new(1);
+        }
+        true
+    };
     let mut best: Option<(&NaiveDate, u32)> = None;
     let (mut longest, mut run, mut previous): (u32, u32, Option<NaiveDate>) = (0, 0, None);
     for (day, earned, level) in &rows {
@@ -493,14 +507,14 @@ pub fn day_records(conn: &Connection, today: &str) -> Result<DayRecords, CoreErr
             best = Some((day, *earned));
         }
         if rank(*level) >= 2 {
-            run = if previous.is_some_and(|p| p + Days::new(1) == *day) {
+            run = if previous.is_some_and(|p| bridged(p, *day)) {
                 run + 1
             } else {
                 1
             };
             longest = longest.max(run);
             previous = Some(*day);
-        } else {
+        } else if !off(*day) {
             run = 0;
             previous = None;
         }
@@ -512,9 +526,14 @@ pub fn day_records(conn: &Connection, today: &str) -> Result<DayRecords, CoreErr
     } else {
         today_date - Days::new(1)
     };
+    let first_day = rows.first().map(|r| r.0);
     let mut streak = 0;
-    while blaze(cursor) {
-        streak += 1;
+    while first_day.is_some_and(|f| cursor >= f) {
+        if blaze(cursor) {
+            streak += 1;
+        } else if !off(cursor) {
+            break;
+        }
         cursor = cursor - Days::new(1);
     }
     Ok(DayRecords {

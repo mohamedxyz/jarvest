@@ -9,6 +9,9 @@ use crate::calendar;
 use crate::dates::{self, parse_date};
 use crate::model::*;
 
+/// Fewer days with a mood than this show no mood lines.
+const MIN_MOOD_NOTES: u32 = 7;
+
 /// First and last day of the week (starting on the chosen `week_start`) or month, `back`
 /// periods before today's.
 fn range(
@@ -111,6 +114,34 @@ pub fn insights(
     } else {
         "month"
     };
+    // Mood is shown only with enough notes to mean something. It is read here and never written.
+    let mood_notes = sum(
+        conn,
+        "SELECT COUNT(mood) FROM day_notes WHERE local_date BETWEEN ?1 AND ?2",
+        &from,
+        &to,
+    )?;
+    let average = |sql: &str| -> Option<f64> {
+        if mood_notes < MIN_MOOD_NOTES {
+            return None;
+        }
+        conn.query_row(sql, params![from, to], |r| r.get::<_, Option<f64>>(0))
+            .ok()
+            .flatten()
+    };
+    let average_mood = average(
+        "SELECT AVG(mood) FROM day_notes WHERE mood IS NOT NULL AND local_date BETWEEN ?1 AND ?2",
+    );
+    let mood_good_days = average(
+        "SELECT AVG(n.mood) FROM day_notes n JOIN day_scores d ON d.local_date = n.local_date
+         WHERE n.mood IS NOT NULL AND d.level IN ('blaze', 'titan') AND n.local_date BETWEEN ?1 AND ?2",
+    );
+    let mood_other_days = average(
+        "SELECT AVG(n.mood) FROM day_notes n
+         WHERE n.mood IS NOT NULL AND n.local_date BETWEEN ?1 AND ?2
+           AND NOT EXISTS (SELECT 1 FROM day_scores d
+                           WHERE d.local_date = n.local_date AND d.level IN ('blaze', 'titan'))",
+    );
     let mut text = format!(
         "My {name} {from} to {to}: {points} points over {active_days} active days, {titan_days} Titan days"
     );
@@ -131,6 +162,10 @@ pub fn insights(
         best_points: best.map_or(0, |b| b.1),
         previous_points,
         share_text: text,
+        mood_notes,
+        average_mood,
+        mood_good_days,
+        mood_other_days,
     })
 }
 
