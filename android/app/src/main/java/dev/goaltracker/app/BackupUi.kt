@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.goaltracker.core.BackupPreview
 import dev.goaltracker.core.CoreException
@@ -97,24 +99,33 @@ fun AutoBackupSection(controller: AppController) {
     }
 }
 
-/** A backup's contents next to what is on the phone now. */
-class RestorePreview(val uri: Uri, val backup: BackupPreview, val now: BackupPreview) {
+/** A backup's contents next to what is on the phone now. `password` is set for an encrypted backup. */
+class RestorePreview(val uri: Uri, val backup: BackupPreview, val now: BackupPreview, val password: String? = null) {
     /** True when restoring would remove goals, tasks, logs, or treats that exist now. */
     val losesData: Boolean
         get() = backup.goals < now.goals || backup.tasks < now.tasks ||
             backup.entries < now.entries || backup.treats < now.treats
 }
 
-/** Result of reading a backup: either a preview or a message to show the user. */
-class PreviewResult(val preview: RestorePreview?, val error: String?)
+/**
+ * Result of reading a backup: a preview, a message to show, or `locked` when the file is
+ * password protected and a password is needed first.
+ */
+class PreviewResult(val preview: RestorePreview?, val error: String?, val locked: Uri? = null)
 
 /** Copies the picked file to a private temp file and asks the core what is inside. Run off the main thread. */
-fun previewFrom(context: Context, core: GoalCore, uri: Uri): PreviewResult {
+fun previewFrom(context: Context, core: GoalCore, uri: Uri, password: String? = null): PreviewResult {
     val temp = File(context.cacheDir, "preview.sqlite")
     return try {
         val input = context.contentResolver.openInputStream(uri) ?: throw IOException("no input")
         input.use { source -> temp.outputStream().use { source.copyTo(it) } }
-        PreviewResult(RestorePreview(uri, core.previewBackup(temp.path), core.dataSummary()), null)
+        if (password == null && core.isEncryptedBackup(temp.path)) {
+            PreviewResult(null, null, locked = uri)
+        } else if (password != null) {
+            PreviewResult(RestorePreview(uri, core.previewEncryptedBackup(temp.path, password), core.dataSummary(), password), null)
+        } else {
+            PreviewResult(RestorePreview(uri, core.previewBackup(temp.path), core.dataSummary()), null)
+        }
     } catch (e: CoreException) {
         PreviewResult(null, e.userMessage())
     } catch (_: IOException) {
@@ -122,6 +133,72 @@ fun previewFrom(context: Context, core: GoalCore, uri: Uri): PreviewResult {
     } finally {
         temp.delete()
     }
+}
+
+/** Asks for the password of an encrypted backup. */
+@Composable
+fun BackupUnlockDialog(onUnlock: (String) -> Unit, onDismiss: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Password needed") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("This backup is password protected. Type the password you chose when you saved it.")
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+            }
+        },
+        confirmButton = { TextButton(enabled = password.isNotEmpty(), onClick = { onUnlock(password) }) { Text("Open") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/** Asks whether to protect a new backup with a password. `onChoose(null)` means no password. */
+@Composable
+fun BackupPasswordDialog(onChoose: (String?) -> Unit, onDismiss: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var again by remember { mutableStateOf("") }
+    val empty = password.isEmpty() && again.isEmpty()
+    val tooShort = !empty && password.length < 8
+    val mismatch = !empty && password != again
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Protect with a password?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Leave both boxes empty for a normal backup. With a password, nobody can read the file without it. A lost password cannot be recovered, and neither can the backup.")
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password (at least 8 characters)") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                OutlinedTextField(
+                    value = again,
+                    onValueChange = { again = it },
+                    label = { Text("Type it again") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    isError = mismatch,
+                )
+                if (tooShort) Text("Use at least 8 characters.", color = MaterialTheme.colorScheme.error)
+                else if (mismatch) Text("The two passwords differ.", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = empty || (!tooShort && !mismatch), onClick = { onChoose(if (empty) null else password) }) {
+                Text(if (empty) "No password" else "Use password")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 /** The restore confirmation: a "Backup vs Now" table, with a red button when data would be lost. */

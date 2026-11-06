@@ -380,6 +380,19 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.11.0",
+        listOf(
+            "Password-protected backups: save or share a backup with an optional password. A lost password cannot be recovered.",
+            "Holiday mode pauses every goal for the days you choose. Streaks wait for you.",
+            "Day notes with a mood, private to you, and mood lines in Insights once you have enough notes.",
+            "Weekly review: look back, clear overdue tasks, and pick up to three things to focus on.",
+            "Routines: a list of goals ticked together, such as a morning routine.",
+            "Tasks: select several and change their due date or priority at once.",
+            "Share text from another app to start a new task. New app shortcuts for New task and Today.",
+            "Fixed: the Undo button on the bottom message now shows up.",
+        ),
+    ),
+    Release(
         "0.10.0",
         listOf(
             "Daily quest on Today: a small target that pays bonus XP. Missing it costs nothing. Titan days, Blaze streaks, bosses and monsters also pay bonus XP.",

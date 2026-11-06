@@ -726,3 +726,16 @@ Save backup and Share backup both write the whole database unencrypted, and both
 ## If time runs short
 
 Cut in this order: bestiary, quick settings tile, routine calendar slot, mood in insights. Do not cut stage 1, stage 2 or the backup password.
+
+## V0.11.0 as built
+
+Shipped in 0.11.0 (`versionCode` 15, schema 23): stage 1 fixes (backup date checks, insights follow the week start, README), CI on every push and pull request, a speed test with 5,000 tasks and three years of logs, share-to-add, app shortcuts (New task, Today), holiday mode, day notes with mood insights, the weekly review, routines, and password-protected backups. Also added during the build: editing the due date and priority of several selected tasks at once, and a fix for the Undo message that never appeared (a Compose effect cancelled itself).
+
+Not built, and moved to a later release:
+
+- Quick settings tile and the "Start focus" shortcut.
+- Routine start time on the Calendar and routine reminders.
+- The Compose `androidTest` smoke test.
+- Splitting `core/src/tests.rs` into one file per module.
+- Plurals in `strings.xml`, and the TalkBack pass.
+- Bestiary: the Monsters screens already list past bosses and beaten monsters, so nothing new was needed.
