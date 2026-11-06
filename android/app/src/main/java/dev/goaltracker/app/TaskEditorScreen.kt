@@ -316,7 +316,7 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
     }
     val items = remember(taskId, controller.version) { controller.read(emptyList()) { listTaskItems(taskId) } }
     if (task == null) return
-    InfoSheet(task.title.withIcon(task.icon), onDismiss) {
+    InfoSheet(task.shownTitle().withIcon(task.icon), onDismiss) {
         IconPickerRow(task.icon) { icon -> controller.act { setTaskIcon(task.id, icon) } }
         task.due?.let { InfoRow("Due", "${formatDate(it)} (${dueLabel(it, controller.today)})") }
         InfoRow("Priority", task.priority.label())

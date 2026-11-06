@@ -5955,3 +5955,54 @@ fn the_busy_screens_stay_fast_with_three_years_of_logs_and_five_thousand_tasks()
         core.search("Task 49".into(), today.into()).unwrap();
     });
 }
+
+#[test]
+fn a_milestones_task_is_named_with_its_goal_in_monster_links_and_the_calendar() {
+    let (core, _dir) = core();
+    // People often name milestones with just a number, so two goals can both have "100".
+    let mut milestone_tasks = Vec::new();
+    for goal_title in ["Read", "Run"] {
+        let goal = core
+            .create_goal(base(goal_title, GoalKind::YesNo), DAY.into())
+            .unwrap();
+        core.add_milestone(goal.clone(), "100".into(), DAY.into())
+            .unwrap();
+        let task = core
+            .list_goal_tasks(goal, DAY.into())
+            .unwrap()
+            .into_iter()
+            .find(|t| t.milestone_id.is_some())
+            .unwrap();
+        milestone_tasks.push(task.id);
+    }
+    let plain = add_task(&core, new_task("100"));
+    core.conn()
+        .execute("UPDATE tasks SET due = ?1", [DAY])
+        .unwrap();
+
+    let monster = core
+        .create_monster("Laziness".into(), 100, DAY.into())
+        .unwrap();
+    for id in milestone_tasks.iter().chain([&plain]) {
+        core.link_monster_item(monster.clone(), MonsterLinkKind::Task, id.clone(), 10)
+            .unwrap();
+    }
+    let mut links: Vec<String> = health_of(&core, &monster, DAY)
+        .links
+        .into_iter()
+        .map(|l| l.title)
+        .collect();
+    links.sort();
+    // A plain task keeps its own name.
+    assert_eq!(links, vec!["100", "Read: 100", "Run: 100"]);
+
+    let mut blocks: Vec<String> = core
+        .calendar_day(DAY.into())
+        .unwrap()
+        .into_iter()
+        .filter(|b| b.kind == CalendarKind::Task)
+        .map(|b| b.title)
+        .collect();
+    blocks.sort();
+    assert_eq!(blocks, vec!["100", "Read: 100", "Run: 100"]);
+}

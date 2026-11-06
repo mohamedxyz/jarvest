@@ -321,7 +321,7 @@ fun MonsterDetailScreen(controller: AppController, monsterId: String, onClose: (
     if (pickTask) {
         val tasks = remember { controller.read(emptyList()) { listTasks(TaskFilter.ALL, TaskSort.NEWEST, controller.today) } }
         val linked = monster.links.filter { it.kind == MonsterLinkKind.TASK }.map { it.itemId }.toSet()
-        PickerDialog("Add task", tasks.filter { it.id !in linked && !it.done }.map { it.id to it.title }, "No open tasks to add.", { pickTask = false }) { id ->
+        PickerDialog("Add task", tasks.filter { it.id !in linked && !it.done }.map { it.id to it.shownTitle() }, "No open tasks to add.", { pickTask = false }) { id ->
             controller.act { linkMonsterItem(monster.id, MonsterLinkKind.TASK, id, 10u) }
         }
     }

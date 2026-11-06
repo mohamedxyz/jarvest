@@ -391,14 +391,16 @@ pub fn list_monsters(conn: &Connection, today: &str) -> Result<Vec<Monster>, Cor
         };
         let mut links = Vec::new();
         for (kind, item, power) in raw_links(conn, &monster.id)? {
-            let table = if kind == "goal" { "goals" } else { "tasks" };
-            let title: Option<String> = conn
-                .query_row(
-                    &format!("SELECT title FROM {table} WHERE id = ?1"),
-                    [&item],
-                    |r| r.get(0),
-                )
-                .optional()?;
+            // A milestone's task is named with its goal ("Read: 100"), because people
+            // often name milestones with just a number and several goals can share one.
+            let sql = if kind == "goal" {
+                "SELECT title FROM goals WHERE id = ?1"
+            } else {
+                "SELECT CASE WHEN t.milestone_id IS NOT NULL AND g.title IS NOT NULL
+                             THEN g.title || ': ' || t.title ELSE t.title END
+                 FROM tasks t LEFT JOIN goals g ON g.id = t.goal_id WHERE t.id = ?1"
+            };
+            let title: Option<String> = conn.query_row(sql, [&item], |r| r.get(0)).optional()?;
             links.push(MonsterLink {
                 kind: if kind == "goal" {
                     MonsterLinkKind::Goal

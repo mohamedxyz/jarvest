@@ -137,7 +137,7 @@ fun TodayScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(task.title.withIcon(task.icon), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(task.shownTitle().withIcon(task.icon), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 task.due?.let {
                                     Text(
                                         dueLabel(it, controller.today),

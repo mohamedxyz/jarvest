@@ -3,6 +3,7 @@ package dev.goaltracker.app
 import dev.goaltracker.core.Goal
 import dev.goaltracker.core.GoalKind
 import dev.goaltracker.core.Period
+import dev.goaltracker.core.Task
 import dev.goaltracker.core.TodayItem
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -72,3 +73,12 @@ fun Goal.noun(): String = if (kind == GoalKind.HABIT) "habit" else "goal"
 fun TodayItem.noun(): String = if (kind == GoalKind.HABIT) "habit" else "goal"
 
 fun GoalKind.noun(): String = if (this == GoalKind.HABIT) "habit" else "goal"
+
+/**
+ * A task's name as shown outside its own list. A milestone's task carries its goal's name
+ * ("Read: 100"), because milestones are often just a number and several goals can share one.
+ */
+fun Task.shownTitle(): String {
+    val goal = goalTitle
+    return if (milestoneId != null && goal != null) "$goal: $title" else title
+}
