@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Card
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -164,5 +167,65 @@ fun TodayHero(controller: AppController) {
             Text(formatDate(controller.today), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
         }
         DayScoreCard(controller)
+        HeroCard(controller)
+        WeeklyBossCard(controller)
+    }
+}
+
+/** Lifetime level and XP. XP is every day's points added up, and it never goes down. */
+@Composable
+fun HeroCard(controller: AppController) {
+    val hero = remember(controller.version) { controller.read(null) { hero() } } ?: return
+    val motion = LocalMotion.current
+    var started by remember { mutableStateOf(!motion) }
+    LaunchedEffect(Unit) { started = true }
+    val fraction = if (hero.xpForNext == 0u) 0f else hero.xpIntoLevel.toFloat() / hero.xpForNext.toFloat()
+    val filled by animateFloatAsState(if (started) fraction else 0f, motionTween(motion, 800), label = "xp")
+    SoftCard(Modifier.fillMaxWidth().label("Level ${hero.level} ${hero.title}, ${hero.xp} XP")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🛡️ Level ${hero.level} · ${hero.title}", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                Text("${hero.xp} XP", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            LinearProgressIndicator(
+                progress = { filled },
+                modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)),
+                strokeCap = StrokeCap.Round,
+            )
+            Text(
+                "${hero.xpForNext - hero.xpIntoLevel} XP to level ${hero.level + 1u}. Day-score points become XP and are never lost.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** This week's boss. Points you earn this week are the damage. Beating it wins a treat. */
+@Composable
+fun WeeklyBossCard(controller: AppController) {
+    val boss = remember(controller.version, controller.today) { controller.read(null) { weeklyBoss(controller.today) } } ?: return
+    val motion = LocalMotion.current
+    var started by remember { mutableStateOf(!motion) }
+    LaunchedEffect(Unit) { started = true }
+    val left = if (boss.health == 0u) 0f else 1f - boss.damage.toFloat() / boss.health.toFloat()
+    val shown by animateFloatAsState(if (started) left else 1f, motionTween(motion, 800), label = "boss")
+    val down = boss.defeatedDate != null
+    SoftCard(Modifier.fillMaxWidth().label("Weekly boss ${boss.name}, ${boss.damage} of ${boss.health} damage")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("👹 Weekly boss: ${boss.name}", style = MaterialTheme.typography.titleMedium)
+            LinearProgressIndicator(
+                progress = { shown },
+                modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)),
+                color = MaterialTheme.colorScheme.error,
+                strokeCap = StrokeCap.Round,
+            )
+            Text(
+                if (down) "Beaten on ${formatDate(boss.defeatedDate!!)}. A new boss comes on Monday."
+                else "${boss.health - boss.damage} health left · ${boss.daysLeft} ${if (boss.daysLeft == 1u) "day" else "days"} to go. Your points hurt it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

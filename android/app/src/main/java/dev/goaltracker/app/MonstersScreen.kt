@@ -113,6 +113,18 @@ fun MonstersScreen(controller: AppController, onOpen: (String) -> Unit) {
                 }
             }
         }
+        val bosses = remember(controller.version, controller.today) { controller.read(emptyList()) { bossHistory() } }
+        if (bosses.isNotEmpty()) {
+            SectionTitle("Weekly bosses")
+            bosses.forEach { boss ->
+                Text(
+                    (if (boss.defeatedDate != null) "🏆 " else "👹 ") +
+                        "Week of ${formatDate(boss.weekStart)} · ${boss.name} · " +
+                        if (boss.defeatedDate != null) "beaten ${formatDate(boss.defeatedDate!!)}" else "${boss.damage} of ${boss.health}",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
         if (trophies.isNotEmpty()) {
             SectionTitle("Trophies")
             trophies.forEach { trophy ->
@@ -389,6 +401,21 @@ fun MonsterVictoryDialog(event: MonsterEvent, onDismiss: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Nice") } },
+    )
+}
+
+@Composable
+fun BossVictoryDialog(event: dev.goaltracker.core.BossEvent, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("You beat ${event.name}!") },
+        text = {
+            Text(
+                if (event.prizes > 0u) "This week's boss is down, and you won a treat. See it in your treat list."
+                else "This week's boss is down. Add treats to your jar on the Rewards tab to win prizes.",
+            )
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Nice") } },
     )

@@ -573,3 +573,11 @@ A monster stands for a struggle the person names, such as a habit they want to b
 **Core.** Rules live in a new `core/src/monsters.rs`. `today` comes from the caller. New tables (migration 013): `monsters`, `monster_links` (monster, kind goal or task, item id, power), `monster_rounds` (monster, round number, start date, defeated date). Health and damage are computed from entries and task completions, so restore and undo stay consistent. Backups validate the new dates, gated by schema version.
 
 **Not in this release:** hero XP and levels, the weekly boss, and the calendar of past day levels.
+
+## V0.8.0 (shipped): XP, weekly boss, reliable reminders
+
+- XP is the sum of every day's points, kept in `day_scores` (migration 014). Level n needs `25 * (n-1) * (n+2)` XP (100, 250, 450, ...). Titles: Rookie 1-2, Apprentice 3-4, Ranger 5-7, Knight 8-11, Champion 12-16, Hero 17-24, Legend 25+.
+- Weekly boss: starts Monday, health is 80% of the average of the last four weeks with points (rounded up to 10, minimum 100). Points earned in the week are the damage. One treat when it falls, never anything taken away. Name picked from a fixed list by the week.
+- The day score shows in the Today widget and in the evening check-in text.
+- Reliability: exact alarms when allowed, battery-optimization exemption button, alarms rebuilt after reboot, update, time or time zone change. No foreground service (chosen over a persistent notification to save battery).
+- Moved to 0.8.1: day-level calendar (data is already stored in `day_scores`), task calendar, custom repeat and checklist editing UI.

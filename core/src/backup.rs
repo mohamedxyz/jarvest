@@ -204,6 +204,26 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // XP and the weekly boss arrived in schema version 14.
+    if version >= 14 {
+        let bad_progress_dates: i64 = conn
+            .query_row(
+                "SELECT
+                   (SELECT COUNT(*) FROM day_scores WHERE date(local_date) IS NOT local_date)
+                 + (SELECT COUNT(*) FROM weekly_bosses
+                    WHERE date(week_start) IS NOT week_start
+                       OR (defeated_date IS NOT NULL AND date(defeated_date) IS NOT defeated_date))
+                 + (SELECT COUNT(*) FROM boss_prizes
+                    WHERE date(local_date) IS NOT local_date
+                       OR (redeemed_date IS NOT NULL AND date(redeemed_date) IS NOT redeemed_date))",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_progress_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

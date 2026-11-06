@@ -4125,3 +4125,119 @@ fn upgrading_from_schema_12_adds_monsters() {
     assert!(core.list_monsters(DAY.into()).unwrap().is_empty());
     assert!(core.get_goal("g1".into()).is_ok());
 }
+
+// ---- XP, hero levels and the weekly boss ----
+
+/// Makes `n` daily habits, so that ticking them all earns `n * 10` points in a day.
+fn habits(core: &GoalCore, n: usize) -> Vec<String> {
+    (0..n)
+        .map(|i| daily_habit(core, &format!("Habit {i}")))
+        .collect()
+}
+
+#[test]
+fn xp_is_the_sum_of_every_days_points_and_levels_grow() {
+    let (core, _dir) = core();
+    let hero = core.hero().unwrap();
+    assert_eq!((hero.xp, hero.level, hero.title.as_str()), (0, 1, "Rookie"));
+    let ids = habits(&core, 1);
+    // One habit is 10 points a day, so ten days is 100 XP: level 2.
+    for n in 0..10 {
+        tick(&core, &ids[0], &d(n));
+        core.progress_tick(d(n)).unwrap();
+    }
+    let hero = core.hero().unwrap();
+    assert_eq!((hero.xp, hero.level), (100, 2));
+    assert_eq!((hero.xp_into_level, hero.xp_for_next), (0, 150));
+}
+
+#[test]
+fn undoing_today_takes_todays_xp_back_but_old_days_stay() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 1);
+    tick(&core, &ids[0], &d(0));
+    core.progress_tick(d(0)).unwrap();
+    tick(&core, &ids[0], &d(1));
+    core.progress_tick(d(1)).unwrap();
+    assert_eq!(core.hero().unwrap().xp, 20);
+    // Undo today.
+    tick(&core, &ids[0], &d(1));
+    core.progress_tick(d(1)).unwrap();
+    assert_eq!(core.hero().unwrap().xp, 10);
+}
+
+#[test]
+fn a_new_week_starts_with_a_boss_that_your_points_hurt() {
+    let (core, _dir) = core();
+    assert!(core.weekly_boss(DAY.into()).unwrap().is_none());
+    let ids = habits(&core, 3);
+    core.progress_tick(DAY.into()).unwrap();
+    let boss = core.weekly_boss(DAY.into()).unwrap().unwrap();
+    // DAY is a Thursday, so the week began on Monday the 2nd.
+    assert_eq!(boss.week_start, "2026-11-02");
+    assert_eq!((boss.health, boss.damage, boss.days_left), (100, 0, 4));
+    for id in &ids {
+        tick(&core, id, DAY);
+    }
+    assert!(core.progress_tick(DAY.into()).unwrap().is_empty());
+    assert_eq!(core.weekly_boss(DAY.into()).unwrap().unwrap().damage, 30);
+}
+
+#[test]
+fn beating_the_weekly_boss_wins_one_treat_once() {
+    let (core, _dir) = core();
+    core.add_treat("Movie night".into()).unwrap();
+    let ids = habits(&core, 10);
+    core.progress_tick(DAY.into()).unwrap();
+    for id in &ids {
+        tick(&core, id, DAY);
+    }
+    let events = core.progress_tick(DAY.into()).unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].prizes, 1);
+    // Asking again does not pay twice.
+    assert!(core.progress_tick(DAY.into()).unwrap().is_empty());
+    let prizes: Vec<_> = core
+        .list_draws()
+        .unwrap()
+        .into_iter()
+        .filter(|d| d.goal_title.starts_with("Weekly boss: "))
+        .collect();
+    assert_eq!(prizes.len(), 1);
+    assert_eq!(prizes[0].treat_title, "Movie night");
+    core.toggle_redeemed(prizes[0].id.clone(), DAY.into())
+        .unwrap();
+    let boss = core.weekly_boss(DAY.into()).unwrap().unwrap();
+    assert_eq!(boss.defeated_date.as_deref(), Some(DAY));
+}
+
+#[test]
+fn next_weeks_boss_scales_with_your_recent_weeks() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 20);
+    core.progress_tick(DAY.into()).unwrap();
+    for id in &ids {
+        tick(&core, id, DAY);
+    }
+    core.progress_tick(DAY.into()).unwrap();
+    // Monday the 9th: 80% of the 200 points last week, rounded up to a multiple of 10.
+    core.progress_tick(d(4)).unwrap();
+    let boss = core.weekly_boss(d(4)).unwrap().unwrap();
+    assert_eq!((boss.week_start.as_str(), boss.health), ("2026-11-09", 160));
+    let history = core.boss_history().unwrap();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].week_start, "2026-11-09");
+    assert!(history[1].defeated_date.is_some());
+}
+
+#[test]
+fn a_boss_prize_is_skipped_when_the_jar_is_empty() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 10);
+    core.progress_tick(DAY.into()).unwrap();
+    for id in &ids {
+        tick(&core, id, DAY);
+    }
+    let events = core.progress_tick(DAY.into()).unwrap();
+    assert_eq!((events.len(), events[0].prizes), (1, 0));
+}

@@ -312,6 +312,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
     }
 
     controller.monsterVictory?.let { MonsterVictoryDialog(it) { controller.monsterVictory = null } }
+    controller.bossVictory?.let { BossVictoryDialog(it) { controller.bossVictory = null } }
     controller.pendingDraw?.let { RewardReveal(controller, it, controller::dismissDraw) }
     CelebrationBurst()
 }

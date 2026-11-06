@@ -379,6 +379,15 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.8.0",
+        listOf(
+            "Hero levels: your day-score points become XP that never goes down. Level up from Rookie to Legend.",
+            "Weekly boss: a new boss every Monday. Your points hurt it, and beating it wins a treat. Past bosses are listed on the Monsters screen.",
+            "The day score now shows in the Today widget and in the evening check-in.",
+            "More reliable reminders: allow exact alarms and skip battery restriction in Settings. No permanent notification needed.",
+        ),
+    ),
+    Release(
         "0.7.1",
         listOf(
             "Monsters: name a struggle and fight it with linked goals, habits and tasks. Beat it to win treats; it comes back stronger.",

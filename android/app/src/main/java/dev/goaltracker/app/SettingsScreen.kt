@@ -186,7 +186,7 @@ fun SettingsScreen(controller: AppController) {
             SectionTitle("Reminders")
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
-                    "Daily summary of what is still due. Set a reminder on a single goal when you edit it. Reminders can arrive a few minutes late.",
+                    "Daily summary of what is still due. Set a reminder on a single goal when you edit it. Reminders can arrive a few minutes late unless you allow exact alarms below.",
                     Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -225,6 +225,7 @@ fun SettingsScreen(controller: AppController) {
             OutlinedButton(onClick = { controller.message = Reminders.sendTest(context) }) {
                 Text("Send a test notification")
             }
+            ReminderReliability(controller)
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {

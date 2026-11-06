@@ -671,3 +671,48 @@ pub struct MonsterTrophy {
     /// True for a final boss: the monster was slain for good.
     pub slain_forever: bool,
 }
+
+// XP, hero levels and the weekly boss. See "V0.8.0 plan" in PLAN.md.
+
+/// Lifetime progress: XP is the sum of every day's points.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Hero {
+    pub xp: u32,
+    pub level: u32,
+    pub title: String,
+    /// XP earned since this level began.
+    pub xp_into_level: u32,
+    /// XP between this level and the next.
+    pub xp_for_next: u32,
+}
+
+/// This week's boss. Your points this week are the damage.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct WeeklyBoss {
+    pub name: String,
+    pub week_start: String,
+    pub health: u32,
+    /// Points earned so far this week, capped at `health`.
+    pub damage: u32,
+    pub defeated_date: Option<String>,
+    /// Days left in the week, counting today (7 on Monday, 1 on Sunday).
+    pub days_left: u32,
+}
+
+/// One past or current boss, for the bestiary.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct BossRecord {
+    pub name: String,
+    pub week_start: String,
+    pub health: u32,
+    pub damage: u32,
+    pub defeated_date: Option<String>,
+}
+
+/// A weekly boss was beaten. Returned once by `progress_tick`, so the app can celebrate.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct BossEvent {
+    pub name: String,
+    pub week_start: String,
+    pub prizes: u32,
+}

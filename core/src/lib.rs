@@ -11,6 +11,7 @@ mod export;
 mod goals;
 mod model;
 mod monsters;
+mod progress;
 mod quickadd;
 mod reminders;
 mod rewards;
@@ -531,6 +532,27 @@ impl GoalCore {
     /// How today is going: points done out of points planned, and the level that gives.
     pub fn day_score(&self, today: String) -> Result<DayScore, CoreError> {
         score::day_score(&self.conn(), &today)
+    }
+
+    /// Saves today's points, spawns this week's boss and records bosses that fell. Call it on every
+    /// refresh; it is safe to repeat. Returns the bosses beaten by this call, once each.
+    pub fn progress_tick(&self, today: String) -> Result<Vec<BossEvent>, CoreError> {
+        progress::tick(&mut self.conn(), &today)
+    }
+
+    /// Lifetime XP, level and title.
+    pub fn hero(&self) -> Result<Hero, CoreError> {
+        progress::hero(&self.conn())
+    }
+
+    /// This week's boss, or nothing before the first `progress_tick` of the week.
+    pub fn weekly_boss(&self, today: String) -> Result<Option<WeeklyBoss>, CoreError> {
+        progress::weekly_boss(&self.conn(), &today)
+    }
+
+    /// Every weekly boss so far, newest first, for the bestiary.
+    pub fn boss_history(&self) -> Result<Vec<BossRecord>, CoreError> {
+        progress::boss_history(&self.conn())
     }
 
     /// How close the next treat is, for the meter on the Treats screen.

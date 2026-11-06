@@ -253,6 +253,30 @@ fn draws_where(conn: &Connection, condition: &str) -> Result<Vec<RewardDraw>, Co
         })?
         .collect::<Result<Vec<_>, _>>()?;
     draws.extend(prizes);
+    // Treats won by beating the weekly boss.
+    let mut stmt = conn.prepare(&format!(
+        "SELECT d.id, t.title, d.week_start, d.local_date, d.seen, d.redeemed_date
+         FROM boss_prizes d
+         JOIN treats t ON t.id = d.treat_id
+         WHERE {condition}
+         ORDER BY d.local_date DESC"
+    ))?;
+    let boss_prizes = stmt
+        .query_map([], |r| {
+            let week: String = r.get(2)?;
+            Ok(RewardDraw {
+                id: r.get(0)?,
+                treat_title: r.get(1)?,
+                goal_title: format!("Weekly boss: {}", crate::progress::boss_name(&week)),
+                local_date: r.get(3)?,
+                comeback: false,
+                seen: r.get(4)?,
+                redeemed_date: r.get(5)?,
+                from_monster: false,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    draws.extend(boss_prizes);
     // Newest first. The sort is stable, so each source keeps its own order within a day.
     draws.sort_by(|a, b| b.local_date.cmp(&a.local_date));
     Ok(draws)
@@ -273,6 +297,10 @@ pub fn mark_draw_seen(conn: &Connection, draw_id: &str) -> Result<(), CoreError>
     )?;
     conn.execute(
         "UPDATE monster_prizes SET seen = 1 WHERE id = ?1",
+        params![draw_id],
+    )?;
+    conn.execute(
+        "UPDATE boss_prizes SET seen = 1 WHERE id = ?1",
         params![draw_id],
     )?;
     Ok(())
@@ -307,6 +335,22 @@ pub fn toggle_redeemed(conn: &Connection, draw_id: &str, today: &str) -> Result<
         let next = if current.is_some() { None } else { Some(today) };
         conn.execute(
             "UPDATE monster_prizes SET redeemed_date = ?2 WHERE id = ?1",
+            params![draw_id, next],
+        )?;
+        return Ok(());
+    }
+    // Or a weekly boss prize.
+    let current: Option<Option<String>> = conn
+        .query_row(
+            "SELECT redeemed_date FROM boss_prizes WHERE id = ?1",
+            params![draw_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(current) = current {
+        let next = if current.is_some() { None } else { Some(today) };
+        conn.execute(
+            "UPDATE boss_prizes SET redeemed_date = ?2 WHERE id = ?1",
             params![draw_id, next],
         )?;
     }

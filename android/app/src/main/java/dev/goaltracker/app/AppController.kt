@@ -153,6 +153,29 @@ class AppController(private val app: GoalTrackerApp) {
             monsterVictory = events.first()
             Feel.celebrate(null, treat = events.any { it.prizes > 0u })
         }
+        checkProgress()
+    }
+
+    /** The weekly boss that was just beaten, until the person closes the dialog. */
+    var bossVictory by mutableStateOf<dev.goaltracker.core.BossEvent?>(null)
+
+    /**
+     * Saves today's points (XP), spawns this week's boss and records bosses that fell. Also tells the
+     * person when they reach a new hero level. Each boss win is returned once.
+     */
+    private fun checkProgress() {
+        val events = try { core.progressTick(today) } catch (_: CoreException) { emptyList() }
+        if (events.isNotEmpty() && bossVictory == null) {
+            bossVictory = events.first()
+            Feel.celebrate(null, treat = events.any { it.prizes > 0u })
+        }
+        val hero = try { core.hero() } catch (_: CoreException) { return }
+        val seen = prefs.getInt("hero_level_seen", 0)
+        // The first run only remembers the level, so nobody gets a message for old progress.
+        if (seen != 0 && hero.level.toInt() > seen && message == null) {
+            message = "Level up! You are now level ${hero.level}, ${hero.title}."
+        }
+        if (hero.level.toInt() != seen) prefs.edit().putInt("hero_level_seen", hero.level.toInt()).apply()
     }
     // "Hide finished" switches, one per screen. They only hide things in the list, never delete.
     var hideDoneTasks by mutableStateOf(prefs.getBoolean("hide_done_tasks", false))

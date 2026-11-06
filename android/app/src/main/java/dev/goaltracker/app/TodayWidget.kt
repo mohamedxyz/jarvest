@@ -69,7 +69,14 @@ class TodayWidget : GlanceAppWidget() {
                     0
                 }
             }
-            GlanceTheme { WidgetContent(items, tasksDue) }
+            val percent = remember(dataVersion, today) {
+                try {
+                    app.core.dayScore(today).takeIf { it.possible > 0u }?.percent?.toInt()
+                } catch (_: CoreException) {
+                    null
+                }
+            }
+            GlanceTheme { WidgetContent(items, tasksDue, percent) }
         }
     }
 }
@@ -77,12 +84,13 @@ class TodayWidget : GlanceAppWidget() {
 private val goalIdKey = ActionParameters.Key<String>(QuickLogActivity.EXTRA_GOAL_ID)
 
 @Composable
-private fun WidgetContent(items: List<TodayItem>, tasksDue: Int) {
+private fun WidgetContent(items: List<TodayItem>, tasksDue: Int, percent: Int?) {
     Column(
         GlanceModifier.fillMaxSize().background(GlanceTheme.colors.widgetBackground).cornerRadius(16.dp).padding(12.dp),
     ) {
         Text(
-            "Today" + if (items.isNotEmpty()) ": ${items.count { it.complete }} of ${items.size} done" else "",
+            "Today" + (if (items.isNotEmpty()) ": ${items.count { it.complete }} of ${items.size} done" else "") +
+                (if (percent != null) " · $percent%" else ""),
             modifier = GlanceModifier.fillMaxWidth().padding(bottom = 4.dp).clickable(actionStartActivity<MainActivity>()),
             style = TextStyle(fontWeight = FontWeight.Bold, color = GlanceTheme.colors.onSurface),
         )

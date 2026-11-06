@@ -11,10 +11,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -28,9 +31,9 @@ import java.time.format.FormatStyle
 import java.time.temporal.ChronoUnit
 
 /**
- * Reminder alarms. The times live in the Rust core, so backups keep them. Alarms are
- * inexact on purpose (they can arrive a few minutes late) because exact alarms need
- * a special permission that habit reminders don't deserve.
+ * Reminder alarms. The times live in the Rust core, so backups keep them. Alarms are exact
+ * when the person allows it in Settings and a few minutes late otherwise. They are rebuilt after
+ * a reboot, an app update, and a clock or time zone change, so no always-on service is needed.
  */
 object Reminders {
     private const val CHANNEL = "reminders"
@@ -128,8 +131,40 @@ object Reminders {
         var at = LocalDate.now().atTime(minutes / 60, minutes % 60)
         if (!at.isAfter(now)) at = at.plusDays(1)
         val millis = at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        context.getSystemService(AlarmManager::class.java)
-            .setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent(context, key))
+        val alarms = context.getSystemService(AlarmManager::class.java)
+        // Exact when Android allows it (see the Settings switch), otherwise a few minutes late at worst.
+        if (canScheduleExact(context)) {
+            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent(context, key))
+        } else {
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent(context, key))
+        }
+    }
+
+    fun canScheduleExact(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 31 || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+
+    fun ignoresBatteryOptimizations(context: Context): Boolean =
+        context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+
+    /** Opens Android's own prompt that lets Jarvest run in the background without being put to sleep. */
+    @android.annotation.SuppressLint("BatteryLife")
+    fun requestIgnoreBatteryOptimizations(context: Context) {
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: android.content.ActivityNotFoundException) {
+            context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /** Opens the page where the person allows exact alarms (Android 12 and newer). */
+    fun requestExactAlarms(context: Context) {
+        if (Build.VERSION.SDK_INT < 31) return
+        context.startActivity(
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     fun canNotify(context: Context): Boolean =
@@ -152,12 +187,27 @@ object Reminders {
             if (minutes == null) return
             schedule(context, key, minutes.toInt())
             // The evening check-in only speaks when something is still left today.
-            val text = if (key == KEY_EVENING) app.core.eveningText(todayString())
+            val text = if (key == KEY_EVENING) app.core.eveningText(todayString())?.let { it + scoreHint(app) }
             else app.core.reminderText(goalId, todayString())
             if (text != null && canNotify(context)) notify(context, key, text)
         } catch (_: CoreException) {
             // Nothing to show. The next change or app start rebuilds the alarms.
         }
+    }
+
+    /** A short note about the day score for the evening check-in, such as " Score 40%: 30 points to Blaze." */
+    private fun scoreHint(app: GoalTrackerApp): String = try {
+        val score = app.core.dayScore(todayString())
+        when {
+            score.possible == 0u -> ""
+            score.level == dev.goaltracker.core.DayLevel.TITAN -> ""
+            else -> {
+                val next = if (score.level == dev.goaltracker.core.DayLevel.BLAZE) "Titan" else "Blaze"
+                ". Score ${score.percent}%: ${score.pointsToNext} points to $next."
+            }
+        }
+    } catch (_: CoreException) {
+        ""
     }
 
     /**
@@ -222,6 +272,29 @@ fun rememberNotificationPermissionRequest(controller: AppController): () -> Unit
     return remember(launcher) {
         {
             if (Build.VERSION.SDK_INT >= 33) launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+}
+
+/** Settings block that keeps reminders reliable: battery exemption and exact alarms. */
+@Composable
+fun ReminderReliability(controller: AppController) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // The person comes back from Android's settings, which bumps the version, so this re-reads.
+    val battery = remember(controller.version) { Reminders.ignoresBatteryOptimizations(context) }
+    val exact = remember(controller.version) { Reminders.canScheduleExact(context) }
+    androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+        androidx.compose.material3.Text(
+            "Reliable reminders: some phones put apps to sleep to save battery, which delays or drops reminders. " +
+                "Allowing both items below fixes that without any permanent notification, and uses almost no battery.",
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        androidx.compose.material3.OutlinedButton(enabled = !battery, onClick = { Reminders.requestIgnoreBatteryOptimizations(context) }) {
+            androidx.compose.material3.Text(if (battery) "Battery: not restricted" else "Don't restrict battery for Jarvest")
+        }
+        androidx.compose.material3.OutlinedButton(enabled = !exact, onClick = { Reminders.requestExactAlarms(context) }) {
+            androidx.compose.material3.Text(if (exact) "Exact alarms: allowed" else "Allow exact alarms")
         }
     }
 }
