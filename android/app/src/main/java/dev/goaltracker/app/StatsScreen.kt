@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -157,7 +158,13 @@ private fun GoalStatsCard(stats: GoalStats, onClick: () -> Unit) {
 
 @Composable
 private fun CompletionBar(met: UInt, eligible: UInt) {
-    val fraction = if (eligible == 0u) 0f else met.toFloat() / eligible.toFloat()
+    val target = if (eligible == 0u) 0f else met.toFloat() / eligible.toFloat()
+    val motion = LocalMotion.current
+    var started by remember { mutableStateOf(!motion) }
+    LaunchedEffect(Unit) { started = true }
+    val fraction by androidx.compose.animation.core.animateFloatAsState(
+        if (started) target else 0f, motionTween(motion, 700), label = "completion",
+    )
     BoxWithConstraints(
         Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)).background(heatColor(0)),
     ) {

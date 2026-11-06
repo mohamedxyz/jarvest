@@ -1,5 +1,12 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.height
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -151,6 +158,25 @@ private fun NextTreatCard(progress: dev.goaltracker.core.RewardProgress) {
                     if (progress.guaranteedIn <= 1u) "Your next target is guaranteed to win a treat."
                     else "A treat is guaranteed within ${progress.guaranteedIn} more targets.",
                     style = MaterialTheme.typography.titleMedium,
+                )
+                // Fills as misses pile up toward the guaranteed treat. A win can still come sooner.
+                val total = (progress.missesSinceDraw + progress.guaranteedIn).toFloat()
+                val target = if (total > 0f) progress.missesSinceDraw.toFloat() / total else 0f
+                val motion = LocalMotion.current
+                var started by remember { mutableStateOf(!motion) }
+                LaunchedEffect(Unit) { started = true }
+                val filled by animateFloatAsState(
+                    if (started) target else 0f, motionTween(motion, 700), label = "guarantee",
+                )
+                LinearProgressIndicator(
+                    progress = { filled },
+                    modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)),
+                    strokeCap = StrokeCap.Round,
+                )
+                Text(
+                    "Guarantee meter",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
                     "Each target you meet can also win one sooner, with a ${progress.basePercent}% chance " +

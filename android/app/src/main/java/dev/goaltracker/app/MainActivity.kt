@@ -1,5 +1,7 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInHorizontally
@@ -163,7 +165,11 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(titleFor(route)) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background,
+                ),
+                title = { Text(titleFor(route), style = MaterialTheme.typography.headlineSmall) },
                 navigationIcon = {
                     if (!isTab) {
                         IconButton(onClick = pop) {
@@ -180,12 +186,17 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
         },
         bottomBar = {
             if (isTab && !imeVisible) {
-                NavigationBar {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
                     tabs.forEach { tab ->
+                        val selected = route == tab.route
+                        // The selected icon grows a little, so the active tab is easy to spot.
+                        val scale by animateFloatAsState(
+                            if (selected) 1.15f else 1f, motionTween(LocalMotion.current, 200), label = "tab",
+                        )
                         NavigationBarItem(
-                            selected = route == tab.route,
+                            selected = selected,
                             onClick = { selectTab(tab.route) },
-                            icon = { Icon(tab.icon, null) },
+                            icon = { Icon(tab.icon, null, Modifier.graphicsLayer { scaleX = scale; scaleY = scale }) },
                             label = { Text(tab.label) },
                         )
                     }

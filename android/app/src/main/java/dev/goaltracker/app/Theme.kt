@@ -9,6 +9,8 @@ import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -235,9 +237,20 @@ fun GoalTrackerTheme(
         MaterialTheme(
             colorScheme = colorSchemeFor(mode, dark, accent),
             shapes = SoftShapes,
+            typography = SoftTypography,
             content = content,
         )
     }
+}
+
+/** Default type with bolder headings, so titles stand out from body text. */
+internal val SoftTypography = Typography().let {
+    it.copy(
+        headlineSmall = it.headlineSmall.copy(fontWeight = FontWeight.Bold),
+        titleLarge = it.titleLarge.copy(fontWeight = FontWeight.Bold),
+        titleMedium = it.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        labelLarge = it.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+    )
 }
 
 /** Rounder corners everywhere: cards, sheets, dialogs, chips and buttons pick these up. */
