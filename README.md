@@ -143,6 +143,19 @@ the tests, builds the signed APK, and attaches it to a GitHub release.
 **To ship an update,** increase `versionCode` and `versionName` in
 `android/app/build.gradle.kts`, then build again.
 
+## Device checklist before a release
+
+The Rust tests cannot see the screens, so run this on a real phone (or an emulator) before every release. Install the release APK over the previous version, never on a clean phone only, so the database upgrade is tested too.
+
+1. Open the app. Nothing crashes, and the "What's new" entry for this version is there.
+2. Visit every tab: Today, Tasks, Calendar, Goals, Habits, More (Stats, Rewards, Settings).
+3. Create a goal, a habit, a task with a due day and a start time, an event, and a monster. Finish the task and the habit. The day score, the level card and the weekly boss move.
+4. Calendar: the task and the event show at the right hour. Move a block, open its sheet, change its time.
+5. Delete a goal and a task, open Trash, restore one, empty the trash. A message says what happened.
+6. Add the Today widget and tick something from it. Add a reminder two minutes ahead and check it arrives.
+7. Settings: the version number is right, a test notification arrives, "Back up now" makes a file, restore it.
+8. Turn the phone sideways and use the big text setting once. Nothing is cut off.
+
 ## Back up and restore your data
 
 In the app, open **Settings** using the gear icon.

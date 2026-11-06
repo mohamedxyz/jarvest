@@ -93,6 +93,11 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
     val milestones = remember { mutableStateListOf<String>() }
     var milestoneText by rememberSaveable { mutableStateOf("") }
     var pickingDate by remember { mutableStateOf(false) }
+    // Optional time block for the Calendar tab: a start time and a length.
+    val savedBlock = remember(existing?.id) { existing?.let { controller.read(null) { goalBlock(it.id) } } }
+    var blockStart by rememberSaveable { mutableStateOf(savedBlock?.startMinutes?.toInt()) }
+    var blockMinutes by rememberSaveable { mutableStateOf(savedBlock?.minutes?.toInt() ?: 30) }
+    var pickingBlock by remember { mutableStateOf(false) }
     var reminder by rememberSaveable {
         mutableStateOf(existing?.let { controller.read(null) { goalReminder(it.id) } }?.toInt())
     }
@@ -264,6 +269,22 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
             }
         }
 
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { pickingBlock = true }) {
+                Text(blockStart?.let { "Calendar block: ${Reminders.formatMinutes(it)}" } ?: "Add a calendar time block")
+            }
+            if (blockStart != null) {
+                IconButton(onClick = { blockStart = null }) { Icon(Icons.Filled.Close, "Clear time block") }
+            }
+        }
+        if (blockStart != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(15, 30, 45, 60, 90).forEach { m ->
+                    FilterChip(selected = blockMinutes == m, onClick = { blockMinutes = m }, label = { Text("$m min") })
+                }
+            }
+        }
+
         OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes (optional)") }, minLines = 2)
 
         if (existing == null && !quit) {
@@ -303,20 +324,29 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                     controller.act {
                         updateGoal(existing.id, GoalEdit(title, notes, category.ifBlank { null }, unit.ifBlank { null }, deadline))
                         setGoalReminder(existing.id, reminder?.toUShort())
+                        setGoalBlock(existing.id, blockStart?.toUInt(), blockStart?.let { blockMinutes.toUInt() })
                     }
                 } else if (quit) {
                     controller.act {
                         val id = createAvoidGoal(title, notes, category.ifBlank { null }, controller.today)
                         if (reminder != null) setGoalReminder(id, reminder!!.toUShort())
+                        if (blockStart != null) setGoalBlock(id, blockStart!!.toUInt(), blockMinutes.toUInt())
                     }
                 } else {
-                    saveNew(controller, title, notes, kind, category, period, periodTarget, totalTarget, unit, deadline, weekdays, milestones.toList() + listOfNotNull(milestoneText.takeIf { it.isNotBlank() }), reminder)
+                    saveNew(controller, title, notes, kind, category, period, periodTarget, totalTarget, unit, deadline, weekdays, milestones.toList() + listOfNotNull(milestoneText.takeIf { it.isNotBlank() }), reminder, blockStart, blockMinutes)
                 }
                 if (saved) onDone()
             },
         ) { Text(if (existing == null) "Create goal" else "Save") }
     }
 
+    if (pickingBlock) {
+        TimePickerDialog(
+            initialMinutes = blockStart ?: (9 * 60),
+            onPick = { blockStart = it; pickingBlock = false },
+            onDismiss = { pickingBlock = false },
+        )
+    }
     if (pickingTime) {
         TimePickerDialog(
             initialMinutes = reminder,
@@ -360,6 +390,8 @@ private fun saveNew(
     weekdays: Set<Int>,
     milestones: List<String>,
     reminder: Int?,
+    blockStart: Int?,
+    blockMinutes: Int,
 ): Boolean {
     val usesPeriod = kind != GoalKind.YES_NO && period != null
     val parsedPeriodTarget = if (usesPeriod) parseAmount(periodTarget) else null
@@ -392,5 +424,6 @@ private fun saveNew(
             controller.today,
         )
         if (reminder != null) setGoalReminder(id, reminder.toUShort())
+        if (blockStart != null) setGoalBlock(id, blockStart.toUInt(), blockMinutes.toUInt())
     }
 }

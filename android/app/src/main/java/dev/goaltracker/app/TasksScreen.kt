@@ -143,8 +143,15 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
         if (plain && controller.hideDoneTasks && filter != TaskFilter.DONE) tagged.filter { !it.done } else tagged
     }
     // Separators by due date only make sense when the list is sorted by due date.
-    val timeline = !showTrash && !showArchive && !(searching && searchText.isNotBlank()) &&
-        sort == TaskSort.DUE && filter != TaskFilter.DONE
+    val plainList = !showTrash && !showArchive && !(searching && searchText.isNotBlank())
+    val timeline = plainList && ((sort == TaskSort.DUE && filter != TaskFilter.DONE) || controller.groupTasksByTag)
+    // Sections: one per tag when grouping by tag (untagged last), otherwise one per stretch of time.
+    val groups: List<Pair<String, List<Task>>> = if (!timeline) emptyList() else if (controller.groupTasksByTag) {
+        tasks.groupBy { it.tag ?: "" }.toSortedMap(compareBy({ it.isEmpty() }, { it }))
+            .map { (tag, list) -> (if (tag.isEmpty()) "No tag" else "#$tag") to list }
+    } else {
+        tasks.groupBy { timelineOf(it.due, it.done, controller.today) }.toSortedMap().map { (bucket, list) -> bucket.label to list }
+    }
     val tags = remember(controller.version) { controller.read(emptyList()) { listTags() } }
     val hint = remember(quick, controller.today) {
         if (quick.isBlank()) null else controller.read(null) { parseQuick(quick, controller.today) }
@@ -253,6 +260,11 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                         onClick = { controller.chooseHideDoneTasks(!controller.hideDoneTasks) },
                         label = { Text("Hide done") },
                     )
+                    FilterChip(
+                        selected = controller.groupTasksByTag,
+                        onClick = { controller.chooseGroupTasksByTag(!controller.groupTasksByTag) },
+                        label = { Text("Group by tag") },
+                    )
                 }
                 // Outside the scrolling row, so it can never scroll out of reach.
                 Column {
@@ -349,8 +361,8 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                 }
                 item { TipCard(controller, "tasks_quick_add", "Tip: write a task in one line. \"Essay tomorrow !high #uni\" sets the due date, the priority and the tag.") }
                 if (timeline) {
-                    tasks.groupBy { timelineOf(it.due, it.done, controller.today) }.toSortedMap().forEach { (bucket, list) ->
-                        item(key = "h:${bucket.name}") { TimelineHeader(bucket.label, list.size) }
+                    groups.forEach { (heading, list) ->
+                        item(key = "h:$heading") { TimelineHeader(heading, list.size) }
                         items(list, key = { it.id }) { task ->
                             TaskRow(
                                 controller,
@@ -433,7 +445,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             onConfirm = {
                 confirmEmptyTasks = false
                 val removed = controller.change { emptyTaskTrash() }
-                if (removed != null) controller.message = "Deleted ${countOf(removed.toInt(), "task")} for good"
+                if (removed != null) controller.message = if (removed == 0u) "The task trash was already empty" else "Deleted ${countOf(removed.toInt(), "task")} for good"
             },
             onDismiss = { confirmEmptyTasks = false },
         )
@@ -446,7 +458,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             onConfirm = {
                 confirmEmpty = false
                 val removed = controller.change { emptyGoalTrash() }
-                if (removed != null) controller.message = "Deleted ${countOf(removed.toInt(), "goal")} for good"
+                if (removed != null) controller.message = if (removed == 0u) "The goal trash was already empty" else "Deleted ${countOf(removed.toInt(), "goal")} for good"
             },
             onDismiss = { confirmEmpty = false },
         )

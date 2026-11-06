@@ -4439,3 +4439,45 @@ fn deleting_an_event_removes_it() {
     assert!(core.get_event(id).unwrap().is_none());
     assert!(core.calendar_day(DAY.into()).unwrap().is_empty());
 }
+
+// ---- 0.10.0: emptying the trash ----
+
+#[test]
+fn emptying_the_goal_trash_removes_goals_with_all_their_history() {
+    let (core, _dir) = core();
+    core.add_treat("Movie night".into()).unwrap();
+    let goal = daily_habit(&core, "Run");
+    // A log (which wins a treat), a reminder, a monster link and a linked task all hang off the goal.
+    tick(&core, &goal, DAY);
+    core.set_goal_reminder(goal.clone(), Some(7 * 60)).unwrap();
+    let monster = core.create_monster("Couch".into(), 100, DAY.into()).unwrap();
+    core.link_monster_item(monster, MonsterLinkKind::Goal, goal.clone(), 10).unwrap();
+    add_task(&core, NewTask { goal_id: Some(goal.clone()), ..new_task("Buy shoes") });
+    let keep = daily_habit(&core, "Read");
+    core.trash_goal(goal, DAY.into()).unwrap();
+    assert_eq!(core.list_goal_trash(DAY.into()).unwrap().len(), 1);
+    assert_eq!(core.empty_goal_trash().unwrap(), 1);
+    assert!(core.list_goal_trash(DAY.into()).unwrap().is_empty());
+    // Other goals are untouched, and a second call has nothing left to remove.
+    assert_eq!(titles(&core, DAY), ["Read"]);
+    assert_eq!(core.empty_goal_trash().unwrap(), 0);
+    assert!(core.get_goal(keep).is_ok());
+}
+
+#[test]
+fn emptying_the_task_trash_removes_only_trashed_tasks_even_with_repeats() {
+    let (core, _dir) = core();
+    let repeating = add_task(
+        &core,
+        NewTask { due: Some(DAY.into()), repeat: Some(Repeat::Daily), ..new_task("Water plants") },
+    );
+    // Finishing a repeating task makes its next copy, so the two point at each other.
+    core.toggle_task(repeating.clone(), DAY.into()).unwrap();
+    let steps = add_task(&core, NewTask { items: vec!["a".into(), "b".into()], ..new_task("With steps") });
+    let kept = add_task(&core, new_task("Keep me"));
+    core.delete_task(repeating, DAY.into()).unwrap();
+    core.delete_task(steps, DAY.into()).unwrap();
+    assert_eq!(core.empty_task_trash().unwrap(), 2);
+    assert!(core.get_task(kept, DAY.into()).is_ok());
+    assert_eq!(core.empty_task_trash().unwrap(), 0);
+}

@@ -57,6 +57,12 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('core/Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      # Keeps the compiled Rust dependencies between runs, which is most of the build time.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+          cache-targets: true
+
       - name: Install cargo-ndk
         run: command -v cargo-ndk || cargo install cargo-ndk --locked
 
@@ -86,7 +92,7 @@ jobs:
 
       - name: Build the release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon -Parm64Only=true
 
       - name: Name the APK
         id: apk

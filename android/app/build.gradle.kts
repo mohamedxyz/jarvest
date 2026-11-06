@@ -15,6 +15,10 @@ val keystoreProperties = Properties().apply {
     if (keystoreFile.exists()) keystoreFile.inputStream().use { load(it) }
 }
 
+// "-Parm64Only=true" builds only for real phones. That halves the Rust build time.
+val appAbis: List<String> =
+    if (project.findProperty("arm64Only") == "true") listOf("arm64-v8a") else listOf("arm64-v8a", "x86_64")
+
 android {
     namespace = "dev.goaltracker.app"
     compileSdk = 37
@@ -24,12 +28,13 @@ android {
         applicationId = "dev.goaltracker.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.9.0"
+        versionCode = 14
+        versionName = "0.10.0"
 
         ndk {
-            // Only the CPU types the Rust core is built for.
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            // Only the CPU types the Rust core is built for. Real phones are arm64; x86_64 is for
+            // emulators. Release builds on CI pass -Parm64Only=true to build the Rust core once, not twice.
+            abiFilters += appAbis
         }
     }
 
@@ -87,7 +92,7 @@ val buildRustLibs = tasks.register<Exec>("buildRustLibs") {
     environment("PATH", pathWithCargo)
     environment("ANDROID_NDK_HOME", androidComponents.sdkComponents.ndkDirectory.get().asFile.path)
     commandLine(
-        "cargo", "ndk", "-t", "arm64-v8a", "-t", "x86_64", "-P", "26",
+        "cargo", "ndk", *appAbis.flatMap { listOf("-t", it) }.toTypedArray(), "-P", "26",
         "-o", rustJniLibsDir.get().asFile.path,
         "build", "--release", "--lib",
     )
