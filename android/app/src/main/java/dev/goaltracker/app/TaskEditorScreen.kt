@@ -40,11 +40,10 @@ import dev.goaltracker.core.Priority
 import dev.goaltracker.core.Repeat
 import dev.goaltracker.core.TaskEdit
 
-/** Create a task ([taskId] is null) or edit one. [presetGoalId] links a new task to a goal. */
+/** Create a task ([taskId] is null) or edit one. */
 @Composable
-fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: String?, onDone: () -> Unit) {
+fun TaskEditorScreen(controller: AppController, taskId: String?, onDone: () -> Unit) {
     val existing = remember(taskId) { taskId?.let { id -> controller.read(null) { getTask(id, controller.today) } } }
-    val goals = remember(controller.version) { controller.read(emptyList()) { listGoals(false) } }
     var title by rememberSaveable { mutableStateOf(existing?.title ?: "") }
     var notes by rememberSaveable { mutableStateOf(existing?.notes ?: "") }
     var due by rememberSaveable { mutableStateOf(if (taskId == null) controller.defaultDueDate() else existing?.due) }
@@ -52,7 +51,8 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
     var priority by rememberSaveable { mutableStateOf(existing?.priority ?: controller.defaultPriority) }
     var tag by rememberSaveable { mutableStateOf(existing?.tag ?: "") }
     var repeat by rememberSaveable { mutableStateOf(existing?.repeat) }
-    var goalId by rememberSaveable { mutableStateOf(existing?.goalId ?: presetGoalId) }
+    // Tasks are no longer linked to goals from the app. A link made by an older version is kept as it is.
+    val goalId = existing?.goalId
     var pickDate by remember { mutableStateOf(false) }
     // Optional start time and length on the due day. The Calendar tab shows them as a block.
     var time by rememberSaveable { mutableStateOf(existing?.dueTime?.toInt()) }
@@ -165,32 +165,6 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (!isMilestone) Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.ui_goal_optional), style = MaterialTheme.typography.titleSmall)
-                InfoHint(
-                    "Linking a task to a goal",
-                    "The task shows up on that goal's page with its progress, such as 2 of 5 done. " +
-                        "It only groups the task: finishing it does not log the goal and does not earn a treat.",
-                )
-            }
-            val linkedMissing = existing?.goalId != null && goals.none { it.id == existing.goalId }
-            if (!isMilestone) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = goalId == null, onClick = { goalId = null }, label = { Text(stringResource(R.string.ui_none)) })
-                if (linkedMissing) {
-                    FilterChip(selected = goalId == existing?.goalId, onClick = { goalId = existing?.goalId }, label = { Text("${existing?.goalTitle} (archived)") })
-                }
-                goals.forEach {
-                    FilterChip(selected = goalId == it.id, onClick = { goalId = it.id }, label = { Text(it.title) })
-                }
-            }
-            if (goalId != null && !isMilestone) {
-                Text(
-                    "Finishing this task will not log the goal or earn a treat.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
             if (!isMilestone) Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.ui_repeat), style = MaterialTheme.typography.titleSmall)
                 InfoHint(
@@ -348,7 +322,8 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
         InfoRow("Priority", task.priority.label())
         task.tag?.let { InfoRow("Tag", "#$it") }
         task.repeat?.let { InfoRow("Repeats", it.label()) }
-        task.goalTitle?.let { InfoRow("Goal", it) }
+        // A link from an older version is kept but not shown: goals only have milestones.
+        task.goalTitle?.takeIf { task.milestoneId != null }?.let { InfoRow("Milestone of", it) }
         if (task.notes.isNotBlank()) Text(task.notes, style = MaterialTheme.typography.bodyMedium)
         items.forEach { item ->
             Row(verticalAlignment = Alignment.CenterVertically) {

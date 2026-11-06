@@ -217,7 +217,7 @@ fun SettingsScreen(controller: AppController) {
             SectionTitle("Reminders")
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
-                    "Daily summary of what is still due. Set a reminder on a single goal when you edit it. Reminders can arrive a few minutes late unless you allow exact alarms below.",
+                    "Daily summary of what is still due. Set a reminder on a single habit or goal when you edit it. Reminders can arrive a few minutes late unless you allow exact alarms below.",
                     Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -236,7 +236,7 @@ fun SettingsScreen(controller: AppController) {
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text(
-                    "Evening check-in: a second reminder that says how many goals and tasks are left today. It stays quiet when nothing is left.",
+                    "Evening check-in: a second reminder that says how many habits, goals and tasks are left today. It stays quiet when nothing is left.",
                     Modifier.weight(1f),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

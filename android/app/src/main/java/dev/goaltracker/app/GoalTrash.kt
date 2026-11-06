@@ -25,7 +25,7 @@ import dev.goaltracker.core.TrashedGoal
 fun GoalTrashRow(goal: TrashedGoal, onRestore: () -> Unit, onDeleteForever: () -> Unit) {
     SoftCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp)) {
-            Text("Goal: ${goal.title}", maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("${if (goal.kind == dev.goaltracker.core.GoalKind.HABIT) "Habit" else "Goal"}: ${goal.title}", maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(
                 "${countOf(goal.daysLeft.toInt(), "day")} left, ${countOf(goal.entries.toInt(), "log")} kept",
                 style = MaterialTheme.typography.bodySmall,

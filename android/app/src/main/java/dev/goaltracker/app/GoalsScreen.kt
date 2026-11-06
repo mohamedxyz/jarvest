@@ -154,7 +154,7 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
             }
             if (reordering) {
                 Text(
-                    "Drag the handle to move a goal within its folder. Use the arrows beside a folder name to move the folder.",
+                    "Drag the handle to move a ${if (habits) "habit" else "goal"} within its folder. Use the arrows beside a folder name to move the folder.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -162,9 +162,9 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
         }
         if (goals.isEmpty()) {
             if (filtering) {
-                EmptyState("No matching goals", "Try a different search or clear a filter.")
+                EmptyState(if (habits) "No matching habits" else "No matching goals", "Try a different search or clear a filter.")
             } else if (archived) {
-                EmptyState("Nothing archived", "Archived goals keep their history and appear here.")
+                EmptyState("Nothing archived", "Archived ${if (habits) "habits" else "goals"} keep their history and appear here.")
             } else {
                 if (habits) EmptyState("No habits yet", "Tap New habit to create one.") else EmptyState("No goals yet", "Tap New goal to create one.")
             }

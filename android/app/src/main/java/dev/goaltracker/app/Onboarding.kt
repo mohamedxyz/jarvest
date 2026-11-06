@@ -184,13 +184,13 @@ private class IntroStep(val title: String, val body: String)
 
 private val introSteps = listOf(
     IntroStep(
-        "Goals and tasks",
-        "A goal is something you track over time, like a daily habit or a number to reach. " +
-            "A task is a one-off to-do with an optional due date. Today shows both.",
+        "Habits, goals and tasks",
+        "A habit is something you repeat, like reading every day. A goal is a target to reach, like 300 pages, " +
+            "broken into milestones. A task is a one-off to-do with an optional due date. Today shows all three.",
     ),
     IntroStep(
         "Milestones",
-        "Break a big goal into milestones. Each one also shows up as a task, and ticking either one ticks both.",
+        "Break a big goal into milestones. Each one also shows up in your Tasks tab, and ticking either one ticks both.",
     ),
     IntroStep(
         "Rewards and the countdown",
@@ -379,6 +379,13 @@ private class Release(val version: String, val notes: List<String>)
 
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
+    Release(
+        "0.11.2",
+        listOf(
+            "A goal page lists only its milestones. Tasks are no longer linked to goals from the app; ones you linked before stay in your Tasks tab.",
+            "Habits are no longer called goals: their own pages, buttons, titles and a Habits list on Today.",
+        ),
+    ),
     Release(
         "0.11.1",
         listOf(

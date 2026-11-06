@@ -200,7 +200,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                     containerColor = MaterialTheme.colorScheme.background,
                     scrolledContainerColor = MaterialTheme.colorScheme.background,
                 ),
-                title = { Text(titleFor(route), style = MaterialTheme.typography.headlineSmall) },
+                title = { Text(titleFor(route, controller), style = MaterialTheme.typography.headlineSmall) },
                 navigationIcon = {
                     if (!isTab) {
                         IconButton(onClick = pop) {
@@ -249,8 +249,12 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                             onClick = { addMenu = false; push("newtask") },
                         )
                         DropdownMenuItem(
-                            text = { Text(stringResource(R.string.ui_new_goal_a_habit_or_target)) },
-                            onClick = { addMenu = false; push("new") },
+                            text = { Text("New habit (something you repeat)") },
+                            onClick = { addMenu = false; push("newhabit") },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("New goal (a target to reach)") },
+                            onClick = { addMenu = false; push("newgoal") },
                         )
                     }
                 }
@@ -310,7 +314,8 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                     onEditTask = { push("edittask/$it") },
                     onOpenTasks = { selectTab("tasks") },
                     onOpenRewards = { selectTab("treats") },
-                    onAddGoal = { push("new") },
+                    onAddGoal = { push("newgoal") },
+                    onAddHabit = { push("newhabit") },
                     onAddTask = { push("newtask") },
                     onOpenSettings = { push("settings") },
                     onStartReview = { push("review") },
@@ -319,15 +324,9 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                 route == "holiday" -> HolidayScreen(controller)
                 route == "review" -> WeeklyReviewScreen(controller, onDone = pop)
                 route == "tasks" -> TasksScreen(controller, onEdit = { push("edittask/$it") }, onFocus = { push("focus/task/$it") })
-                route == "newtask" -> TaskEditorScreen(controller, taskId = null, presetGoalId = null, onDone = pop)
-                route.startsWith("newtask/") -> TaskEditorScreen(
-                    controller,
-                    taskId = null,
-                    presetGoalId = route.removePrefix("newtask/"),
-                    onDone = pop,
-                )
+                route == "newtask" -> TaskEditorScreen(controller, taskId = null, onDone = pop)
                 route.startsWith("edittask/") ->
-                    TaskEditorScreen(controller, taskId = route.removePrefix("edittask/"), presetGoalId = null, onDone = pop)
+                    TaskEditorScreen(controller, taskId = route.removePrefix("edittask/"), onDone = pop)
                 route == "goals" -> GoalsScreen(controller, habits = false, onOpenGoal = { push("goal/$it") })
                 route == "habits" -> GoalsScreen(controller, habits = true, onOpenGoal = { push("goal/$it") })
                 route == "newgoal" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.YES_NO, onDone = pop)
@@ -356,15 +355,12 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                 route == "monsters" -> MonstersScreen(controller, onOpen = { push("monster/$it") })
                 route.startsWith("monster/") -> MonsterDetailScreen(controller, route.removePrefix("monster/"), onClose = pop)
                 route == "settings" -> SettingsScreen(controller)
-                route == "new" -> GoalEditorScreen(controller, goalId = null, onDone = pop)
                 route.startsWith("edit/") ->
                     GoalEditorScreen(controller, goalId = route.removePrefix("edit/"), onDone = pop)
                 route.startsWith("goal/") -> GoalDetailScreen(
                     controller,
                     goalId = route.removePrefix("goal/"),
                     onEdit = { push("edit/$it") },
-                    onAddTask = { push("newtask/$it") },
-                    onEditTask = { push("edittask/$it") },
                     onClose = pop,
                 )
             }
@@ -379,7 +375,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
     CelebrationBurst()
 }
 
-private fun titleFor(route: String): String = when {
+private fun titleFor(route: String, controller: AppController): String = when {
     route == "settings" -> "Settings"
     route == "stats" -> "Stats"
     route == "history" -> "History"
@@ -392,12 +388,12 @@ private fun titleFor(route: String): String = when {
     route.startsWith("event/") -> "Edit event"
     route == "monsters" -> "Monsters"
     route.startsWith("monster/") -> "Monster"
-    route == "new" || route == "newgoal" -> "New goal"
+    route == "newgoal" -> "New goal"
     route == "newhabit" -> "New habit"
-    route == "newtask" || route.startsWith("newtask/") -> "New task"
+    route == "newtask" -> "New task"
     route.startsWith("edittask/") -> "Edit task"
-    route.startsWith("edit/") -> "Edit goal"
-    route.startsWith("goal/") -> "Goal"
+    route.startsWith("edit/") -> "Edit ${goalNoun(controller, route.removePrefix("edit/"))}"
+    route.startsWith("goal/") -> goalNoun(controller, route.removePrefix("goal/")).replaceFirstChar { it.uppercase() }
     // firstOrNull, not first: an unlisted route must show a plain title, never crash the app.
     else -> tabs.firstOrNull { it.route == route }?.label ?: "Jarvest"
 }
@@ -440,3 +436,7 @@ private fun RewardReveal(controller: AppController, draw: RewardDraw, onDismiss:
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_nice)) } },
     )
 }
+
+/** "habit" or "goal" for the item with this id, so a habit's page never calls itself a goal. */
+private fun goalNoun(controller: AppController, id: String): String =
+    controller.read("goal") { getGoal(id).noun() }

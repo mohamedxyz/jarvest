@@ -45,6 +45,7 @@ fun TodayScreen(
     onOpenTasks: () -> Unit,
     onOpenRewards: () -> Unit,
     onAddGoal: () -> Unit,
+    onAddHabit: () -> Unit,
     onAddTask: () -> Unit,
     onOpenSettings: () -> Unit,
     onStartReview: () -> Unit = {},
@@ -71,10 +72,12 @@ fun TodayScreen(
 
     if (allItems.isEmpty() && dueTasks.isEmpty()) {
         if (hasGoals) {
-            // Say how many goals are resting today, so an empty screen reads as good news.
-            val resting = remember(controller.version) {
-                controller.read(emptyList()) { listGoals(false) }.count { !it.done }
+            // Say how many are resting today, so an empty screen reads as good news.
+            val restingGoals = remember(controller.version) {
+                controller.read(emptyList()) { listGoals(false) }
             }
+            val resting = restingGoals.count { it.kind != GoalKind.HABIT && !it.done }
+            val restingHabits = restingGoals.count { it.kind == GoalKind.HABIT }
             Column(Modifier.fillMaxSize()) {
                 SampleBanner(controller)
                 HolidayBanner(controller, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
@@ -82,17 +85,21 @@ fun TodayScreen(
                 FocusCard(controller, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 EmptyState(
                     "Nothing due today",
-                    if (resting > 0) "${countOf(resting, "goal")} off today. Enjoy the break." else "Enjoy your day.",
+                    listOfNotNull(
+                        resting.takeIf { it > 0 }?.let { countOf(it, "goal") },
+                        restingHabits.takeIf { it > 0 }?.let { countOf(it, "habit") },
+                    ).let { if (it.isEmpty()) "Enjoy your day." else it.joinToString(" and ") + " off today. Enjoy the break." },
                 )
             }
         } else {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                 EmptyState(
                     "Nothing here yet",
-                    "A goal is something you track over time, such as a habit or a number to reach. A task is a one-off to-do.",
+                    "A habit is something you repeat, like reading every day. A goal is a target to reach, like 300 pages, with milestones along the way. A task is a one-off to-do.",
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onAddGoal) { Text(stringResource(R.string.ui_add_a_goal)) }
+                    Button(onClick = onAddHabit) { Text("Add a habit") }
+                    OutlinedButton(onClick = onAddGoal) { Text(stringResource(R.string.ui_add_a_goal)) }
                     OutlinedButton(onClick = onAddTask) { Text(stringResource(R.string.ui_add_a_task)) }
                 }
                 FirstRunHelpers(controller)
@@ -122,7 +129,7 @@ fun TodayScreen(
             }
             if (dueTasks.isNotEmpty()) {
                 item { SectionTitle("Tasks due") }
-                // The three most urgent. The rest are one tap away, so goals are not buried.
+                // The three most urgent. The rest are one tap away, so habits and goals are not buried.
                 items(dueTasks.take(3), key = { "task-${it.id}" }) { task ->
                     SoftCard(softItem().fillMaxWidth().clickable { openedTask = task.id }) {
                         Row(
@@ -153,32 +160,43 @@ fun TodayScreen(
                     }
                 }
             }
-            if (allItems.isNotEmpty()) {
-                item {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        SectionTitle("Goals")
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { controller.chooseHideDoneToday(!controller.hideDoneToday) }) {
-                            Text(if (controller.hideDoneToday) "Show done" else "Hide done")
-                        }
-                        if (items.any { it.kind == GoalKind.NUMERIC }) {
-                            InfoHint("Counter", "On a number goal, use - and + to count as you go. Nothing is saved until you press Submit, which logs the count as one entry. Exact lets you type an amount, such as 2.5.")
+            item { DayNoteCard(controller, controller.today) }
+            // Habits and goals are different things, so each gets its own list. The first list
+            // carries the Hide done switch.
+            val habitItems = items.filter { it.kind == GoalKind.HABIT }
+            val goalItems = items.filter { it.kind != GoalKind.HABIT }
+            val hideSwitchOnHabits = allItems.any { it.kind == GoalKind.HABIT }
+            val sections = listOf("Habits" to habitItems, "Goals" to goalItems)
+            sections.forEach { (title, list) ->
+                val all = allItems.filter { (it.kind == GoalKind.HABIT) == (title == "Habits") }
+                if (all.isNotEmpty()) {
+                    item(key = "section-$title") {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SectionTitle(title)
+                            Spacer(Modifier.weight(1f))
+                            if ((title == "Habits") == hideSwitchOnHabits) {
+                                TextButton(onClick = { controller.chooseHideDoneToday(!controller.hideDoneToday) }) {
+                                    Text(if (controller.hideDoneToday) "Show done" else "Hide done")
+                                }
+                            }
+                            if (title == "Goals" && items.any { it.kind == GoalKind.NUMERIC }) {
+                                InfoHint("Counter", "On a number goal, use - and + to count as you go. Nothing is saved until you press Submit, which logs the count as one entry. Exact lets you type an amount, such as 2.5.")
+                            }
                         }
                     }
                 }
-            }
-            item { DayNoteCard(controller, controller.today) }
-            items(items, key = { it.goalId }) { item ->
-                TodayCard(
-                    item,
-                    modifier = softItem(),
-                    onOpen = { openedGoal = item },
-                    onCheck = { controller.log { toggleCheckIn(item.goalId, controller.today) } },
-                    onLog = { logging = item },
-                    count = controller.counters[item.goalId] ?: 0,
-                    onCount = { controller.counters[item.goalId] = it },
-                    onSubmit = { controller.submitCounter(item.goalId) },
-                )
+                items(list, key = { it.goalId }) { item ->
+                    TodayCard(
+                        item,
+                        modifier = softItem(),
+                        onOpen = { openedGoal = item },
+                        onCheck = { controller.log { toggleCheckIn(item.goalId, controller.today) } },
+                        onLog = { logging = item },
+                        count = controller.counters[item.goalId] ?: 0,
+                        onCount = { controller.counters[item.goalId] = it },
+                        onSubmit = { controller.submitCounter(item.goalId) },
+                    )
+                }
             }
         }
     }

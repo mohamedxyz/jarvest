@@ -651,7 +651,7 @@ private fun TaskRow(controller: AppController, task: Task, today: String, select
                             color = if (task.done) MaterialTheme.colorScheme.onSurfaceVariant else dueColor(it, today),
                         )
                     }
-                    task.goalTitle?.let { Text(if (task.milestoneId != null) "Milestone of $it" else "→ $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    task.goalTitle?.takeIf { task.milestoneId != null }?.let { Text("Milestone of $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     task.tag?.let { Text("#$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     if (task.repeat != null) {
                         Icon(Icons.Outlined.Repeat, "Repeats", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)

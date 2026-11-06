@@ -64,7 +64,7 @@ private fun DayLevel.color() = when (this) {
 
 /** What to say under the level: the next step, or a note that the day is done. */
 private fun nextStep(score: DayScore): String = when {
-    score.possible == 0u -> "Nothing is planned yet. Add a task or tick a goal."
+    score.possible == 0u -> "Nothing is planned yet. Add a task or tick a habit or goal."
     score.level == DayLevel.TITAN -> "Everything planned is done. Enjoy the rest of your day."
     score.level == DayLevel.NONE -> "Do one thing to light the first spark."
     else -> {
@@ -122,7 +122,7 @@ fun DayScoreCard(controller: AppController) {
                 )
                 Text(
                     buildList {
-                        if (score.goalsTotal > 0u) add("${score.goalsDone} of ${score.goalsTotal} goals")
+                        if (score.goalsTotal > 0u) add("${score.goalsDone} of ${score.goalsTotal} habits and goals")
                         if (score.tasksTotal > 0u) add("${score.tasksDone} of ${score.tasksTotal} tasks")
                     }.joinToString(" · "),
                     style = MaterialTheme.typography.bodyMedium,

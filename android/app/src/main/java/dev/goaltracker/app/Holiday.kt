@@ -62,9 +62,9 @@ fun HolidayScreen(controller: AppController) {
                         Text("🏖️ ${holiday.range()}", style = MaterialTheme.typography.titleMedium)
                         Text(
                             when {
-                                holiday.active -> "On now · ${countOf(holiday.goalsCovered.toInt(), "goal")} paused"
-                                over -> "Over · ${countOf(holiday.goalsCovered.toInt(), "goal")} were paused"
-                                else -> "Starts ${formatDate(holiday.startDate)} · ${countOf(holiday.goalsCovered.toInt(), "goal")} will pause"
+                                holiday.active -> "On now · ${holiday.goalsCovered} paused"
+                                over -> "Over · ${holiday.goalsCovered} were paused"
+                                else -> "Starts ${formatDate(holiday.startDate)} · ${holiday.goalsCovered} will pause"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -90,7 +90,7 @@ fun HolidayScreen(controller: AppController) {
             onPick = { from, to ->
                 picking = false
                 if (controller.act { startHoliday(from, to, controller.today) }) {
-                    controller.message = "Holiday set. Your goals are paused from ${formatDate(from)}."
+                    controller.message = "Holiday set. Your habits and goals are paused from ${formatDate(from)}."
                 }
             },
             onDismiss = { picking = false },
@@ -100,9 +100,9 @@ fun HolidayScreen(controller: AppController) {
         ConfirmDialog(
             title = if (holiday.active) "End the holiday now?" else "Cancel this holiday?",
             body = if (holiday.active) {
-                "Your goals come back from today. The days already past stay paused, so your history doesn't change."
+                "Your habits and goals come back from today. The days already past stay paused, so your history doesn't change."
             } else {
-                "No goals will be paused for these days."
+                "Nothing will be paused for these days."
             },
             confirm = if (holiday.active) "End now" else "Cancel holiday",
             onConfirm = {
@@ -125,7 +125,7 @@ fun HolidayBanner(controller: AppController, modifier: Modifier = Modifier) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
     ) {
         Text(
-            "🏖️ Holiday until ${formatDate(active.endDate)}. Your goals are paused, and your streaks wait for you.",
+            "🏖️ Holiday until ${formatDate(active.endDate)}. Your habits and goals are paused, and your streaks wait for you.",
             Modifier.padding(16.dp),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSecondaryContainer,

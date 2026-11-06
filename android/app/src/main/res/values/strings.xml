@@ -44,7 +44,6 @@
     <string name="ui_exact_amount">Exact amount</string>
     <string name="ui_pause_days">Pause days</string>
     <string name="ui_resume">Resume</string>
-    <string name="ui_add_a_task_for_this_goal">Add a task for this goal</string>
     <string name="ui_new_milestone">New milestone</string>
     <string name="ui_add">Add</string>
     <string name="ui_edit">Edit</string>
@@ -132,7 +131,6 @@
     <string name="ui_export_everything_to_json">Export everything to JSON</string>
     <string name="ui_import_tasks_from_csv">Import tasks from CSV</string>
     <string name="ui_task">Task</string>
-    <string name="ui_goal_optional">Goal (optional)</string>
     <string name="ui_never">Never</string>
     <string name="ui_every">Every</string>
     <string name="ui_tag_optional">Tag (optional)</string>

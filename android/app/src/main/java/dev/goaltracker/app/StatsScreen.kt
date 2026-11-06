@@ -105,7 +105,7 @@ fun StatsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
         if (goals.isEmpty()) {
             EmptyState("No repeating targets yet", "Streaks and completion rates appear for habits and goals with a daily, weekly, or monthly target.")
         } else {
-            SectionTitle("By goal")
+            SectionTitle("By habit and goal")
             goals.forEach { GoalStatsCard(it, onClick = { onOpenGoal(it.goalId) }) }
         }
     }

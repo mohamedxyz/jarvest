@@ -82,7 +82,9 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
     var category by rememberSaveable { mutableStateOf(existing?.category ?: "") }
     var unit by rememberSaveable { mutableStateOf(existing?.unit ?: "") }
     var deadline by rememberSaveable { mutableStateOf(existing?.deadline) }
-    var kind by rememberSaveable { mutableStateOf(startKind) }
+    // A habit and a goal are different things, so the form is for one or the other.
+    val habitMode = (existing?.kind ?: startKind) == GoalKind.HABIT
+    var kind by rememberSaveable { mutableStateOf(if (habitMode) GoalKind.HABIT else startKind) }
     // A quit habit is a daily habit met by not slipping. It has no targets to set.
     var quit by rememberSaveable { mutableStateOf(false) }
     // Step two of the form: folder, deadline, reminder, notes and milestones.
@@ -121,7 +123,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
         if (existing == null) {
             SectionTitle("Quick start")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                templates.forEach { template ->
+                templates.filter { (it.kind == GoalKind.HABIT) == habitMode }.forEach { template ->
                     SuggestionChip(onClick = {
                         title = template.title
                         kind = template.kind
@@ -138,20 +140,28 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle("Type")
                 InfoHint(
-                    "Goal types",
-                    "Habit: something you check in on, up to once a day, with a target per day, week or month.\n\n" +
-                        "Numeric: add amounts toward a target, such as 5 km a day or 300 pages in total.\n\n" +
-                        "Yes/no: a one-off thing you do once.",
+                    if (habitMode) "Habit types" else "Goal types",
+                    if (habitMode) {
+                        "Build: something you check in on, up to once a day, with a target per day, week or month.\n\n" +
+                            "Quit: something to stop. Every day without a slip counts."
+                    } else {
+                        "Number: add amounts toward a target, such as 5 km a day or 300 pages in total.\n\n" +
+                            "Yes/no: a one-off thing you do once."
+                    },
                 )
             }
-            // The fourth choice is a quit habit: a habit kind with the quit flag on.
-            val kinds = listOf(GoalKind.HABIT to "Habit", GoalKind.NUMERIC to "Numeric", GoalKind.YES_NO to "Yes/no", GoalKind.HABIT to "Quit")
+            // A habit is built up or quit (a habit with the quit flag on). A goal is a number or a yes/no.
+            val kinds = if (habitMode) {
+                listOf(GoalKind.HABIT to "Build", GoalKind.HABIT to "Quit")
+            } else {
+                listOf(GoalKind.NUMERIC to "Number", GoalKind.YES_NO to "Yes/no")
+            }
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 kinds.forEachIndexed { index, (value, label) ->
                     SegmentedButton(
-                        selected = kind == value && quit == (index == 3),
+                        selected = kind == value && quit == (habitMode && index == 1),
                         onClick = {
-                            quit = index == 3
+                            quit = habitMode && index == 1
                             kind = value
                             if (quit) period = Period.DAY
                             if (value == GoalKind.HABIT && period == null) period = Period.WEEK
@@ -231,7 +241,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
             }
         } else {
             Text(
-                "The type and targets can't change, because that would rewrite this goal's history.",
+                "The type and targets can't change, because that would rewrite this ${if (habitMode) "habit" else "goal"}'s history.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -242,7 +252,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
         }
 
         TextButton(onClick = { moreOpen = !moreOpen }) {
-            Text(if (moreOpen) "Fewer options" else "More options: folder, deadline, reminder, notes, milestones")
+            Text(if (moreOpen) "Fewer options" else if (habitMode) "More options: folder, deadline, reminder, notes" else "More options: folder, deadline, reminder, notes, milestones")
         }
         if (moreOpen) {
         OutlinedTextField(category, { category = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_folder_optional)) }, singleLine = true)
@@ -288,7 +298,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
 
         OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_notes_optional)) }, minLines = 2)
 
-        if (existing == null && !quit) {
+        if (existing == null && !habitMode) {
             SectionTitle("Milestones (optional)")
             milestones.forEachIndexed { index, milestone ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -338,7 +348,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                 }
                 if (saved) onDone()
             },
-        ) { Text(if (existing == null) "Create goal" else "Save") }
+        ) { Text(if (existing != null) "Save" else if (habitMode) "Create habit" else "Create goal") }
     }
 
     if (pickingBlock) {

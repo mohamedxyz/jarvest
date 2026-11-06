@@ -1,6 +1,9 @@
 package dev.goaltracker.app
 
+import dev.goaltracker.core.Goal
+import dev.goaltracker.core.GoalKind
 import dev.goaltracker.core.Period
+import dev.goaltracker.core.TodayItem
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
@@ -62,3 +65,10 @@ fun dueTone(due: String, today: String): DueTone {
         else -> DueTone.CALM
     }
 }
+
+/** A habit is something you repeat; a goal is something you work toward. The app words them apart. */
+fun Goal.noun(): String = if (kind == GoalKind.HABIT) "habit" else "goal"
+
+fun TodayItem.noun(): String = if (kind == GoalKind.HABIT) "habit" else "goal"
+
+fun GoalKind.noun(): String = if (this == GoalKind.HABIT) "habit" else "goal"

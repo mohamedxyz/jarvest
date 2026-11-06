@@ -39,20 +39,16 @@ fun GoalDetailScreen(
     controller: AppController,
     goalId: String,
     onEdit: (String) -> Unit,
-    onAddTask: (String) -> Unit,
-    onEditTask: (String) -> Unit,
     onClose: () -> Unit,
 ) {
     val goal = remember(controller.version, goalId) { controller.read(null) { getGoal(goalId) } } ?: return
+    val isHabit = goal.kind == GoalKind.HABIT
+    val noun = goal.noun()
     val stats = remember(controller.version, controller.today, goalId) {
         controller.read(null) { goalStats(goalId, controller.today) }
     }
     val milestones = remember(controller.version, goalId) { controller.read(emptyList()) { listMilestones(goalId) } }
     val entries = remember(controller.version, goalId) { controller.read(emptyList()) { listEntries(goalId, 20u) } }
-    val linkedTasks = remember(controller.version, controller.today, goalId) {
-        // Milestones also appear as tasks, but they are listed in the Milestones section below.
-        controller.read(emptyList()) { listGoalTasks(goalId, controller.today) }.filter { it.milestoneId == null }
-    }
     var milestoneToDelete by remember { mutableStateOf<dev.goaltracker.core.Milestone?>(null) }
 
     val chartPeriod = goal.period ?: Period.WEEK
@@ -193,20 +189,20 @@ fun GoalDetailScreen(
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // A goal is broken into milestones. A habit has no milestones of its own, so the section
+        // only shows for goals (or for a habit that already has some from an older version).
+        if (!isHabit || milestones.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("Tasks and milestones")
+                SectionTitle("Milestones")
                 InfoHint(
-                    "Tasks and milestones",
-                    "A milestone (marked with a flag) is a task that is also a target: ticking it counts for the goal and can win a treat. " +
-                        "Each milestone also shows up in your Tasks tab. Other tasks you link here are plain to-dos: finishing one does not log the goal or earn a treat.",
+                    "Milestones",
+                    "Break the goal into steps. Ticking a milestone counts for the goal and can win a treat. " +
+                        "Each milestone also shows up in your Tasks tab, and ticking either one ticks both.",
                 )
             }
-            val total = linkedTasks.size + milestones.size
-            if (total > 0) {
-                val done = linkedTasks.count { it.done } + milestones.count { it.doneDate != null }
+            if (milestones.isNotEmpty()) {
                 Text(
-                    "$done of $total done",
+                    "${milestones.count { it.doneDate != null }} of ${milestones.size} done",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -230,21 +226,6 @@ fun GoalDetailScreen(
                         Icon(Icons.Filled.Close, "Delete ${milestone.title}")
                     }
                 }
-            }
-            linkedTasks.forEach { task ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TickBox(
-                        task.done,
-                        { controller.toggleTaskWithUndo(task.id, task.title) },
-                        Modifier.label(if (task.done) "Mark ${task.title} not done" else "Mark ${task.title} done"),
-                    )
-                    TextButton(onClick = { onEditTask(task.id) }, Modifier.weight(1f)) {
-                        Text(task.title, Modifier.fillMaxWidth(), textDecoration = if (task.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null)
-                    }
-                }
-            }
-            if (!goal.archived) {
-                OutlinedButton(onClick = { onAddTask(goalId) }) { Text(stringResource(R.string.ui_add_a_task_for_this_goal)) }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val addMilestone = {
@@ -332,10 +313,9 @@ fun GoalDetailScreen(
     }
     if (confirmDelete) {
         ConfirmDialog(
-            title = "Move this goal to the trash?",
+            title = "Move this $noun to the trash?",
             body = "\"${goal.title}\" leaves your lists, stats and reminders. Its history and rewards are kept for 30 days, " +
-                "and you can restore it from the trash on the Tasks tab. " +
-                (if (linkedTasks.isNotEmpty()) "Its ${countOf(linkedTasks.size, "task")} will stay in your Tasks tab, unlinked." else ""),
+                "and you can restore it from the trash on the Tasks tab.",
             confirm = "Move to trash",
             onConfirm = {
                 confirmDelete = false
