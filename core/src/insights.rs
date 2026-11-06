@@ -6,15 +6,21 @@ use rusqlite::{Connection, params};
 
 use crate::CoreError;
 use crate::calendar;
-use crate::dates::parse_date;
+use crate::dates::{self, parse_date};
 use crate::model::*;
 
-/// First and last day of the week (Monday start) or month, `back` periods before today's.
-fn range(period: Period, back: u32, today: NaiveDate) -> Result<(NaiveDate, NaiveDate), CoreError> {
+/// First and last day of the week (starting on the chosen `week_start`) or month, `back`
+/// periods before today's.
+fn range(
+    period: Period,
+    back: u32,
+    today: NaiveDate,
+    week_start: u8,
+) -> Result<(NaiveDate, NaiveDate), CoreError> {
     match period {
         Period::Week => {
-            let monday = today - Days::new(u64::from(today.weekday().num_days_from_monday()));
-            let start = monday - Days::new(7 * u64::from(back));
+            let this_week = dates::period_start_ws(today, Period::Week, week_start);
+            let start = this_week - Days::new(7 * u64::from(back));
             Ok((start, start + Days::new(6)))
         }
         Period::Month => {
@@ -44,7 +50,8 @@ pub fn insights(
     today: &str,
 ) -> Result<Insights, CoreError> {
     let today_date = parse_date(today)?;
-    let (start, end) = range(period, back, today_date)?;
+    let week_start = dates::week_start(conn);
+    let (start, end) = range(period, back, today_date, week_start)?;
     let (from, to) = (start.to_string(), end.to_string());
     let points = sum(
         conn,
@@ -92,7 +99,7 @@ pub fn insights(
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .ok();
-    let (prev_start, prev_end) = range(period, back + 1, today_date)?;
+    let (prev_start, prev_end) = range(period, back + 1, today_date, week_start)?;
     let previous_points = sum(
         conn,
         "SELECT COALESCE(SUM(earned), 0) FROM day_scores WHERE local_date BETWEEN ?1 AND ?2",

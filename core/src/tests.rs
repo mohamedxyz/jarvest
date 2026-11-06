@@ -785,6 +785,22 @@ fn rejects_backups_with_invalid_dates() {
 }
 
 #[test]
+fn rejects_backups_with_invalid_bonus_and_quest_dates() {
+    for sql in [
+        "INSERT INTO xp_bonuses (local_date, kind, points) VALUES ('soon', 'titan', 10)",
+        "INSERT INTO daily_quests (local_date, kind, target) VALUES ('soon', 'points', 10)",
+    ] {
+        let fixture = Fixture::new();
+        let path = fixture.backup();
+        let conn = Connection::open(&path).unwrap();
+        conn.execute(sql, []).unwrap();
+        drop(conn);
+        assert_invalid_backup(fixture.core.restore_backup(path), "invalid dates");
+        fixture.assert_data_unchanged();
+    }
+}
+
+#[test]
 fn failed_restore_leaves_a_working_database() {
     let fixture = Fixture::new();
     let path = fixture.path("junk.db");
@@ -4900,6 +4916,23 @@ fn bonus_badges_follow_the_data() {
 }
 
 // ---- Insights ----
+
+#[test]
+fn insights_weeks_follow_the_week_start_setting() {
+    let (core, _dir) = core();
+    // DAY is Thursday 2026-11-05.
+    core.set_week_start(7).unwrap();
+    let week = core.insights(Period::Week, 0, DAY.into()).unwrap();
+    assert_eq!(
+        (week.from.as_str(), week.to.as_str()),
+        ("2026-11-01", "2026-11-07")
+    );
+    let last = core.insights(Period::Week, 1, DAY.into()).unwrap();
+    assert_eq!(last.from, "2026-10-25");
+    core.set_week_start(6).unwrap();
+    let week = core.insights(Period::Week, 0, DAY.into()).unwrap();
+    assert_eq!(week.from, "2026-10-31");
+}
 
 #[test]
 fn insights_add_up_a_week_and_compare_with_the_last() {

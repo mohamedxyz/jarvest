@@ -28,9 +28,13 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
   the numbers behind it, trend arrows per goal and per week, and the same verdict on the streaks widget
 - **Reminders:** an optional daily summary of what is still due, plus an optional time
   per goal. A reminder stays silent if the goal is already done, skipped, or off today.
-  Alarms are inexact, so they can arrive a few minutes late
+  Reminders use exact alarms when the phone allows them. Otherwise they can arrive a few minutes late
 - **Counter:** numeric goals have `-` and `+` buttons and a Submit button, so they work
   as a tally counter. Submit logs the count as one entry
+- **Calendar:** events, tasks and goals hour by hour, with a month overview and drag to move
+- **Focus timer:** sessions for a task or goal, with a countdown notification and history
+- **Levels and bosses:** a day score, XP and hero levels, a weekly boss, custom monsters, and a daily quest
+- **Insights:** a history calendar, records, and a look back at each week or month
 - **Also:** search and filter, reorder goals, quick-start templates, light, dark, and
   accent themes, a streaks widget, and CSV export
 - **Backup:** everything saves to a single SQLite file that you can restore later. Settings shows

@@ -265,6 +265,20 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // XP bonuses and daily quests arrived in schema version 19.
+    if version >= 19 {
+        let bad_progress_dates: i64 = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM xp_bonuses WHERE date(local_date) IS NOT local_date)
+                      + (SELECT COUNT(*) FROM daily_quests WHERE date(local_date) IS NOT local_date)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_progress_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 
