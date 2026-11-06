@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -187,7 +188,7 @@ private fun CalendarCell(
             Text(it, Modifier.align(Alignment.BottomEnd).padding(end = 3.dp), color = text, style = MaterialTheme.typography.labelSmall)
         }
         if (isCreation) {
-            Text("★", Modifier.align(Alignment.TopStart).padding(start = 3.dp), color = text, style = MaterialTheme.typography.labelSmall)
+            Text(stringResource(R.string.ui_text), Modifier.align(Alignment.TopStart).padding(start = 3.dp), color = text, style = MaterialTheme.typography.labelSmall)
         }
     }
 }

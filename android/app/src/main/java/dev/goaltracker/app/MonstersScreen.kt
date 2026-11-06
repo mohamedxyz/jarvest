@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -97,9 +98,9 @@ fun MonstersScreen(controller: AppController, onOpen: (String) -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Button(onClick = { creating = true }) { Text("New monster") }
+        Button(onClick = { creating = true }) { Text(stringResource(R.string.ui_new_monster)) }
         if (monsters.isEmpty()) {
-            Text("No monsters yet.", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.ui_no_monsters_yet), style = MaterialTheme.typography.titleMedium)
         }
         monsters.forEach { monster ->
             SoftCard(Modifier.fillMaxWidth(), onClick = { onOpen(monster.id) }) {
@@ -150,14 +151,14 @@ fun MonstersScreen(controller: AppController, onOpen: (String) -> Unit) {
         var health by rememberSaveable { mutableStateOf("100") }
         AlertDialog(
             onDismissRequest = { creating = false },
-            title = { Text("New monster") },
+            title = { Text(stringResource(R.string.ui_new_monster)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(name, { name = it.take(60) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.autoFocus())
+                    OutlinedTextField(name, { name = it.take(60) }, label = { Text(stringResource(R.string.ui_name)) }, singleLine = true, modifier = Modifier.autoFocus())
                     OutlinedTextField(
                         health,
                         { health = it.filter(Char::isDigit).take(5) },
-                        label = { Text("Health (10 to 10000)") },
+                        label = { Text(stringResource(R.string.ui_health_10_to_10000)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
@@ -179,9 +180,9 @@ fun MonstersScreen(controller: AppController, onOpen: (String) -> Unit) {
                             onOpen(id)
                         }
                     },
-                ) { Text("Create") }
+                ) { Text(stringResource(R.string.ui_create)) }
             },
-            dismissButton = { TextButton(onClick = { creating = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { creating = false }) { Text(stringResource(R.string.ui_cancel)) } },
         )
     }
 }
@@ -233,7 +234,7 @@ fun MonsterDetailScreen(controller: AppController, monsterId: String, onClose: (
         if (!gone) {
             SectionTitle("What hurts it")
             if (monster.links.isEmpty()) {
-                Text("Nothing is linked yet. Add a habit, goal or task.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.ui_nothing_is_linked_yet_add_a_habi), style = MaterialTheme.typography.bodyMedium)
             }
             monster.links.forEach { link ->
                 SoftCard(Modifier.fillMaxWidth()) {
@@ -261,8 +262,8 @@ fun MonsterDetailScreen(controller: AppController, monsterId: String, onClose: (
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { pickGoal = true }) { Text("Add goal or habit") }
-                OutlinedButton(onClick = { pickTask = true }) { Text("Add task") }
+                OutlinedButton(onClick = { pickGoal = true }) { Text(stringResource(R.string.ui_add_goal_or_habit)) }
+                OutlinedButton(onClick = { pickTask = true }) { Text(stringResource(R.string.ui_add_task)) }
             }
             Text(
                 "A quit habit hurts it for each clean day. A slip heals it a little, and you never lose anything.",
@@ -287,12 +288,12 @@ fun MonsterDetailScreen(controller: AppController, monsterId: String, onClose: (
                 Button(
                     onClick = { confirmFinal = true },
                     colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = monsterRed),
-                ) { Text("Permanent kill (final boss)") }
+                ) { Text(stringResource(R.string.ui_permanent_kill_final_boss)) }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (!gone) OutlinedButton(onClick = { renaming = true }) { Text("Rename") }
-            OutlinedButton(onClick = { confirmDelete = true }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            if (!gone) OutlinedButton(onClick = { renaming = true }) { Text(stringResource(R.string.ui_rename)) }
+            OutlinedButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error) }
         }
     }
 
@@ -300,14 +301,14 @@ fun MonsterDetailScreen(controller: AppController, monsterId: String, onClose: (
         var name by remember { mutableStateOf(monster.name) }
         AlertDialog(
             onDismissRequest = { renaming = false },
-            title = { Text("Rename monster") },
+            title = { Text(stringResource(R.string.ui_rename_monster)) },
             text = { OutlinedTextField(name, { name = it.take(60) }, singleLine = true, modifier = Modifier.autoFocus()) },
             confirmButton = {
                 TextButton(enabled = name.isNotBlank(), onClick = {
                     if (controller.act { renameMonster(monster.id, name) }) renaming = false
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.ui_save)) }
             },
-            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text(stringResource(R.string.ui_cancel)) } },
         )
     }
     if (pickGoal) {
@@ -376,7 +377,7 @@ private fun PickerDialog(
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     )
 }
 
@@ -402,7 +403,7 @@ fun MonsterVictoryDialog(event: MonsterEvent, onDismiss: () -> Unit) {
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Nice") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_nice_2)) } },
     )
 }
 
@@ -417,6 +418,6 @@ fun BossVictoryDialog(event: dev.goaltracker.core.BossEvent, onDismiss: () -> Un
                 else "This week's boss is down. Add treats to your jar on the Rewards tab to win prizes.",
             )
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Nice") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_nice_2)) } },
     )
 }

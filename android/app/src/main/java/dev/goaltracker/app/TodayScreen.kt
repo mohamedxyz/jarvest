@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -82,8 +83,8 @@ fun TodayScreen(
                     "A goal is something you track over time, such as a habit or a number to reach. A task is a one-off to-do.",
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onAddGoal) { Text("Add a goal") }
-                    OutlinedButton(onClick = onAddTask) { Text("Add a task") }
+                    Button(onClick = onAddGoal) { Text(stringResource(R.string.ui_add_a_goal)) }
+                    OutlinedButton(onClick = onAddTask) { Text(stringResource(R.string.ui_add_a_task)) }
                 }
                 FirstRunHelpers(controller)
             }
@@ -187,8 +188,8 @@ fun TodayScreen(
                 InfoRow("Next", it)
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { val id = item.goalId; openedGoal = null; onOpenGoal(id) }) { Text("Full details") }
-                OutlinedButton(onClick = { val id = item.goalId; openedGoal = null; onEditGoal(id) }) { Text("Edit") }
+                Button(onClick = { val id = item.goalId; openedGoal = null; onOpenGoal(id) }) { Text(stringResource(R.string.ui_full_details)) }
+                OutlinedButton(onClick = { val id = item.goalId; openedGoal = null; onEditGoal(id) }) { Text(stringResource(R.string.ui_edit)) }
             }
         }
     }
@@ -225,7 +226,7 @@ private fun TodayCard(
                 if (item.kind == GoalKind.NUMERIC) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         CounterControl(count, onCount, onSubmit)
-                        TextButton(onClick = onLog) { Text("Exact") }
+                        TextButton(onClick = onLog) { Text(stringResource(R.string.ui_exact)) }
                     }
                 }
                 val deadline = item.deadline

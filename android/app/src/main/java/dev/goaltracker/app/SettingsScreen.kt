@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -144,7 +145,7 @@ fun SettingsScreen(controller: AppController) {
             TextButton(onClick = {
                 controller.resetTips()
                 controller.message = "Tips will show again."
-            }) { Text("Show tips again") }
+            }) { Text(stringResource(R.string.ui_show_tips_again)) }
         }
         FeelSettings()
         }
@@ -157,13 +158,13 @@ fun SettingsScreen(controller: AppController) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text("Priority", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.ui_priority), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Priority.entries.reversed().forEach {
                     FilterChip(controller.defaultPriority == it, { controller.chooseDefaultPriority(it) }, label = { Text(it.label()) })
                 }
             }
-            Text("Due date", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.ui_due_date), style = MaterialTheme.typography.labelLarge)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DefaultDue.entries.forEach {
                     FilterChip(controller.defaultDue == it, { controller.chooseDefaultDue(it) }, label = { Text(it.label) })
@@ -184,7 +185,7 @@ fun SettingsScreen(controller: AppController) {
             toggle("Show checklist progress", controller.showChecklistProgress) { controller.chooseShowChecklistProgress(it) }
             toggle("Compact rows", controller.compactTaskRows) { controller.chooseCompactTaskRows(it) }
             toggle("Ask before deleting forever", controller.confirmDeleteForever) { controller.chooseConfirmDeleteForever(it) }
-            Text("Archive finished tasks", style = MaterialTheme.typography.labelLarge)
+            Text(stringResource(R.string.ui_archive_finished_tasks), style = MaterialTheme.typography.labelLarge)
             Text(
                 "Archived tasks leave your lists but stay searchable. Open them from the Archive button on the Tasks tab.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -258,7 +259,7 @@ fun SettingsScreen(controller: AppController) {
             var quietEnd by remember { mutableStateOf(Reminders.quietEnd(context)) }
             var pickQuiet by remember { mutableStateOf<String?>(null) }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Reminders make a sound", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.ui_reminders_make_a_sound), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                 Switch(sound, { sound = it; Reminders.setSound(context, it) })
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -288,7 +289,7 @@ fun SettingsScreen(controller: AppController) {
                 )
             }
             OutlinedButton(onClick = { controller.message = Reminders.sendTest(context) }) {
-                Text("Send a test notification")
+                Text(stringResource(R.string.ui_send_a_test_notification))
             }
             ReminderReliability(controller)
         }
@@ -342,10 +343,10 @@ fun SettingsScreen(controller: AppController) {
             )
             Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 exporter.launch("jarvest-backup-${controller.today}.sqlite")
-            }) { Text("Save backup") }
+            }) { Text(stringResource(R.string.ui_save_backup)) }
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 importer.launch(arrayOf("*/*"))
-            }) { Text("Restore from backup") }
+            }) { Text(stringResource(R.string.ui_restore_from_backup)) }
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 busy = true
                 scope.launch {
@@ -353,7 +354,7 @@ fun SettingsScreen(controller: AppController) {
                     if (error != null) controller.message = error
                     busy = false
                 }
-            }) { Text("Share backup") }
+            }) { Text(stringResource(R.string.ui_share_backup)) }
         }
 
         AutoBackupSection(controller)
@@ -367,16 +368,16 @@ fun SettingsScreen(controller: AppController) {
             )
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 csvExporter.launch("jarvest-logs-${controller.today}.csv")
-            }) { Text("Export logs to CSV") }
+            }) { Text(stringResource(R.string.ui_export_logs_to_csv)) }
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 tasksCsvExporter.launch("jarvest-tasks-${controller.today}.csv")
-            }) { Text("Export tasks to CSV") }
+            }) { Text(stringResource(R.string.ui_export_tasks_to_csv)) }
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 jsonExporter.launch("jarvest-data-${controller.today}.json")
-            }) { Text("Export everything to JSON") }
+            }) { Text(stringResource(R.string.ui_export_everything_to_json)) }
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 tasksCsvImporter.launch(arrayOf("text/*", "*/*"))
-            }) { Text("Import tasks from CSV") }
+            }) { Text(stringResource(R.string.ui_import_tasks_from_csv)) }
             Text(
                 "A task CSV needs a first row naming the columns. Only title is required; due (YYYY-MM-DD), priority, tag and notes are optional.",
                 style = MaterialTheme.typography.bodySmall,

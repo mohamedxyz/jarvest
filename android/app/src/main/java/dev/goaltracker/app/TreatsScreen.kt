@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.LaunchedEffect
@@ -65,7 +66,7 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
 
         SoftCard(Modifier.fillMaxWidth(), onClick = onOpenMonsters) {
             Column(Modifier.padding(16.dp)) {
-                Text("👾 Monsters", style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.ui_monsters), style = MaterialTheme.typography.titleMedium)
                 Text(
                     "Name a struggle and fight it with your goals, habits and tasks. Beating it wins treats.",
                     style = MaterialTheme.typography.bodySmall,
@@ -76,7 +77,7 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SectionTitle("Your jar")
-            if (treats.isEmpty()) Text("Your jar is empty.", style = MaterialTheme.typography.bodyMedium)
+            if (treats.isEmpty()) Text(stringResource(R.string.ui_your_jar_is_empty), style = MaterialTheme.typography.bodyMedium)
             treats.forEach { treat ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(treat.title, Modifier.weight(1f))
@@ -88,10 +89,10 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val addTreat = { if (newTreat.isNotBlank() && controller.act { addTreat(newTreat) }) newTreat = "" }
                 OutlinedTextField(
-                    newTreat, { newTreat = it }, Modifier.weight(1f), label = { Text("New treat, for example a movie night") }, singleLine = true,
+                    newTreat, { newTreat = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.ui_new_treat_for_example_a_movie_ni)) }, singleLine = true,
                     keyboardOptions = doneKey, keyboardActions = onDone(addTreat),
                 )
-                TextButton(enabled = newTreat.isNotBlank(), onClick = { addTreat() }) { Text("Add") }
+                TextButton(enabled = newTreat.isNotBlank(), onClick = { addTreat() }) { Text(stringResource(R.string.ui_add)) }
             }
         }
 
@@ -104,7 +105,7 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (draws.isEmpty()) Text("None yet. Keep hitting your targets!", style = MaterialTheme.typography.bodyMedium)
+            if (draws.isEmpty()) Text(stringResource(R.string.ui_none_yet_keep_hitting_your_targe), style = MaterialTheme.typography.bodyMedium)
             draws.forEach { draw ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(
@@ -123,7 +124,7 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
                 }
             }
             if (draws.isNotEmpty()) {
-                Text("Tick a treat once you've enjoyed it.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.ui_tick_a_treat_once_you_ve_enjoyed), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -159,10 +160,10 @@ private fun NextTreatCard(progress: dev.goaltracker.core.RewardProgress) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle("Your next treat", Modifier.weight(1f))
-                TextButton(onClick = { help = true }) { Text("How it works") }
+                TextButton(onClick = { help = true }) { Text(stringResource(R.string.ui_how_it_works)) }
             }
             if (progress.treatsInJar == 0u) {
-                Text("Add a treat to your jar to start winning.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.ui_add_a_treat_to_your_jar_to_start), style = MaterialTheme.typography.bodyMedium)
             } else {
                 // A countdown, not a bar: draws are random, so only the guarantee is certain.
                 Text(
@@ -200,10 +201,10 @@ private fun NextTreatCard(progress: dev.goaltracker.core.RewardProgress) {
     }
     if (help) {
         InfoSheet("How rewards work", onDismiss = { help = false }) {
-            Text("1. Fill your jar with treats you enjoy, such as a movie night.", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.ui_1_fill_your_jar_with_treats_you), style = MaterialTheme.typography.bodyLarge)
             Text("2. Every time you meet a target, it rolls for a treat: a ${progress.basePercent}% chance, or ${progress.comebackPercent}% if you are getting back on track after missing the period before.", style = MaterialTheme.typography.bodyLarge)
-            Text("3. You always win one within 10 targets in a row without a treat. The countdown above shows how close that is.", style = MaterialTheme.typography.bodyLarge)
-            Text("4. If you undo a log and the target no longer counts, the treat it won is removed too. If your jar is empty or rewards are off, nothing is rolled.", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.ui_3_you_always_win_one_within_10_t), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.ui_4_if_you_undo_a_log_and_the_targ), style = MaterialTheme.typography.bodyLarge)
         }
     }
 }

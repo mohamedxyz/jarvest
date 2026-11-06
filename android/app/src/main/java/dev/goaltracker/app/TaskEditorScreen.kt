@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -123,21 +124,21 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
             OutlinedTextField(
                 title, { title = it },
                 Modifier.fillMaxWidth().then(if (taskId == null) Modifier.autoFocus() else Modifier),
-                label = { Text("Task") },
+                label = { Text(stringResource(R.string.ui_task)) },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
             )
 
-            Text("Due date", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.ui_due_date), style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(onClick = { pickDate = true }) { Text(due?.let { formatDate(it) } ?: "No date") }
-                if (due != null) TextButton(onClick = { due = null; time = null }) { Text("Clear") }
+                if (due != null) TextButton(onClick = { due = null; time = null }) { Text(stringResource(R.string.ui_clear)) }
             }
             if (due != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(onClick = { pickTime = true }) {
                         Text(time?.let { "Starts ${Reminders.formatMinutes(it)}" } ?: "Add a start time")
                     }
-                    if (time != null) TextButton(onClick = { time = null }) { Text("Clear") }
+                    if (time != null) TextButton(onClick = { time = null }) { Text(stringResource(R.string.ui_clear)) }
                 }
                 if (time != null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -148,7 +149,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 }
             }
 
-            Text("Priority", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.ui_priority), style = MaterialTheme.typography.titleSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Priority.entries.reversed().forEach {
                     FilterChip(selected = priority == it, onClick = { priority = it }, label = { Text(it.label()) })
@@ -165,7 +166,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 )
             }
             if (!isMilestone) Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Goal (optional)", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.ui_goal_optional), style = MaterialTheme.typography.titleSmall)
                 InfoHint(
                     "Linking a task to a goal",
                     "The task shows up on that goal's page with its progress, such as 2 of 5 done. " +
@@ -174,7 +175,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
             }
             val linkedMissing = existing?.goalId != null && goals.none { it.id == existing.goalId }
             if (!isMilestone) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = goalId == null, onClick = { goalId = null }, label = { Text("None") })
+                FilterChip(selected = goalId == null, onClick = { goalId = null }, label = { Text(stringResource(R.string.ui_none)) })
                 if (linkedMissing) {
                     FilterChip(selected = goalId == existing?.goalId, onClick = { goalId = existing?.goalId }, label = { Text("${existing?.goalTitle} (archived)") })
                 }
@@ -191,7 +192,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
             }
 
             if (!isMilestone) Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Repeat", style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(R.string.ui_repeat), style = MaterialTheme.typography.titleSmall)
                 InfoHint(
                     "Repeat",
                     "When you finish a repeating task, the next one is created for you with the next due date. " +
@@ -199,7 +200,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 )
             }
             if (!isMilestone) Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = repeat == null, onClick = { repeat = null }, label = { Text("Never") })
+                FilterChip(selected = repeat == null, onClick = { repeat = null }, label = { Text(stringResource(R.string.ui_never)) })
                 Repeat.entries.forEach {
                     FilterChip(selected = repeat == it, onClick = { repeat = it }, label = { Text(it.label()) })
                 }
@@ -207,7 +208,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
 
             if (!isMilestone && repeat != null && repeat != Repeat.WEEKDAYS) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Every")
+                    Text(stringResource(R.string.ui_every))
                     OutlinedTextField(
                         every, { every = it.filter(Char::isDigit).take(3) }, Modifier.width(80.dp), singleLine = true,
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
@@ -238,11 +239,11 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
 
             OutlinedTextField(
                 tag, { tag = it.removePrefix("#") }, Modifier.fillMaxWidth(),
-                label = { Text("Tag (optional)") }, prefix = { Text("#") }, singleLine = true,
+                label = { Text(stringResource(R.string.ui_tag_optional)) }, prefix = { Text(stringResource(R.string.ui_text_2)) }, singleLine = true,
             )
-            OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes (optional)") }, minLines = 2)
+            OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_notes_optional)) }, minLines = 2)
 
-            Text("Checklist", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.ui_checklist), style = MaterialTheme.typography.titleSmall)
             savedItems.forEach { item ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(item.done, { controller.act { toggleTaskItem(item.id) } }, Modifier.label("Step ${item.text}"))
@@ -258,15 +259,15 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
-                    newItem, { newItem = it }, Modifier.weight(1f), label = { Text("Add a step") }, singleLine = true,
+                    newItem, { newItem = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.ui_add_a_step)) }, singleLine = true,
                     keyboardOptions = doneKey, keyboardActions = onDone(::addItem),
                 )
-                TextButton(onClick = ::addItem, enabled = newItem.isNotBlank()) { Text("Add") }
+                TextButton(onClick = ::addItem, enabled = newItem.isNotBlank()) { Text(stringResource(R.string.ui_add)) }
             }
             if (taskId != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (savedItems.isNotEmpty()) TextButton(onClick = { editingSteps = true }) { Text("Edit all steps as text") }
-                    TextButton(onClick = { savingTemplate = true }) { Text("Save as template") }
+                    if (savedItems.isNotEmpty()) TextButton(onClick = { editingSteps = true }) { Text(stringResource(R.string.ui_edit_all_steps_as_text)) }
+                    TextButton(onClick = { savingTemplate = true }) { Text(stringResource(R.string.ui_save_as_template)) }
                 }
             }
         }
@@ -282,10 +283,10 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
         var text by remember { mutableStateOf(savedItems.joinToString("\n") { it.text }) }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { editingSteps = false },
-            title = { Text("Edit steps") },
+            title = { Text(stringResource(R.string.ui_edit_steps)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("One step per line. Reorder, rename or add lines freely. Ticks are cleared.", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.ui_one_step_per_line_reorder_rename), style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 4)
                 }
             },
@@ -293,20 +294,20 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 TextButton(onClick = {
                     editingSteps = false
                     controller.act { replaceTaskItems(taskId, text.lines().map { it.trim() }.filter { it.isNotEmpty() }) }
-                }) { Text("Save steps") }
+                }) { Text(stringResource(R.string.ui_save_steps)) }
             },
-            dismissButton = { TextButton(onClick = { editingSteps = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { editingSteps = false }) { Text(stringResource(R.string.ui_cancel)) } },
         )
     }
     if (savingTemplate && taskId != null) {
         var name by remember { mutableStateOf(title) }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { savingTemplate = false },
-            title = { Text("Save as template") },
+            title = { Text(stringResource(R.string.ui_save_as_template)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(name, { name = it.take(60) }, label = { Text("Template name") }, singleLine = true)
-                    Text("Keeps the title, notes, priority, tag, length and steps. Not the date.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(name, { name = it.take(60) }, label = { Text(stringResource(R.string.ui_template_name)) }, singleLine = true)
+                    Text(stringResource(R.string.ui_keeps_the_title_notes_priority_t), style = MaterialTheme.typography.bodySmall)
                 }
             },
             confirmButton = {
@@ -315,9 +316,9 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                         savingTemplate = false
                         controller.message = "Template saved. Find it under Templates on the Tasks tab."
                     }
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.ui_save)) }
             },
-            dismissButton = { TextButton(onClick = { savingTemplate = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { savingTemplate = false }) { Text(stringResource(R.string.ui_cancel)) } },
         )
     }
     if (pickTime) {
@@ -360,8 +361,8 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
                 controller.toggleTaskWithUndo(task.id, task.title)
                 onDismiss()
             }) { Text(if (task.done) "Mark not done" else "Done") }
-            OutlinedButton(onClick = onEdit) { Text("Edit") }
-            if (onFocus != null && !task.done) OutlinedButton(onClick = onFocus) { Text("Focus") }
+            OutlinedButton(onClick = onEdit) { Text(stringResource(R.string.ui_edit)) }
+            if (onFocus != null && !task.done) OutlinedButton(onClick = onFocus) { Text(stringResource(R.string.ui_focus)) }
         }
         if (task.milestoneId != null) {
             // A milestone's task is removed by removing the milestone, so the two never disagree.
@@ -377,7 +378,7 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
                     controller.undo = UndoOffer("Task moved to the trash.") { controller.act { restoreTask(task.id) } }
                     onDismiss()
                 }
-            }) { Text("Move to trash", color = MaterialTheme.colorScheme.error) }
+            }) { Text(stringResource(R.string.ui_move_to_trash), color = MaterialTheme.colorScheme.error) }
         }
     }
 }

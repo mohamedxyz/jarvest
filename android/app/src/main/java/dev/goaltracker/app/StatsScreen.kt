@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -292,8 +293,8 @@ private fun RecapCard(controller: AppController) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionTitle("Summary", Modifier.weight(1f))
-                FilterChip(period == Period.WEEK, { period = Period.WEEK; back = 0 }, label = { Text("Week") })
-                FilterChip(period == Period.MONTH, { period = Period.MONTH; back = 0 }, label = { Text("Month") })
+                FilterChip(period == Period.WEEK, { period = Period.WEEK; back = 0 }, label = { Text(stringResource(R.string.ui_week)) })
+                FilterChip(period == Period.MONTH, { period = Period.MONTH; back = 0 }, label = { Text(stringResource(R.string.ui_month)) })
             }
             if (recap != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

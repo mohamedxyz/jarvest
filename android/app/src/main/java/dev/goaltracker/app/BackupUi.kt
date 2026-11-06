@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -58,7 +59,7 @@ fun AutoBackupSection(controller: AppController) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Back up every day", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.ui_back_up_every_day), Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
             Switch(enabled, { on ->
                 if (on && folder == null) {
                     controller.message = "Choose a folder first."
@@ -130,13 +131,13 @@ fun RestorePreviewDialog(preview: RestorePreview, onRestore: () -> Unit, onDismi
     val n = preview.now
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Replace all current data?") },
+        title = { Text(stringResource(R.string.ui_replace_all_current_data)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(Modifier.fillMaxWidth()) {
                     Text("", Modifier.weight(1.4f))
-                    Text("Backup", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                    Text("Now", Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.ui_backup), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.ui_now), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
                 }
                 CompareRow("Goals", b.goals, n.goals)
                 CompareRow("Tasks", b.tasks, n.tasks)
@@ -168,7 +169,7 @@ fun RestorePreviewDialog(preview: RestorePreview, onRestore: () -> Unit, onDismi
                 )
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     )
 }
 

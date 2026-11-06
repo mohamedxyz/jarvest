@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -121,8 +122,8 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
             }
             if (filterOpen && !reordering) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = !archived, onClick = { archived = false }, label = { Text("Active") })
-                    FilterChip(selected = archived, onClick = { archived = true }, label = { Text("Archived") })
+                    FilterChip(selected = !archived, onClick = { archived = false }, label = { Text(stringResource(R.string.ui_active)) })
+                    FilterChip(selected = archived, onClick = { archived = true }, label = { Text(stringResource(R.string.ui_archived)) })
                     FilterChip(
                         selected = hideDone,
                         onClick = { if (habits) controller.chooseHideDoneHabits(!hideDone) else controller.chooseHideDoneGoals(!hideDone) },
@@ -132,7 +133,7 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
                         FilterChip(
                             selected = byDeadline,
                             onClick = { byDeadline = !byDeadline },
-                            label = { Text("Group by deadline") },
+                            label = { Text(stringResource(R.string.ui_group_by_deadline)) },
                         )
                     }
                     (if (habits) emptyList() else listOf(GoalKind.NUMERIC to "Numeric", GoalKind.YES_NO to "Yes/no")).forEach { (kind, label) ->
@@ -355,14 +356,14 @@ private fun RenameFolderDialog(old: String, onRename: (String) -> Unit, onDismis
     var text by remember { mutableStateOf(old) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Rename folder") },
+        title = { Text(stringResource(R.string.ui_rename_folder)) },
         text = {
-            OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text("Folder name") }, singleLine = true)
+            OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_folder_name)) }, singleLine = true)
         },
         confirmButton = {
-            TextButton(enabled = text.isNotBlank(), onClick = { onRename(text) }) { Text("Rename") }
+            TextButton(enabled = text.isNotBlank(), onClick = { onRename(text) }) { Text(stringResource(R.string.ui_rename)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     )
 }
 

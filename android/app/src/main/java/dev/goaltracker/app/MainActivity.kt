@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.animation.togetherWith
@@ -29,7 +30,9 @@ import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -215,15 +218,15 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                     ExtendedFloatingActionButton(
                         onClick = { addMenu = true },
                         icon = { Icon(Icons.Filled.Add, null) },
-                        text = { Text("Add") },
+                        text = { Text(stringResource(R.string.ui_add)) },
                     )
                     DropdownMenu(addMenu, { addMenu = false }) {
                         DropdownMenuItem(
-                            text = { Text("New task (a one-off to-do)") },
+                            text = { Text(stringResource(R.string.ui_new_task_a_one_off_to_do)) },
                             onClick = { addMenu = false; push("newtask") },
                         )
                         DropdownMenuItem(
-                            text = { Text("New goal (a habit or target)") },
+                            text = { Text(stringResource(R.string.ui_new_goal_a_habit_or_target)) },
                             onClick = { addMenu = false; push("new") },
                         )
                     }
@@ -231,29 +234,31 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                 "goals" -> ExtendedFloatingActionButton(
                     onClick = { push("newgoal") },
                     icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("New goal") },
+                    text = { Text(stringResource(R.string.ui_new_goal)) },
                 )
                 "habits" -> ExtendedFloatingActionButton(
                     onClick = { push("newhabit") },
                     icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("New habit") },
+                    text = { Text(stringResource(R.string.ui_new_habit)) },
                 )
                 "tasks" -> ExtendedFloatingActionButton(
                     onClick = { push("newtask") },
                     icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("New task") },
+                    text = { Text(stringResource(R.string.ui_new_task)) },
                 )
                 "calendar" -> ExtendedFloatingActionButton(
                     onClick = { push("newevent") },
                     icon = { Icon(Icons.Filled.Add, null) },
-                    text = { Text("New event") },
+                    text = { Text(stringResource(R.string.ui_new_event)) },
                 )
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         val motion = LocalMotion.current
-        Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding()) {
+        // On a tablet or in landscape the content stays a readable width, centered.
+        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
             // Tabs cross-fade. Opening a screen slides it in from the right; going back slides it out.
             AnimatedContent(
                 targetState = route,
@@ -338,6 +343,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
             }
             }
         }
+        }
     }
 
     controller.monsterVictory?.let { MonsterVictoryDialog(it) { controller.monsterVictory = null } }
@@ -381,7 +387,7 @@ private fun RewardReveal(controller: AppController, draw: RewardDraw, onDismiss:
         modifier = Modifier.scale(scale),
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Filled.CardGiftcard, null) },
-        title = { Text("You drew a treat!", textAlign = TextAlign.Center) },
+        title = { Text(stringResource(R.string.ui_you_drew_a_treat), textAlign = TextAlign.Center) },
         text = {
             Column(
                 Modifier.fillMaxWidth(),
@@ -401,6 +407,6 @@ private fun RewardReveal(controller: AppController, draw: RewardDraw, onDismiss:
                 )
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Nice!") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_nice)) } },
     )
 }

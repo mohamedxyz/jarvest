@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -89,7 +90,7 @@ fun GoalDetailScreen(
                 }
             }
             if (goal.notes.isNotBlank()) Text(goal.notes, style = MaterialTheme.typography.bodyMedium)
-            if (goal.archived) Text("Archived", style = MaterialTheme.typography.labelLarge)
+            if (goal.archived) Text(stringResource(R.string.ui_archived), style = MaterialTheme.typography.labelLarge)
         }
 
         if (!goal.archived) {
@@ -100,7 +101,7 @@ fun GoalDetailScreen(
                         { controller.counters[goalId] = it },
                         { controller.submitCounter(goalId) },
                     )
-                    TextButton(onClick = { logging = true }) { Text("Exact amount") }
+                    TextButton(onClick = { logging = true }) { Text(stringResource(R.string.ui_exact_amount)) }
                 }
                 GoalKind.YES_NO -> Button(
                     onClick = { controller.log { toggleCheckIn(goalId, controller.today) } },
@@ -132,7 +133,7 @@ fun GoalDetailScreen(
                         },
                         Modifier.weight(1f),
                     ) { Text(if (skippedToday) "Unskip today" else "Skip today") }
-                    OutlinedButton(onClick = { pickingPause = true }, Modifier.weight(1f)) { Text("Pause days") }
+                    OutlinedButton(onClick = { pickingPause = true }, Modifier.weight(1f)) { Text(stringResource(R.string.ui_pause_days)) }
                     InfoHint(
                         "Skip and pause",
                         "Skip today excuses today only. Pause days excuses a range of days, such as a holiday. " +
@@ -150,7 +151,7 @@ fun GoalDetailScreen(
                         TextButton(onClick = {
                             val end = LocalDate.parse(controller.today).plusDays(400).toString()
                             controller.act { unpauseGoal(goalId, controller.today, end) }
-                        }) { Text("Resume") }
+                        }) { Text(stringResource(R.string.ui_resume)) }
                     }
                 }
             }
@@ -221,7 +222,7 @@ fun GoalDetailScreen(
                 }
             }
             if (!goal.archived) {
-                OutlinedButton(onClick = { onAddTask(goalId) }) { Text("Add a task for this goal") }
+                OutlinedButton(onClick = { onAddTask(goalId) }) { Text(stringResource(R.string.ui_add_a_task_for_this_goal)) }
             }
         }
 
@@ -252,10 +253,10 @@ fun GoalDetailScreen(
                     if (newMilestone.isNotBlank() && controller.act { addMilestone(goalId, newMilestone, controller.today) }) newMilestone = ""
                 }
                 OutlinedTextField(
-                    newMilestone, { newMilestone = it }, Modifier.weight(1f), label = { Text("New milestone") }, singleLine = true,
+                    newMilestone, { newMilestone = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.ui_new_milestone)) }, singleLine = true,
                     keyboardOptions = doneKey, keyboardActions = onDone(addMilestone),
                 )
-                TextButton(enabled = newMilestone.isNotBlank(), onClick = { addMilestone() }) { Text("Add") }
+                TextButton(enabled = newMilestone.isNotBlank(), onClick = { addMilestone() }) { Text(stringResource(R.string.ui_add)) }
             }
         }
 
@@ -275,12 +276,12 @@ fun GoalDetailScreen(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { onEdit(goalId) }) { Text("Edit") }
+            OutlinedButton(onClick = { onEdit(goalId) }) { Text(stringResource(R.string.ui_edit)) }
             OutlinedButton(onClick = { controller.act { setArchived(goalId, !goal.archived) } }) {
                 Text(if (goal.archived) "Restore" else "Archive")
             }
             TextButton(onClick = { confirmDelete = true }) {
-                Text("Delete", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error)
             }
         }
     }

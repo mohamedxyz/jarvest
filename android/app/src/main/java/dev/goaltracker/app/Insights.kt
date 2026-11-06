@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -37,12 +38,12 @@ fun InsightsCard(controller: AppController) {
     val context = LocalContext.current
     SoftCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("Insights", style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(R.string.ui_insights), style = MaterialTheme.typography.titleMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                FilterChip(!month, { month = false; back = 0 }, { Text("Week") })
-                FilterChip(month, { month = true; back = 0 }, { Text("Month") })
-                TextButton(onClick = { back += 1 }) { Text("Earlier") }
-                if (back > 0) TextButton(onClick = { back -= 1 }) { Text("Later") }
+                FilterChip(!month, { month = false; back = 0 }, { Text(stringResource(R.string.ui_week)) })
+                FilterChip(month, { month = true; back = 0 }, { Text(stringResource(R.string.ui_month)) })
+                TextButton(onClick = { back += 1 }) { Text(stringResource(R.string.ui_earlier)) }
+                if (back > 0) TextButton(onClick = { back -= 1 }) { Text(stringResource(R.string.ui_later)) }
             }
             Text("${formatDate(insights.from)} to ${formatDate(insights.to)}", style = MaterialTheme.typography.labelLarge)
             Text("${insights.points} points over ${insights.activeDays} active days")
@@ -71,7 +72,7 @@ fun InsightsCard(controller: AppController) {
                     putExtra(Intent.EXTRA_TEXT, insights.shareText)
                 }
                 context.startActivity(Intent.createChooser(send, "Share").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }) { Text("Share as text") }
+            }) { Text(stringResource(R.string.ui_share_as_text)) }
         }
     }
 }
@@ -82,10 +83,10 @@ fun SuggestTimesDialog(controller: AppController, date: String, onDismiss: () ->
     val suggestions = remember(controller.version, date) { controller.read(emptyList()) { suggestBlocks(date) } }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Suggested times") },
+        title = { Text(stringResource(R.string.ui_suggested_times)) },
         text = {
             if (suggestions.isEmpty()) {
-                Text("Nothing to place. Everything planned has a time, or there is no free gap between 9:00 and 20:00.")
+                Text(stringResource(R.string.ui_nothing_to_place_everything_plan))
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     suggestions.forEach {
@@ -106,8 +107,8 @@ fun SuggestTimesDialog(controller: AppController, date: String, onDismiss: () ->
                     }
                 }
                 onDismiss()
-            }) { Text("Apply") }
+            }) { Text(stringResource(R.string.ui_apply)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_close)) } },
     )
 }

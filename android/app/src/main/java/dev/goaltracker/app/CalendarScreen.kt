@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -164,10 +165,10 @@ fun CalendarScreen(
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next week")
             }
             TextButton(onClick = { showMonth = !showMonth }) { Text(if (showMonth) "Week" else "Month") }
-            TextButton(onClick = { controller.calendarDate = controller.today }) { Text("Today") }
+            TextButton(onClick = { controller.calendarDate = controller.today }) { Text(stringResource(R.string.ui_today)) }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-            TextButton(onClick = { showSuggest = true }) { Text("Suggest times") }
+            TextButton(onClick = { showSuggest = true }) { Text(stringResource(R.string.ui_suggest_times)) }
         }
         if (showSuggest) SuggestTimesDialog(controller, date) { showSuggest = false }
         if (showMonth) MonthOverview(controller, day) { picked ->
@@ -206,7 +207,7 @@ fun CalendarScreen(
 
         if (anytime.isNotEmpty()) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Anytime", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.ui_anytime), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     anytime.forEach { block -> BlockChip(block) { selected = block } }
                 }
@@ -347,27 +348,27 @@ private fun BlockSheet(
             Text((block.icon?.let { "$it " } ?: "") + block.title, style = MaterialTheme.typography.titleLarge)
             Text("${kindName(block.kind)} · ${timeText(block)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             when (block.kind) {
-                CalendarKind.EVENT -> Button(onClick = { onDismiss(); onEditEvent(block.id) }) { Text("Edit event") }
+                CalendarKind.EVENT -> Button(onClick = { onDismiss(); onEditEvent(block.id) }) { Text(stringResource(R.string.ui_edit_event)) }
                 CalendarKind.TASK -> {
                     Button(onClick = {
                         controller.act { toggleTask(block.id, controller.today) }
                         onDismiss()
                     }) { Text(if (block.done) "Mark not done" else "Mark done") }
-                    OutlinedButton(onClick = { onDismiss(); onEditTask(block.id) }) { Text("Open task") }
+                    OutlinedButton(onClick = { onDismiss(); onEditTask(block.id) }) { Text(stringResource(R.string.ui_open_task)) }
                 }
-                CalendarKind.GOAL -> OutlinedButton(onClick = { onDismiss(); onOpenGoal(block.id) }) { Text("Open goal") }
+                CalendarKind.GOAL -> OutlinedButton(onClick = { onDismiss(); onOpenGoal(block.id) }) { Text(stringResource(R.string.ui_open_goal)) }
             }
             if (block.kind != CalendarKind.EVENT) {
                 OutlinedButton(onClick = { onDismiss(); onFocus(if (block.kind == CalendarKind.GOAL) "goal" else "task", block.id) }) {
-                    Text("Start a focus timer")
+                    Text(stringResource(R.string.ui_start_a_focus_timer))
                 }
-                Text("Time block", style = MaterialTheme.typography.labelLarge)
+                Text(stringResource(R.string.ui_time_block), style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(onClick = { pickingTime = true }) {
                         Text(block.startMinutes?.let { "Starts ${Reminders.formatMinutes(it.toInt())}" } ?: "Set a start time")
                     }
                     if (block.startMinutes != null) {
-                        TextButton(onClick = { applyBlock(controller, block, null, null); onDismiss() }) { Text("Clear") }
+                        TextButton(onClick = { applyBlock(controller, block, null, null); onDismiss() }) { Text(stringResource(R.string.ui_clear)) }
                     }
                 }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -452,19 +453,19 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
     ) {
         OutlinedTextField(
             title, { title = it.take(120) }, Modifier.fillMaxWidth().then(if (existing == null) Modifier.autoFocus() else Modifier),
-            label = { Text("Event name") }, singleLine = true,
+            label = { Text(stringResource(R.string.ui_event_name)) }, singleLine = true,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { pickingDate = true }) { Text(formatDate(date)) }
             OutlinedButton(onClick = { pickingTime = true }) { Text("Starts ${Reminders.formatMinutes(start)}") }
         }
-        Text("Length", style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.ui_length), style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             (DURATIONS + listOf(180, 240)).forEach { m ->
                 FilterChip(minutes == m, { minutes = m }, label = { Text(if (m >= 60 && m % 60 == 0) "${m / 60} h" else "$m min") })
             }
         }
-        Text("Repeat", style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.ui_repeat), style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("NONE" to "Does not repeat", "DAILY" to "Every day", "WEEKLY" to "Weekly").forEach { (value, text) ->
                 FilterChip(repeat == value, { repeat = value }, label = { Text(text) })
@@ -483,10 +484,10 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
                 OutlinedButton(onClick = { pickingUntil = true }) {
                     Text(until?.let { "Ends ${formatDate(it)}" } ?: "Repeats forever")
                 }
-                if (until != null) TextButton(onClick = { until = null }) { Text("Clear") }
+                if (until != null) TextButton(onClick = { until = null }) { Text(stringResource(R.string.ui_clear)) }
             }
         }
-        Text("Remind me", style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.ui_remind_me), style = MaterialTheme.typography.labelLarge)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf<Int?>(null, 0, 5, 10, 30, 60).forEach { m ->
                 FilterChip(
@@ -520,7 +521,7 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
             TextButton(onClick = { confirmSkip = true }) { Text("Skip ${formatDate(controller.calendarDate)} only") }
         }
         if (eventId != null) {
-            TextButton(onClick = { confirmDelete = true }) { Text("Delete event", color = MaterialTheme.colorScheme.error) }
+            TextButton(onClick = { confirmDelete = true }) { Text(stringResource(R.string.ui_delete_event), color = MaterialTheme.colorScheme.error) }
         }
     }
 

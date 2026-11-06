@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
@@ -187,7 +188,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
                 value = searchText,
                 onValueChange = { searchText = it },
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp).autoFocus(),
-                placeholder = { Text("Search tasks, including archived ones") },
+                placeholder = { Text(stringResource(R.string.ui_search_tasks_including_archived)) },
                 singleLine = true,
                 trailingIcon = {
                     IconButton(onClick = { searching = false; searchText = "" }) { Icon(Icons.Filled.Close, "Close search") }
@@ -202,10 +203,10 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
             ) {
                 IconButton(onClick = { selected = emptySet() }) { Icon(Icons.Filled.Close, "Clear selection") }
                 Text("${selected.size} selected", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                TextButton(onClick = { controller.bulkTasks(picked, bulk(done = true), "Finished"); selected = emptySet() }) { Text("Done") }
-                TextButton(onClick = { controller.bulkTasks(picked, bulk(archive = true), "Archived"); selected = emptySet() }) { Text("Archive") }
+                TextButton(onClick = { controller.bulkTasks(picked, bulk(done = true), "Finished"); selected = emptySet() }) { Text(stringResource(R.string.ui_done)) }
+                TextButton(onClick = { controller.bulkTasks(picked, bulk(archive = true), "Archived"); selected = emptySet() }) { Text(stringResource(R.string.ui_archive)) }
                 TextButton(onClick = { controller.bulkTasks(picked, bulk(trash = true), "Deleted"); selected = emptySet() }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -214,7 +215,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
                 value = quick,
                 onValueChange = { quick = it },
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
-                placeholder = { Text("Add a task, e.g. Essay tomorrow !high #uni") },
+                placeholder = { Text(stringResource(R.string.ui_add_a_task_e_g_essay_tomorrow_hi)) },
                 singleLine = true,
                 trailingIcon = {
                     IconButton(onClick = submit, enabled = quick.isNotBlank()) {
@@ -236,7 +237,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("Adds:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(stringResource(R.string.ui_adds), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         bits.forEach { AssistChip(onClick = {}, label = { Text(it) }) }
                     }
                 }
@@ -266,12 +267,12 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
                     FilterChip(
                         selected = controller.hideDoneTasks,
                         onClick = { controller.chooseHideDoneTasks(!controller.hideDoneTasks) },
-                        label = { Text("Hide done") },
+                        label = { Text(stringResource(R.string.ui_hide_done)) },
                     )
                     FilterChip(
                         selected = controller.groupTasksByTag,
                         onClick = { controller.chooseGroupTasksByTag(!controller.groupTasksByTag) },
-                        label = { Text("Group by tag") },
+                        label = { Text(stringResource(R.string.ui_group_by_tag)) },
                     )
                 }
                 // Outside the scrolling row, so it can never scroll out of reach.
@@ -331,7 +332,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
                 }
             }
             if (!showArchive && !showTrash) {
-                TextButton(onClick = { showTemplates = true }) { Text("Templates") }
+                TextButton(onClick = { showTemplates = true }) { Text(stringResource(R.string.ui_templates)) }
             }
             if (!showArchive) {
                 TextButton(onClick = { showTrash = !showTrash; selected = emptySet() }) { Text(if (showTrash) "Back to tasks" else "Trash") }
@@ -339,13 +340,13 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
         }
         if (showTrash && tasks.isNotEmpty()) {
             TextButton(onClick = { confirmEmptyTasks = true }, Modifier.padding(horizontal = 8.dp)) {
-                Text("Empty task trash", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.ui_empty_task_trash), color = MaterialTheme.colorScheme.error)
             }
         }
 
         if (showTrash && trashedGoals.isNotEmpty()) {
             TextButton(onClick = { confirmEmpty = true }, Modifier.padding(horizontal = 8.dp)) {
-                Text("Empty goal trash", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.ui_empty_goal_trash), color = MaterialTheme.colorScheme.error)
             }
         }
 
@@ -479,11 +480,11 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
         val templates = remember(controller.version) { controller.read(emptyList()) { listTaskTemplates() } }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showTemplates = false },
-            title = { Text("Templates") },
+            title = { Text(stringResource(R.string.ui_templates)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (templates.isEmpty()) {
-                        Text("No templates yet. Open a task, tap Edit, then Save as template.", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.ui_no_templates_yet_open_a_task_tap), style = MaterialTheme.typography.bodyMedium)
                     }
                     templates.forEach { t ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -504,7 +505,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
                                     showTemplates = false
                                     controller.message = "Task added from \"${t.name}\""
                                 }
-                            }) { Text("Use") }
+                            }) { Text(stringResource(R.string.ui_use)) }
                             IconButton(onClick = { controller.act { deleteTaskTemplate(t.id) } }) {
                                 Icon(Icons.Filled.Close, "Delete template ${t.name}")
                             }
@@ -512,7 +513,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showTemplates = false }) { Text("Done") } },
+            confirmButton = { TextButton(onClick = { showTemplates = false }) { Text(stringResource(R.string.ui_done)) } },
         )
     }
 
@@ -618,8 +619,8 @@ private fun TrashRow(task: Task, today: String, onRestore: () -> Unit, onDeleteF
                     )
                 }
             }
-            TextButton(onClick = onRestore) { Text("Restore") }
-            TextButton(onClick = onDeleteForever) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            TextButton(onClick = onRestore) { Text(stringResource(R.string.ui_restore)) }
+            TextButton(onClick = onDeleteForever) { Text(stringResource(R.string.ui_delete), color = MaterialTheme.colorScheme.error) }
         }
     }
 }
@@ -639,7 +640,7 @@ private fun ArchiveRow(task: Task, onUnarchive: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
                 textDecoration = if (task.done) TextDecoration.LineThrough else null,
             )
-            TextButton(onClick = onUnarchive) { Text("Unarchive") }
+            TextButton(onClick = onUnarchive) { Text(stringResource(R.string.ui_unarchive)) }
         }
     }
 }

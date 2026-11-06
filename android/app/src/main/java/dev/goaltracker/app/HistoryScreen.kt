@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,9 +79,9 @@ fun HistoryScreen(controller: AppController) {
         records?.let { r ->
             SoftCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Your records", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.ui_your_records), style = MaterialTheme.typography.titleMedium)
                     if (r.daysRecorded == 0u) {
-                        Text("Nothing recorded yet. Finish something today and it starts here.", style = MaterialTheme.typography.bodyMedium)
+                        Text(stringResource(R.string.ui_nothing_recorded_yet_finish_some), style = MaterialTheme.typography.bodyMedium)
                     } else {
                         Text("🔥 Blaze streak: ${countOf(r.blazeStreak.toInt(), "day")} (best ${r.longestBlazeStreak})", style = MaterialTheme.typography.bodyMedium)
                         Text("⚔️ Titan days: ${r.titanDays}", style = MaterialTheme.typography.bodyMedium)
@@ -200,17 +201,17 @@ private fun DaySheet(controller: AppController, date: String, onDismiss: () -> U
             Text(formatDate(date), style = MaterialTheme.typography.titleLarge)
             val row = detail?.row
             if (row == null) {
-                Text("Nothing was recorded for this day.", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.ui_nothing_was_recorded_for_this_da), style = MaterialTheme.typography.bodyMedium)
             } else {
                 Text("${row.level.word()} · ${row.earned} of ${row.possible} points", style = MaterialTheme.typography.titleMedium, color = row.level.fill())
             }
             detail?.let {
                 if (it.goalsLogged.isNotEmpty()) {
-                    Text("Goals and habits logged", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.ui_goals_and_habits_logged), style = MaterialTheme.typography.labelLarge)
                     it.goalsLogged.forEach { title -> Text("• $title", style = MaterialTheme.typography.bodyMedium) }
                 }
                 if (it.tasksDone.isNotEmpty()) {
-                    Text("Tasks finished", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.ui_tasks_finished), style = MaterialTheme.typography.labelLarge)
                     it.tasksDone.forEach { title -> Text("• $title", style = MaterialTheme.typography.bodyMedium) }
                 }
             }

@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -84,13 +85,13 @@ fun IconPickerRow(current: String?, onPick: (String?) -> Unit) {
                 OutlinedTextField(
                     custom, { custom = it.take(8) },
                     Modifier.weight(1f),
-                    label = { Text("Or type any emoji") },
+                    label = { Text(stringResource(R.string.ui_or_type_any_emoji)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                 )
-                TextButton(enabled = custom.isNotBlank(), onClick = { onPick(custom.trim()); open = false; custom = "" }) { Text("Set") }
+                TextButton(enabled = custom.isNotBlank(), onClick = { onPick(custom.trim()); open = false; custom = "" }) { Text(stringResource(R.string.ui_set)) }
             }
-            if (current != null) TextButton(onClick = { onPick(null); open = false }) { Text("Remove icon") }
+            if (current != null) TextButton(onClick = { onPick(null); open = false }) { Text(stringResource(R.string.ui_remove_icon)) }
         }
     }
 }
@@ -142,7 +143,7 @@ fun FirstRunHelpers(controller: AppController) {
     ) {
         BundleChips(controller, onDone = {})
         OutlinedButton(onClick = { controller.act { createSampleData(controller.today) } }) {
-            Text("Try it with sample data")
+            Text(stringResource(R.string.ui_try_it_with_sample_data))
         }
     }
 }
@@ -166,10 +167,10 @@ fun SampleBanner(controller: AppController) {
                 TextButton(onClick = {
                     val removed = controller.change { clearSampleData() }
                     if (removed != null) controller.message = "Sample data cleared."
-                }) { Text("Clear sample data") }
+                }) { Text(stringResource(R.string.ui_clear_sample_data)) }
                 TextButton(onClick = {
                     if (controller.act { keepSampleData() }) controller.message = "Sample items are now yours."
-                }) { Text("Keep it") }
+                }) { Text(stringResource(R.string.ui_keep_it)) }
             }
         }
     }
@@ -237,7 +238,7 @@ fun IntroScreen(controller: AppController, onDone: () -> Unit) {
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding().padding(24.dp),
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            if (!last) TextButton(onClick = onDone) { Text("Skip") }
+            if (!last) TextButton(onClick = onDone) { Text(stringResource(R.string.ui_skip)) }
         }
         Column(
             Modifier.weight(1f).fillMaxWidth(),
@@ -271,17 +272,17 @@ fun IntroScreen(controller: AppController, onDone: () -> Unit) {
         }
         if (last) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Start fresh") }
+                Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_start_fresh)) }
                 OutlinedButton(onClick = {
                     controller.act { createSampleData(controller.today) }
                     onDone()
-                }, modifier = Modifier.fillMaxWidth()) { Text("Try it with sample data") }
-                TextButton(onClick = { index-- }, modifier = Modifier.fillMaxWidth()) { Text("Back") }
+                }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_try_it_with_sample_data)) }
+                TextButton(onClick = { index-- }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_back)) }
             }
         } else {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                TextButton(enabled = index > 0, onClick = { index-- }) { Text("Back") }
-                Button(onClick = { index++ }) { Text("Next") }
+                TextButton(enabled = index > 0, onClick = { index-- }) { Text(stringResource(R.string.ui_back)) }
+                Button(onClick = { index++ }) { Text(stringResource(R.string.ui_next)) }
             }
         }
     }
@@ -323,18 +324,18 @@ fun FeelSettings() {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("Feedback")
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Vibrate lightly when you tick, undo or press and hold.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.ui_vibrate_lightly_when_you_tick_un), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Switch(Feel.haptics, { Feel.chooseHaptics(it) }, modifier = Modifier.label("Haptic feedback"))
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Play a short sound when you tick or undo.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.ui_play_a_short_sound_when_you_tick), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Switch(Feel.sounds, { Feel.chooseSounds(it) }, modifier = Modifier.label("Sounds"))
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Animate screens, lists and the score. Turn off for a calmer, instant app.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.ui_animate_screens_lists_and_the_sc), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Switch(Feel.motion, { Feel.chooseMotion(it) }, modifier = Modifier.label("Motion"))
         }
-        Text("Sound profile", style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.ui_sound_profile), style = MaterialTheme.typography.labelLarge)
         SoundProfile.entries.forEach { profile ->
             Row(
                 Modifier.fillMaxWidth().clickable {
@@ -445,21 +446,21 @@ fun HelpGroup(controller: AppController) {
     val hasSample = remember(controller.version) { controller.read(false) { hasSampleData() } }
     SettingsGroup("Help and about", "help") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { Feel.introRequested = true }, modifier = Modifier.fillMaxWidth()) { Text("Show intro again") }
+            OutlinedButton(onClick = { Feel.introRequested = true }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_show_intro_again)) }
             if (hasSample) {
                 OutlinedButton(onClick = {
                     if (controller.act { clearSampleData() }) controller.message = "Sample data cleared."
-                }, modifier = Modifier.fillMaxWidth()) { Text("Clear sample data") }
+                }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_clear_sample_data)) }
             } else {
                 OutlinedButton(onClick = { controller.act { createSampleData(controller.today) } }, modifier = Modifier.fillMaxWidth()) {
-                    Text("Try it with sample data")
+                    Text(stringResource(R.string.ui_try_it_with_sample_data))
                 }
             }
             Row(
                 Modifier.fillMaxWidth().clickable(onClickLabel = "Open what's new") { showNews = true }.padding(vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text("Version")
+                Text(stringResource(R.string.ui_version))
                 Text("$version  (What's new)", color = MaterialTheme.colorScheme.primary)
             }
         }

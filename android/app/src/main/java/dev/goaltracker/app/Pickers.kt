@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -47,9 +48,9 @@ fun DayPickerDialog(min: String, max: String, onPick: (String) -> Unit, onDismis
             TextButton(
                 enabled = state.selectedDateMillis != null,
                 onClick = { state.selectedDateMillis?.let { onPick(it.toLocalDate().toString()) } },
-            ) { Text("OK") }
+            ) { Text(stringResource(R.string.ui_ok)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     ) { DatePicker(state) }
 }
 
@@ -65,14 +66,14 @@ fun RangePickerDialog(min: String, max: String, onPick: (String, String) -> Unit
             TextButton(
                 enabled = start != null && end != null,
                 onClick = { if (start != null && end != null) onPick(start.toLocalDate().toString(), end.toLocalDate().toString()) },
-            ) { Text("Pause") }
+            ) { Text(stringResource(R.string.ui_pause)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     ) {
         DateRangePicker(
             state,
             Modifier.fillMaxWidth().padding(top = 8.dp),
-            title = { Text("Pick the days to skip", Modifier.padding(start = 24.dp, top = 16.dp)) },
+            title = { Text(stringResource(R.string.ui_pick_the_days_to_skip), Modifier.padding(start = 24.dp, top = 16.dp)) },
         )
     }
 }
@@ -86,7 +87,7 @@ fun TimePickerDialog(initialMinutes: Int?, onPick: (Int) -> Unit, onDismiss: () 
     AlertDialog(
         onDismissRequest = onDismiss,
         text = { TimePicker(state) },
-        confirmButton = { TextButton(onClick = { onPick(state.hour * 60 + state.minute) }) { Text("OK") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onPick(state.hour * 60 + state.minute) }) { Text(stringResource(R.string.ui_ok)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     )
 }

@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -71,7 +72,7 @@ fun TipCard(controller: AppController, id: String, text: String, modifier: Modif
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
-            TextButton(onClick = { controller.dismissTip(id) }) { Text("Got it") }
+            TextButton(onClick = { controller.dismissTip(id) }) { Text(stringResource(R.string.ui_got_it)) }
         }
     }
 }
@@ -121,7 +122,7 @@ fun EmptyJarBanner(controller: AppController, onAddTreat: (() -> Unit)?, modifie
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onTertiaryContainer,
             )
-            if (onAddTreat != null) TextButton(onClick = onAddTreat) { Text("Add") }
+            if (onAddTreat != null) TextButton(onClick = onAddTreat) { Text(stringResource(R.string.ui_add)) }
         }
     }
 }
@@ -152,8 +153,8 @@ fun BackupNudgeCard(controller: AppController, onOpenSettings: () -> Unit, modif
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
             Text(text, style = MaterialTheme.typography.bodyMedium)
             Row {
-                TextButton(onClick = onOpenSettings) { Text("Back up now") }
-                TextButton(onClick = { controller.snoozeBackup(urgent = level == 2) }) { Text("Later") }
+                TextButton(onClick = onOpenSettings) { Text(stringResource(R.string.ui_back_up_now)) }
+                TextButton(onClick = { controller.snoozeBackup(urgent = level == 2) }) { Text(stringResource(R.string.ui_later)) }
             }
         }
     }

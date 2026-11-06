@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -78,16 +79,16 @@ fun LogAmountDialog(title: String, unit: String?, onLog: (Double) -> Unit, onDis
                 value = text,
                 onValueChange = { text = it },
                 modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                label = { Text("Amount") },
+                label = { Text(stringResource(R.string.ui_amount)) },
                 suffix = unit?.let { { Text(it) } },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             )
         },
         confirmButton = {
-            TextButton(enabled = valid, onClick = { amount?.let(onLog) }) { Text("Log") }
+            TextButton(enabled = valid, onClick = { amount?.let(onLog) }) { Text(stringResource(R.string.ui_log)) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     )
     LaunchedEffect(Unit) { focus.requestFocus() }
 }
@@ -107,7 +108,7 @@ fun ConfirmDialog(
         confirmButton = {
             TextButton(onClick = onConfirm) { Text(confirm, color = MaterialTheme.colorScheme.error) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     )
 }
 
@@ -127,7 +128,7 @@ fun CounterControl(count: Int, onChange: (Int) -> Unit, onSubmit: () -> Unit, mo
                 textAlign = TextAlign.Center,
             )
             IconButton(onClick = { onChange(count + 1) }) { Icon(Icons.Filled.Add, "Increase") }
-            FilledTonalButton(enabled = count > 0, onClick = onSubmit) { Text("Submit") }
+            FilledTonalButton(enabled = count > 0, onClick = onSubmit) { Text(stringResource(R.string.ui_submit)) }
         }
         if (count > 0) {
             Text(
@@ -156,10 +157,10 @@ fun CounterDialog(
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 CounterControl(count, onChange, onSubmit)
-                TextButton(onClick = onExact) { Text("Enter an exact amount") }
+                TextButton(onClick = onExact) { Text(stringResource(R.string.ui_enter_an_exact_amount)) }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_close)) } },
     )
 }

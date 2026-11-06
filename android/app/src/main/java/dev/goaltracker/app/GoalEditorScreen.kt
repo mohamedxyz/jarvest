@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -112,7 +113,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
         OutlinedTextField(
             title, { title = it },
             Modifier.fillMaxWidth().then(if (existing == null) Modifier.autoFocus() else Modifier),
-            label = { Text("Title") }, singleLine = true,
+            label = { Text(stringResource(R.string.ui_title)) }, singleLine = true,
         )
 
         if (existing == null) BundleChips(controller, onDone)
@@ -179,7 +180,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                 SectionTitle(if (kind == GoalKind.HABIT) "Target" else "Repeating target (optional)")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (kind == GoalKind.NUMERIC) {
-                        FilterChip(period == null, { period = null }, label = { Text("None") })
+                        FilterChip(period == null, { period = null }, label = { Text(stringResource(R.string.ui_none)) })
                     }
                     listOf(Period.DAY to "Daily", Period.WEEK to "Weekly", Period.MONTH to "Monthly").forEach { (value, label) ->
                         FilterChip(period == value, {
@@ -199,7 +200,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                     )
                 }
                 if (kind == GoalKind.HABIT && period == Period.DAY) {
-                    Text("Days", style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.ui_days), style = MaterialTheme.typography.labelLarge)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         dayChips.forEachIndexed { index, label ->
                             FilterChip(
@@ -222,7 +223,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                         totalTarget,
                         { totalTarget = it },
                         Modifier.fillMaxWidth(),
-                        label = { Text("Total target (optional)") },
+                        label = { Text(stringResource(R.string.ui_total_target_optional)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
@@ -237,14 +238,14 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
         }
 
         if ((existing?.kind ?: kind) == GoalKind.NUMERIC) {
-            OutlinedTextField(unit, { unit = it }, Modifier.fillMaxWidth(), label = { Text("Unit (optional), for example km") }, singleLine = true)
+            OutlinedTextField(unit, { unit = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_unit_optional_for_example_km)) }, singleLine = true)
         }
 
         TextButton(onClick = { moreOpen = !moreOpen }) {
             Text(if (moreOpen) "Fewer options" else "More options: folder, deadline, reminder, notes, milestones")
         }
         if (moreOpen) {
-        OutlinedTextField(category, { category = it }, Modifier.fillMaxWidth(), label = { Text("Folder (optional)") }, singleLine = true)
+        OutlinedTextField(category, { category = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_folder_optional)) }, singleLine = true)
         if (categories.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 categories.forEach { name -> SuggestionChip({ category = name }, { Text(name) }) }
@@ -285,7 +286,7 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
             }
         }
 
-        OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("Notes (optional)") }, minLines = 2)
+        OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.ui_notes_optional)) }, minLines = 2)
 
         if (existing == null && !quit) {
             SectionTitle("Milestones (optional)")
@@ -305,10 +306,10 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                     }
                 }
                 OutlinedTextField(
-                    milestoneText, { milestoneText = it }, Modifier.weight(1f), label = { Text("Milestone") }, singleLine = true,
+                    milestoneText, { milestoneText = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.ui_milestone)) }, singleLine = true,
                     keyboardOptions = doneKey, keyboardActions = onDone(addMilestone),
                 )
-                TextButton(enabled = milestoneText.isNotBlank(), onClick = { addMilestone() }) { Text("Add") }
+                TextButton(enabled = milestoneText.isNotBlank(), onClick = { addMilestone() }) { Text(stringResource(R.string.ui_add)) }
             }
         }
         }
@@ -369,9 +370,9 @@ fun GoalEditorScreen(controller: AppController, goalId: String?, onDone: () -> U
                         deadline = Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().toString()
                     }
                     pickingDate = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.ui_ok)) }
             },
-            dismissButton = { TextButton(onClick = { pickingDate = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pickingDate = false }) { Text(stringResource(R.string.ui_cancel)) } },
         ) { DatePicker(state) }
     }
 }

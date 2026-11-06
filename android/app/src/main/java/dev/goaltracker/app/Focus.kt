@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -186,7 +187,7 @@ fun FocusScreen(controller: AppController, kind: FocusKind, itemId: String, onDo
                     FocusTimer.start(context, kind, itemId, title, minutes)
                     running = FocusTimer.running(context)
                 }
-            }, Modifier.fillMaxWidth()) { Text("Start focus") }
+            }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_start_focus)) }
         } else {
             Text(clock((r.endMillis - now) / 1000), fontSize = 64.sp, style = MaterialTheme.typography.displayMedium)
             Text("${r.plannedMinutes} min session", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -195,9 +196,9 @@ fun FocusScreen(controller: AppController, kind: FocusKind, itemId: String, onDo
                 running = null
                 controller.message = if (saved > 0) "Saved $saved min of focus" else "Under a minute, so nothing was saved"
                 controller.refresh()
-            }, Modifier.fillMaxWidth()) { Text("Stop and save") }
+            }, Modifier.fillMaxWidth()) { Text(stringResource(R.string.ui_stop_and_save)) }
             OutlinedButton(onClick = { FocusTimer.finish(context, save = false); running = null }, Modifier.fillMaxWidth()) {
-                Text("Cancel without saving")
+                Text(stringResource(R.string.ui_cancel_without_saving))
             }
         }
         if (total > 0u) {
@@ -209,6 +210,6 @@ fun FocusScreen(controller: AppController, kind: FocusKind, itemId: String, onDo
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        OutlinedButton(onClick = onDone) { Text("Back") }
+        OutlinedButton(onClick = onDone) { Text(stringResource(R.string.ui_back)) }
     }
 }

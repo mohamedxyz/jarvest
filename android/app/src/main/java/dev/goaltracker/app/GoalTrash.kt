@@ -1,5 +1,6 @@
 package dev.goaltracker.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,9 +32,9 @@ fun GoalTrashRow(goal: TrashedGoal, onRestore: () -> Unit, onDeleteForever: () -
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onRestore) { Text("Restore") }
+                TextButton(onClick = onRestore) { Text(stringResource(R.string.ui_restore)) }
                 TextButton(onClick = onDeleteForever) {
-                    Text("Delete forever", color = MaterialTheme.colorScheme.error)
+                    Text(stringResource(R.string.ui_delete_forever), color = MaterialTheme.colorScheme.error)
                 }
             }
         }
