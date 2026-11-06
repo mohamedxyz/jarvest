@@ -20,6 +20,7 @@ fun MoreScreen(onOpen: (String) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         listOf(
+            Triple("history", "🗓️ History", "Every day colored by its level, your streaks and best day."),
             Triple("stats", "📊 Stats", "Streaks, trends, the heatmap and your weekly recap."),
             Triple("treats", "🎁 Rewards", "Your treat jar, treats you've won, badges and monsters."),
             Triple("settings", "⚙️ Settings", "Look, sounds, reminders, backups and more."),

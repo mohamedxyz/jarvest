@@ -805,3 +805,36 @@ pub struct GoalBlock {
     pub start_minutes: Option<u32>,
     pub minutes: u32,
 }
+
+// Day history. See "V0.10.0" in PLAN.md.
+
+/// One recorded day: the points it ended with and its level.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DayRow {
+    pub date: String,
+    pub earned: u32,
+    pub possible: u32,
+    pub level: DayLevel,
+}
+
+/// What happened on one day, for the day detail screen.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DayDetail {
+    pub date: String,
+    /// Nothing is recorded for days before XP started (version 0.8.0) or days with nothing planned.
+    pub row: Option<DayRow>,
+    pub tasks_done: Vec<String>,
+    pub goals_logged: Vec<String>,
+}
+
+/// Records over every recorded day.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DayRecords {
+    pub days_recorded: u32,
+    pub titan_days: u32,
+    pub best_day_date: Option<String>,
+    pub best_day_points: u32,
+    /// Days in a row at Blaze or better, up to today (a day still in progress does not break it).
+    pub blaze_streak: u32,
+    pub longest_blaze_streak: u32,
+}

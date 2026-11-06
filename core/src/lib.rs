@@ -551,6 +551,21 @@ impl GoalCore {
         progress::weekly_boss(&self.conn(), &today)
     }
 
+    /// Recorded days from `from` for `days` days (at most 62), for the history calendar.
+    pub fn day_rows(&self, from: String, days: u32) -> Result<Vec<DayRow>, CoreError> {
+        progress::day_rows(&self.conn(), &from, days)
+    }
+
+    /// What happened on one day.
+    pub fn day_detail(&self, date: String) -> Result<DayDetail, CoreError> {
+        progress::day_detail(&self.conn(), &date)
+    }
+
+    /// Best day, Blaze streaks and Titan days.
+    pub fn day_records(&self, today: String) -> Result<DayRecords, CoreError> {
+        progress::day_records(&self.conn(), &today)
+    }
+
     /// Every weekly boss so far, newest first, for the bestiary.
     pub fn boss_history(&self) -> Result<Vec<BossRecord>, CoreError> {
         progress::boss_history(&self.conn())

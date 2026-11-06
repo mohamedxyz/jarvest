@@ -277,3 +277,116 @@ pub fn boss_history(conn: &Connection) -> Result<Vec<BossRecord>, CoreError> {
         .map(|(week, health, defeated)| record(conn, week, health, defeated))
         .collect()
 }
+
+fn level_from_sql(text: &str) -> DayLevel {
+    match text {
+        "spark" => DayLevel::Spark,
+        "blaze" => DayLevel::Blaze,
+        "titan" => DayLevel::Titan,
+        _ => DayLevel::None,
+    }
+}
+
+fn rank(level: DayLevel) -> u8 {
+    match level {
+        DayLevel::None => 0,
+        DayLevel::Spark => 1,
+        DayLevel::Blaze => 2,
+        DayLevel::Titan => 3,
+    }
+}
+
+/// Recorded days from `from` for `days` days (at most 62). Days without a row are left out.
+pub fn day_rows(conn: &Connection, from: &str, days: u32) -> Result<Vec<DayRow>, CoreError> {
+    let start = parse_date(from)?;
+    let end = start + Days::new(u64::from(days.min(62).saturating_sub(1)));
+    let mut stmt = conn.prepare(
+        "SELECT local_date, earned, possible, level FROM day_scores
+         WHERE local_date BETWEEN ?1 AND ?2 ORDER BY local_date",
+    )?;
+    let rows = stmt
+        .query_map(params![start.to_string(), end.to_string()], |r| {
+            Ok(DayRow {
+                date: r.get(0)?,
+                earned: r.get(1)?,
+                possible: r.get(2)?,
+                level: level_from_sql(&r.get::<_, String>(3)?),
+            })
+        })?
+        .collect::<Result<_, _>>()?;
+    Ok(rows)
+}
+
+pub fn day_detail(conn: &Connection, date: &str) -> Result<DayDetail, CoreError> {
+    parse_date(date)?;
+    let row = day_rows(conn, date, 1)?.into_iter().next();
+    let mut stmt = conn.prepare(
+        "SELECT title FROM tasks WHERE done_date = ?1 AND deleted_date IS NULL AND milestone_id IS NULL
+         ORDER BY rowid",
+    )?;
+    let tasks_done = stmt
+        .query_map([date], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT g.title FROM entries e JOIN goals g ON g.id = e.goal_id
+         WHERE e.local_date = ?1 AND g.deleted_date IS NULL ORDER BY g.title",
+    )?;
+    let goals_logged = stmt
+        .query_map([date], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(DayDetail {
+        date: date.to_string(),
+        row,
+        tasks_done,
+        goals_logged,
+    })
+}
+
+pub fn day_records(conn: &Connection, today: &str) -> Result<DayRecords, CoreError> {
+    let today_date = parse_date(today)?;
+    let mut stmt = conn.prepare("SELECT local_date, earned, level FROM day_scores ORDER BY local_date")?;
+    let rows: Vec<(NaiveDate, u32, DayLevel)> = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, u32>(1)?,
+                level_from_sql(&r.get::<_, String>(2)?),
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .map(|(d, e, l)| Ok((parse_date(&d)?, e, l)))
+        .collect::<Result<_, CoreError>>()?;
+
+    let mut best: Option<(&NaiveDate, u32)> = None;
+    let (mut longest, mut run, mut previous): (u32, u32, Option<NaiveDate>) = (0, 0, None);
+    for (day, earned, level) in &rows {
+        if best.is_none_or(|(_, points)| *earned > points) {
+            best = Some((day, *earned));
+        }
+        if rank(*level) >= 2 {
+            run = if previous.is_some_and(|p| p + Days::new(1) == *day) { run + 1 } else { 1 };
+            longest = longest.max(run);
+            previous = Some(*day);
+        } else {
+            run = 0;
+            previous = None;
+        }
+    }
+    // The current streak counts back from today, or from yesterday when today is still in progress.
+    let blaze = |day: NaiveDate| rows.iter().any(|(d, _, l)| *d == day && rank(*l) >= 2);
+    let mut cursor = if blaze(today_date) { today_date } else { today_date - Days::new(1) };
+    let mut streak = 0;
+    while blaze(cursor) {
+        streak += 1;
+        cursor = cursor - Days::new(1);
+    }
+    Ok(DayRecords {
+        days_recorded: rows.len() as u32,
+        titan_days: rows.iter().filter(|(_, _, l)| *l == DayLevel::Titan).count() as u32,
+        best_day_date: best.map(|(d, _)| d.to_string()),
+        best_day_points: best.map_or(0, |(_, p)| p),
+        blaze_streak: streak,
+        longest_blaze_streak: longest,
+    })
+}

@@ -91,7 +91,7 @@ private val tabs = listOf(
 )
 
 /** Screens opened from the More tab. They still show the bottom bar, with More selected. */
-private val moreRoutes = setOf("more", "stats", "treats")
+private val moreRoutes = setOf("more", "stats", "treats", "history")
 
 class MainActivity : ComponentActivity() {
     private val controller get() = (application as GoalTrackerApp).controller
@@ -300,6 +300,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                 route == "habits" -> GoalsScreen(controller, habits = true, onOpenGoal = { push("goal/$it") })
                 route == "newgoal" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.YES_NO, onDone = pop)
                 route == "newhabit" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.HABIT, onDone = pop)
+                route == "history" -> HistoryScreen(controller)
                 route == "more" -> MoreScreen(onOpen = { push(it) })
                 route == "calendar" -> CalendarScreen(
                     controller,
@@ -339,6 +340,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
 private fun titleFor(route: String): String = when {
     route == "settings" -> "Settings"
     route == "stats" -> "Stats"
+    route == "history" -> "History"
     route == "treats" -> "Rewards"
     route == "newevent" -> "New event"
     route.startsWith("event/") -> "Edit event"

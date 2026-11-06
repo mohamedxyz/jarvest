@@ -4534,3 +4534,46 @@ fn the_month_overview_counts_blocks_per_day() {
     let marks = core.calendar_month(DAY.into(), 3).unwrap();
     assert_eq!(marks.iter().map(|m| m.count).collect::<Vec<_>>(), [0, 1, 0]);
 }
+
+// ---- Day history ----
+
+#[test]
+fn day_history_lists_recorded_days_and_what_happened() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 2);
+    tick(&core, &ids[0], DAY);
+    let task = add_task(&core, NewTask { due: Some(DAY.into()), ..new_task("Email") });
+    core.toggle_task(task, DAY.into()).unwrap();
+    core.progress_tick(DAY.into()).unwrap();
+    let rows = core.day_rows(DAY.into(), 7).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!((rows[0].earned, rows[0].possible), (20, 30));
+    assert_eq!(rows[0].level, DayLevel::Blaze);
+    let detail = core.day_detail(DAY.into()).unwrap();
+    assert_eq!(detail.tasks_done, ["Email"]);
+    assert_eq!(detail.goals_logged, ["Habit 0"]);
+    // A day before anything was recorded has no row, and says nothing else either.
+    let empty = core.day_detail(d(3)).unwrap();
+    assert!(empty.row.is_none() && empty.tasks_done.is_empty());
+}
+
+#[test]
+fn blaze_streaks_count_days_in_a_row_and_forgive_a_day_in_progress() {
+    let (core, _dir) = core();
+    let ids = habits(&core, 1);
+    // One habit: finishing it is 100%, a Titan day, which also counts as Blaze or better.
+    for n in [0, 1, 2, 4] {
+        tick(&core, &ids[0], &d(n));
+        core.progress_tick(d(n)).unwrap();
+    }
+    let on_day_two = core.day_records(d(2)).unwrap();
+    assert_eq!((on_day_two.blaze_streak, on_day_two.longest_blaze_streak), (3, 3));
+    // Day 3 was missed, so the streak restarted; day 4 is done.
+    let on_day_four = core.day_records(d(4)).unwrap();
+    assert_eq!((on_day_four.blaze_streak, on_day_four.longest_blaze_streak, on_day_four.titan_days), (1, 3, 4));
+    // Day 5 is still in progress, so it does not break the streak yet.
+    assert_eq!(core.day_records(d(5)).unwrap().blaze_streak, 1);
+    // Day 6 had nothing done by its end of day 5, so the streak is over.
+    assert_eq!(core.day_records(d(6)).unwrap().blaze_streak, 0);
+    assert_eq!(on_day_four.best_day_points, 10);
+}
