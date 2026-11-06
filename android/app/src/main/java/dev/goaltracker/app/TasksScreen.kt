@@ -115,6 +115,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
     // Tasks picked with a long press. While any are picked, a tap picks or drops one.
     var selected by remember { mutableStateOf(setOf<String>()) }
     var confirmEmptyTasks by remember { mutableStateOf(false) }
+    var showTemplates by remember { mutableStateOf(false) }
 
     // Tasks deleted a month ago or more are removed for good.
     LaunchedEffect(Unit) {
@@ -168,7 +169,14 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                     parsed.title, "", parsed.due ?: controller.defaultDueDate(),
                     parsed.priority ?: controller.defaultPriority, parsed.tag, null, emptyList(), null,
                 )
-                if (controller.act { createTask(task, controller.today) }) quick = ""
+                val id = controller.change { createTask(task, controller.today) }
+                if (id != null) {
+                    // "dentist friday 3pm 45m": the time and length are saved as a calendar block.
+                    if (parsed.time != null) {
+                        controller.act { setTaskTime(id, parsed.time, parsed.minutes) }
+                    }
+                    quick = ""
+                }
             }
         }
     }
@@ -322,6 +330,9 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                     Text(if (showArchive) "Back to tasks" else "Archive")
                 }
             }
+            if (!showArchive && !showTrash) {
+                TextButton(onClick = { showTemplates = true }) { Text("Templates") }
+            }
             if (!showArchive) {
                 TextButton(onClick = { showTrash = !showTrash; selected = emptySet() }) { Text(if (showTrash) "Back to tasks" else "Trash") }
             }
@@ -461,6 +472,47 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                 if (removed != null) controller.message = if (removed == 0u) "The goal trash was already empty" else "Deleted ${countOf(removed.toInt(), "goal")} for good"
             },
             onDismiss = { confirmEmpty = false },
+        )
+    }
+
+    if (showTemplates) {
+        val templates = remember(controller.version) { controller.read(emptyList()) { listTaskTemplates() } }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showTemplates = false },
+            title = { Text("Templates") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (templates.isEmpty()) {
+                        Text("No templates yet. Open a task, tap Edit, then Save as template.", style = MaterialTheme.typography.bodyMedium)
+                    }
+                    templates.forEach { t ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(t.name)
+                                Text(
+                                    buildList {
+                                        add(t.title)
+                                        if (t.steps > 0u) add(countOf(t.steps.toInt(), "step"))
+                                        t.minutes?.let { add("$it min") }
+                                    }.joinToString(" · "),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(onClick = {
+                                if (controller.act { taskFromTemplate(t.id, controller.defaultDueDate(), controller.today) }) {
+                                    showTemplates = false
+                                    controller.message = "Task added from \"${t.name}\""
+                                }
+                            }) { Text("Use") }
+                            IconButton(onClick = { controller.act { deleteTaskTemplate(t.id) } }) {
+                                Icon(Icons.Filled.Close, "Delete template ${t.name}")
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTemplates = false }) { Text("Done") } },
         )
     }
 

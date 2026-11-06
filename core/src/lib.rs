@@ -21,6 +21,7 @@ mod score;
 mod search;
 mod stats;
 mod tasks;
+mod templates;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -177,6 +178,7 @@ impl GoalCore {
     /// Creates a task from one line such as `Essay tomorrow !high #uni`.
     pub fn quick_add_task(&self, raw: String, today: String) -> Result<String, CoreError> {
         let parsed = quickadd::parse_quick(&raw, &today)?;
+        let has_due = parsed.due.is_some();
         let task = NewTask {
             title: parsed.title,
             notes: String::new(),
@@ -187,7 +189,11 @@ impl GoalCore {
             items: vec![],
             goal_id: None,
         };
-        tasks::create_task(&mut self.conn(), task, &today)
+        let id = tasks::create_task(&mut self.conn(), task, &today)?;
+        if let (Some(time), true) = (parsed.time, has_due) {
+            calendar::set_task_time(&self.conn(), &id, Some(time), parsed.minutes)?;
+        }
+        Ok(id)
     }
 
     /// Shows what a quick-add line would become, without saving anything.
@@ -319,6 +325,29 @@ impl GoalCore {
         days: Option<u8>,
     ) -> Result<(), CoreError> {
         tasks::set_repeat_rule(&self.conn(), &task_id, every, days)
+    }
+
+    /// Saves a task as a template (title, notes, priority, tag, length and steps).
+    pub fn save_task_template(&self, task_id: String, name: String, today: String) -> Result<String, CoreError> {
+        templates::save(&self.conn(), &task_id, &name, &today)
+    }
+
+    pub fn list_task_templates(&self) -> Result<Vec<TaskTemplate>, CoreError> {
+        templates::list(&self.conn())
+    }
+
+    pub fn delete_task_template(&self, template_id: String) -> Result<(), CoreError> {
+        templates::delete(&self.conn(), &template_id)
+    }
+
+    /// Makes a task from a template, with an optional due day. Returns the new task's id.
+    pub fn task_from_template(
+        &self,
+        template_id: String,
+        due: Option<String>,
+        today: String,
+    ) -> Result<String, CoreError> {
+        templates::use_template(&mut self.conn(), &template_id, due, &today)
     }
 
     /// Replaces the checklist with one step per line.

@@ -220,10 +220,25 @@ pub fn parse_quick(raw: &str, today: &str) -> Result<ParsedTask, CoreError> {
 
     let mut priority = None;
     let mut tag = None;
+    let mut time = None;
+    let mut minutes = None;
     for (i, word) in words.iter().enumerate() {
         if used[i] {
             continue;
         }
+        if time.is_none()
+            && due.is_some()
+            && let Some(t) = clock_time(word)
+        {
+            time = Some(t);
+            used[i] = true;
+            // "at 3pm": the little word is part of the time.
+            if i > 0 && !used[i - 1] && words[i - 1].eq_ignore_ascii_case("at") {
+                used[i - 1] = true;
+            }
+            continue;
+        }
+
         if priority.is_none()
             && let Some(p) = word.strip_prefix('!').and_then(priority_of)
         {
@@ -234,6 +249,19 @@ pub fn parse_quick(raw: &str, today: &str) -> Result<ParsedTask, CoreError> {
         {
             tag = Some(t.to_string());
             used[i] = true;
+        }
+    }
+
+    // A length such as "45m" is only read together with a start time. Alone it could be anything.
+    if time.is_some() {
+        for (i, word) in words.iter().enumerate() {
+            if !used[i]
+                && let Some(m) = length_of(word)
+            {
+                minutes = Some(m);
+                used[i] = true;
+                break;
+            }
         }
     }
 
@@ -254,5 +282,56 @@ pub fn parse_quick(raw: &str, today: &str) -> Result<ParsedTask, CoreError> {
         due: due.map(|d| d.to_string()),
         priority,
         tag,
+        time,
+        minutes,
     })
+}
+
+/// `3pm`, `3:30pm`, `11am` or 24-hour `15:30`, as minutes after midnight.
+fn clock_time(word: &str) -> Option<u32> {
+    let lower = word.to_lowercase();
+    let (body, meridiem) = match lower.strip_suffix("am") {
+        Some(b) => (b, Some(false)),
+        None => match lower.strip_suffix("pm") {
+            Some(b) => (b, Some(true)),
+            None => (lower.as_str(), None),
+        },
+    };
+    let (hours, mins) = match body.split_once(':') {
+        Some((h, m)) => (number(h, 2)?, if m.len() == 2 { number(m, 2)? } else { return None }),
+        // A bare number is only a time with am or pm, so "3" and "2026" stay in the title.
+        None if meridiem.is_some() => (number(body, 2)?, 0),
+        None => return None,
+    };
+    if mins > 59 {
+        return None;
+    }
+    let hours = match meridiem {
+        Some(pm) => {
+            if !(1..=12).contains(&hours) {
+                return None;
+            }
+            (hours % 12) + if pm { 12 } else { 0 }
+        }
+        None if hours <= 23 => hours,
+        None => return None,
+    };
+    Some(hours * 60 + mins)
+}
+
+/// `45m`, `45min`, `2h` or `1.5h`, as minutes (5 to 1440).
+fn length_of(word: &str) -> Option<u32> {
+    let lower = word.to_lowercase();
+    let total = if let Some(n) = lower.strip_suffix("min").or_else(|| lower.strip_suffix('m')) {
+        number(n, 4)?
+    } else if let Some(n) = lower.strip_suffix('h') {
+        match n.split_once('.') {
+            Some((whole, frac)) if frac.len() == 1 => number(whole, 2)? * 60 + number(frac, 1)? * 6,
+            Some(_) => return None,
+            None => number(n, 2)? * 60,
+        }
+    } else {
+        return None;
+    };
+    (5..=1440).contains(&total).then_some(total)
 }

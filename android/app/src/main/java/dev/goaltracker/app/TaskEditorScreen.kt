@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -56,6 +57,11 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
     var time by rememberSaveable { mutableStateOf(existing?.dueTime?.toInt()) }
     var duration by rememberSaveable { mutableStateOf(existing?.duration?.toInt() ?: 30) }
     var pickTime by remember { mutableStateOf(false) }
+    // The custom part of a repeat: every N days, weeks or months, and for weekly repeats the weekdays.
+    var every by rememberSaveable { mutableStateOf((existing?.repeatEvery ?: 1u).toString()) }
+    var repeatDays by rememberSaveable { mutableStateOf(existing?.repeatDays?.toInt() ?: 0) }
+    var editingSteps by remember { mutableStateOf(false) }
+    var savingTemplate by remember { mutableStateOf(false) }
     var newItem by rememberSaveable { mutableStateOf("") }
     // New tasks collect checklist lines here. Existing tasks change their checklist right away.
     val draftItems = remember { mutableStateListOf<String>() }
@@ -95,6 +101,11 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
             null
         }
         if (savedId != null) {
+            // The custom repeat rule is saved after the repeat itself, which creates it.
+            val n = every.toUIntOrNull() ?: 1u
+            if (repeat != null && repeat != Repeat.WEEKDAYS && (n != 1u || repeatDays != 0 || (existing?.repeatEvery ?: 1u) != 1u || existing?.repeatDays != null)) {
+                controller.act { setTaskRepeatRule(savedId, n, if (repeat == Repeat.WEEKLY && repeatDays != 0) repeatDays.toUByte() else null) }
+            }
             // A start time only exists together with a due day.
             val start = if (due != null) time else null
             if (start != null || existing?.dueTime != null || existing?.duration != null) {
@@ -194,6 +205,37 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 }
             }
 
+            if (!isMilestone && repeat != null && repeat != Repeat.WEEKDAYS) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Every")
+                    OutlinedTextField(
+                        every, { every = it.filter(Char::isDigit).take(3) }, Modifier.width(80.dp), singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    )
+                    val n = every.toIntOrNull() ?: 1
+                    Text(
+                        when (repeat) {
+                            Repeat.DAILY -> if (n == 1) "day" else "days"
+                            Repeat.WEEKLY -> if (n == 1) "week" else "weeks"
+                            else -> if (n == 1) "month" else "months"
+                        },
+                    )
+                }
+                if (repeat == Repeat.WEEKLY) {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEachIndexed { i, name ->
+                            val bit = 1 shl i
+                            FilterChip(repeatDays and bit != 0, { repeatDays = repeatDays xor bit }, label = { Text(name) })
+                        }
+                    }
+                    Text(
+                        "No days chosen means the same weekday as the due date.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             OutlinedTextField(
                 tag, { tag = it.removePrefix("#") }, Modifier.fillMaxWidth(),
                 label = { Text("Tag (optional)") }, prefix = { Text("#") }, singleLine = true,
@@ -221,6 +263,12 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
                 )
                 TextButton(onClick = ::addItem, enabled = newItem.isNotBlank()) { Text("Add") }
             }
+            if (taskId != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (savedItems.isNotEmpty()) TextButton(onClick = { editingSteps = true }) { Text("Edit all steps as text") }
+                    TextButton(onClick = { savingTemplate = true }) { Text("Save as template") }
+                }
+            }
         }
         // Pinned, so it never hides at the bottom of a long form.
         Button(
@@ -230,6 +278,48 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
         ) { Text(if (title.isBlank()) "Type a name first" else if (taskId == null) "Add task" else "Save") }
     }
 
+    if (editingSteps && taskId != null) {
+        var text by remember { mutableStateOf(savedItems.joinToString("\n") { it.text }) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { editingSteps = false },
+            title = { Text("Edit steps") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("One step per line. Reorder, rename or add lines freely. Ticks are cleared.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth(), minLines = 4)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    editingSteps = false
+                    controller.act { replaceTaskItems(taskId, text.lines().map { it.trim() }.filter { it.isNotEmpty() }) }
+                }) { Text("Save steps") }
+            },
+            dismissButton = { TextButton(onClick = { editingSteps = false }) { Text("Cancel") } },
+        )
+    }
+    if (savingTemplate && taskId != null) {
+        var name by remember { mutableStateOf(title) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { savingTemplate = false },
+            title = { Text("Save as template") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(name, { name = it.take(60) }, label = { Text("Template name") }, singleLine = true)
+                    Text("Keeps the title, notes, priority, tag, length and steps. Not the date.", style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank(), onClick = {
+                    if (controller.act { saveTaskTemplate(taskId, name, controller.today) }) {
+                        savingTemplate = false
+                        controller.message = "Template saved. Find it under Templates on the Tasks tab."
+                    }
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { savingTemplate = false }) { Text("Cancel") } },
+        )
+    }
     if (pickTime) {
         TimePickerDialog(time ?: (9 * 60), onPick = { time = it; pickTime = false }, onDismiss = { pickTime = false })
     }

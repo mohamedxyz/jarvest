@@ -4577,3 +4577,90 @@ fn blaze_streaks_count_days_in_a_row_and_forgive_a_day_in_progress() {
     assert_eq!(core.day_records(d(6)).unwrap().blaze_streak, 0);
     assert_eq!(on_day_four.best_day_points, 10);
 }
+
+// ---- Quick add: times and lengths ----
+
+fn quick(line: &str) -> ParsedTask {
+    let (core, _dir) = core();
+    core.parse_quick(line.into(), DAY.into()).unwrap()
+}
+
+#[test]
+fn quick_add_reads_a_start_time_and_length() {
+    let p = quick("Dentist friday 3pm 45m !high");
+    assert_eq!(p.title, "Dentist");
+    assert_eq!((p.time, p.minutes), (Some(15 * 60), Some(45)));
+    assert_eq!(p.due.as_deref(), Some("2026-11-06"));
+    let p = quick("Standup tomorrow at 9:30am 15m");
+    assert_eq!((p.title.as_str(), p.time, p.minutes), ("Standup", Some(570), Some(15)));
+    let p = quick("Train today 18:05 1.5h");
+    assert_eq!((p.time, p.minutes), (Some(18 * 60 + 5), Some(90)));
+    let p = quick("Call mum tomorrow 12am");
+    assert_eq!(p.time, Some(0));
+}
+
+#[test]
+fn quick_add_leaves_ordinary_numbers_in_the_title() {
+    // No day, so a time is not read; a bare number is never a time or a length.
+    let p = quick("Read 3pm 20m");
+    assert_eq!((p.time, p.minutes), (None, None));
+    assert_eq!(p.title, "Read 3pm 20m");
+    let p = quick("Buy 2026 stamps tomorrow");
+    assert_eq!((p.time, p.minutes), (None, None));
+    assert_eq!(p.title, "Buy 2026 stamps");
+    // A length without a start time stays in the title, because "45m" could mean anything.
+    let p = quick("Plan week tomorrow 45m");
+    assert_eq!((p.time, p.minutes), (None, None));
+    assert_eq!(p.title, "Plan week 45m");
+    // Impossible clock times stay as text.
+    let p = quick("Meet tomorrow 25:00");
+    assert_eq!(p.time, None);
+    assert_eq!(p.title, "Meet 25:00");
+}
+
+// ---- Task templates ----
+
+#[test]
+fn a_template_makes_new_tasks_with_the_same_steps() {
+    let (core, _dir) = core();
+    let source = add_task(
+        &core,
+        NewTask {
+            notes: "Bring the form".into(),
+            priority: Priority::High,
+            tag: Some("home".into()),
+            items: vec!["Pack bag".into(), "Lock door".into()],
+            ..new_task("Leave the house")
+        },
+    );
+    core.set_task_time(source.clone(), None, Some(20)).unwrap();
+    let template = core.save_task_template(source, "Leaving".into(), DAY.into()).unwrap();
+    let list = core.list_task_templates().unwrap();
+    assert_eq!((list[0].name.as_str(), list[0].steps, list[0].minutes), ("Leaving", 2, Some(20)));
+
+    let made = core.task_from_template(template.clone(), Some(d(1)), DAY.into()).unwrap();
+    let task = core.get_task(made.clone(), DAY.into()).unwrap();
+    assert_eq!((task.title.as_str(), task.priority, task.tag.as_deref()), ("Leave the house", Priority::High, Some("home")));
+    assert_eq!((task.due.as_deref(), task.duration, task.items_total), (Some(d(1).as_str()), Some(20), 2));
+    // A copy is its own task, with steps that start unticked.
+    assert_eq!(task.items_done, 0);
+    core.delete_task_template(template.clone()).unwrap();
+    assert!(core.task_from_template(template, None, DAY.into()).is_err());
+}
+
+#[test]
+fn template_names_are_checked() {
+    let (core, _dir) = core();
+    let id = add_task(&core, new_task("A"));
+    assert!(core.save_task_template(id.clone(), "  ".into(), DAY.into()).is_err());
+    core.save_task_template(id.clone(), "Mine".into(), DAY.into()).unwrap();
+    assert!(core.save_task_template(id, "mine".into(), DAY.into()).is_err());
+}
+
+#[test]
+fn quick_add_saves_the_start_time_and_length() {
+    let (core, _dir) = core();
+    let id = core.quick_add_task("Dentist friday 3pm 45m".into(), DAY.into()).unwrap();
+    let task = core.get_task(id, DAY.into()).unwrap();
+    assert_eq!((task.due_time, task.duration), (Some(15 * 60), Some(45)));
+}

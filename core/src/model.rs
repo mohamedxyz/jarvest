@@ -525,6 +525,10 @@ pub struct ParsedTask {
     pub due: Option<String>,
     pub priority: Option<Priority>,
     pub tag: Option<String>,
+    /// A start time such as `3pm` or `15:30`, as minutes after midnight. It needs a due day.
+    pub time: Option<u32>,
+    /// A length such as `45m` or `2h`, in minutes.
+    pub minutes: Option<u32>,
 }
 
 // Task power (bulk edit, tags, search)
@@ -837,4 +841,16 @@ pub struct DayRecords {
     /// Days in a row at Blaze or better, up to today (a day still in progress does not break it).
     pub blaze_streak: u32,
     pub longest_blaze_streak: u32,
+}
+
+// Task templates
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TaskTemplate {
+    pub id: String,
+    pub name: String,
+    pub title: String,
+    /// How many checklist steps the template has.
+    pub steps: u32,
+    pub minutes: Option<u32>,
 }
