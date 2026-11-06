@@ -237,6 +237,19 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // Focus sessions arrived in schema version 18.
+    if version >= 18 {
+        let bad_dates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM focus_sessions WHERE date(local_date) IS NOT local_date",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     // Event end dates and skipped days arrived in schema version 16.
     if version >= 16 {
         let bad_event_dates: i64 = conn

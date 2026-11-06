@@ -854,3 +854,25 @@ pub struct TaskTemplate {
     pub steps: u32,
     pub minutes: Option<u32>,
 }
+
+// Focus timer
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FocusKind {
+    Task,
+    Goal,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct FocusDay {
+    pub date: String,
+    pub minutes: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct FocusSession {
+    pub id: String,
+    pub title: String,
+    pub start_minutes: u32,
+    pub minutes: u32,
+}

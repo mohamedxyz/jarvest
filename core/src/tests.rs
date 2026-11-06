@@ -4664,3 +4664,47 @@ fn quick_add_saves_the_start_time_and_length() {
     let task = core.get_task(id, DAY.into()).unwrap();
     assert_eq!((task.due_time, task.duration), (Some(15 * 60), Some(45)));
 }
+
+// ---- Focus timer ----
+
+#[test]
+fn focus_sessions_add_up_per_item_and_per_day() {
+    let (core, _dir) = core();
+    let task = add_task(&core, new_task("Essay"));
+    core.record_focus(FocusKind::Task, task.clone(), "Essay".into(), DAY.into(), 9 * 60, 25).unwrap();
+    core.record_focus(FocusKind::Task, task.clone(), "Essay".into(), DAY.into(), 10 * 60, 25).unwrap();
+    core.record_focus(FocusKind::Task, task.clone(), "Essay".into(), d(1), 9 * 60, 50).unwrap();
+    assert_eq!(core.focus_total(task.clone()).unwrap(), 100);
+    let week = core.focus_by_day(DAY.into(), 3).unwrap();
+    assert_eq!(week.iter().map(|d| d.minutes).collect::<Vec<_>>(), [50, 50, 0]);
+    let sessions = core.focus_on_day(DAY.into()).unwrap();
+    assert_eq!(sessions.len(), 2);
+    assert_eq!((sessions[0].start_minutes, sessions[1].start_minutes), (540, 600));
+    core.delete_focus_session(sessions[0].id.clone()).unwrap();
+    assert_eq!(core.focus_total(task).unwrap(), 75);
+}
+
+#[test]
+fn focus_sessions_are_checked_and_never_touch_score_or_xp() {
+    let (core, _dir) = core();
+    let task = add_task(&core, new_task("Essay"));
+    assert!(core.record_focus(FocusKind::Task, task.clone(), "x".into(), DAY.into(), 60, 0).is_err());
+    assert!(core.record_focus(FocusKind::Task, task.clone(), "x".into(), DAY.into(), 60, 601).is_err());
+    assert!(core.record_focus(FocusKind::Task, "missing".into(), "x".into(), DAY.into(), 60, 25).is_err());
+    assert!(core.record_focus(FocusKind::Task, task.clone(), "x".into(), "2026-02-30".into(), 60, 25).is_err());
+    let before = core.day_score(DAY.into()).unwrap();
+    core.record_focus(FocusKind::Task, task, "Essay".into(), DAY.into(), 60, 25).unwrap();
+    assert_eq!(core.day_score(DAY.into()).unwrap(), before);
+    core.progress_tick(DAY.into()).unwrap();
+    assert_eq!(core.hero().unwrap().xp, 0);
+}
+
+#[test]
+fn a_focus_session_keeps_its_title_after_the_task_is_deleted() {
+    let (core, _dir) = core();
+    let task = add_task(&core, new_task("Essay"));
+    core.record_focus(FocusKind::Task, task.clone(), "Essay".into(), DAY.into(), 60, 25).unwrap();
+    core.delete_task(task.clone(), DAY.into()).unwrap();
+    core.delete_task_forever(task).unwrap();
+    assert_eq!(core.focus_on_day(DAY.into()).unwrap()[0].title, "Essay");
+}

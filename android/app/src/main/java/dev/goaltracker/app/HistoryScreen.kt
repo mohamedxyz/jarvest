@@ -90,6 +90,39 @@ fun HistoryScreen(controller: AppController) {
             }
         }
 
+        val week = remember(controller.version, controller.today) {
+            controller.read(emptyList()) { focusByDay(LocalDate.parse(controller.today).minusDays(6).toString(), 7u) }
+        }
+        if (week.any { it.minutes > 0u }) {
+            SoftCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Focus, last 7 days · ${week.sumOf { it.minutes.toInt() }} min", style = MaterialTheme.typography.titleMedium)
+                    val most = week.maxOf { it.minutes.toInt() }.coerceAtLeast(1)
+                    week.forEach { day ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                LocalDate.parse(day.date).dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
+                                Modifier.size(width = 36.dp, height = 20.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            Box(
+                                Modifier.weight(1f).size(height = 8.dp, width = 8.dp).let {
+                                    it
+                                },
+                            ) {
+                                Box(
+                                    Modifier.fillMaxWidth(day.minutes.toInt().toFloat() / most).size(height = 8.dp, width = 8.dp)
+                                        .let { m -> m }
+                                        .clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.primary),
+                                )
+                            }
+                            Text("${day.minutes} min", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
+        }
+
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { monthStart = first.minusMonths(1).toString() }) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month") }
             Text(

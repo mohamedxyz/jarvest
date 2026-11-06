@@ -135,6 +135,7 @@ fun CalendarScreen(
     onEditEvent: (String) -> Unit,
     onEditTask: (String) -> Unit,
     onOpenGoal: (String) -> Unit,
+    onFocus: (String, String) -> Unit,
 ) {
     val date = controller.calendarDate
     val day = LocalDate.parse(date)
@@ -262,7 +263,7 @@ fun CalendarScreen(
     }
 
     selected?.let { block ->
-        BlockSheet(controller, block, onDismiss = { selected = null }, onEditEvent, onEditTask, onOpenGoal)
+        BlockSheet(controller, block, onDismiss = { selected = null }, onEditEvent, onEditTask, onOpenGoal, onFocus)
     }
 }
 
@@ -333,6 +334,7 @@ private fun BlockSheet(
     onEditEvent: (String) -> Unit,
     onEditTask: (String) -> Unit,
     onOpenGoal: (String) -> Unit,
+    onFocus: (String, String) -> Unit,
 ) {
     var pickingTime by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -351,6 +353,9 @@ private fun BlockSheet(
                 CalendarKind.GOAL -> OutlinedButton(onClick = { onDismiss(); onOpenGoal(block.id) }) { Text("Open goal") }
             }
             if (block.kind != CalendarKind.EVENT) {
+                OutlinedButton(onClick = { onDismiss(); onFocus(if (block.kind == CalendarKind.GOAL) "goal" else "task", block.id) }) {
+                    Text("Start a focus timer")
+                }
                 Text("Time block", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     OutlinedButton(onClick = { pickingTime = true }) {

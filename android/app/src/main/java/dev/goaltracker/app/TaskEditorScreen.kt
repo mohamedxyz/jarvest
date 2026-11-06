@@ -335,7 +335,7 @@ fun TaskEditorScreen(controller: AppController, taskId: String?, presetGoalId: S
 
 /** Details of one task with its checklist and quick actions. */
 @Composable
-fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onDismiss: () -> Unit) {
+fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onDismiss: () -> Unit, onFocus: (() -> Unit)? = null) {
     val task = remember(taskId, controller.version, controller.today) {
         controller.read(null) { getTask(taskId, controller.today) }
     }
@@ -361,6 +361,7 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
                 onDismiss()
             }) { Text(if (task.done) "Mark not done" else "Done") }
             OutlinedButton(onClick = onEdit) { Text("Edit") }
+            if (onFocus != null && !task.done) OutlinedButton(onClick = onFocus) { Text("Focus") }
         }
         if (task.milestoneId != null) {
             // A milestone's task is removed by removing the milestone, so the two never disagree.

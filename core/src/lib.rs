@@ -9,6 +9,7 @@ mod calendar;
 mod dates;
 mod db;
 mod export;
+mod focus;
 mod goals;
 mod model;
 mod monsters;
@@ -619,6 +620,35 @@ impl GoalCore {
 
     pub fn get_event(&self, event_id: String) -> Result<Option<CalendarEvent>, CoreError> {
         calendar::get_event(&self.conn(), &event_id)
+    }
+
+    /// Saves a finished or stopped focus timer. Focus time never earns points.
+    pub fn record_focus(
+        &self,
+        kind: FocusKind,
+        item_id: String,
+        title: String,
+        date: String,
+        start_minutes: u32,
+        minutes: u32,
+    ) -> Result<String, CoreError> {
+        focus::record(&self.conn(), kind, &item_id, &title, &date, start_minutes, minutes)
+    }
+
+    pub fn focus_total(&self, item_id: String) -> Result<u32, CoreError> {
+        focus::total_for(&self.conn(), &item_id)
+    }
+
+    pub fn focus_by_day(&self, from: String, days: u32) -> Result<Vec<FocusDay>, CoreError> {
+        focus::by_day(&self.conn(), &from, days)
+    }
+
+    pub fn focus_on_day(&self, date: String) -> Result<Vec<FocusSession>, CoreError> {
+        focus::on_day(&self.conn(), &date)
+    }
+
+    pub fn delete_focus_session(&self, session_id: String) -> Result<(), CoreError> {
+        focus::delete(&self.conn(), &session_id)
     }
 
     /// Skips one day of a repeating event.

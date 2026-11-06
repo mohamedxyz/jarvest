@@ -100,7 +100,7 @@ fun priorityColor(priority: Priority): Color = when (priority) {
 }
 
 @Composable
-fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
+fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (String) -> Unit = {}) {
     // Remembered across launches, so the tab opens the way it was left.
     val filter = controller.taskFilter
     val sort = controller.taskSort
@@ -522,6 +522,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
             taskId = task.id,
             onEdit = { opened = null; onEdit(task.id) },
             onDismiss = { opened = null },
+            onFocus = { opened = null; onFocus(task.id) },
         )
     }
 }

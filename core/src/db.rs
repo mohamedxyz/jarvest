@@ -26,6 +26,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/015_calendar.sql"),
     include_str!("sql/016_calendar_events.sql"),
     include_str!("sql/017_task_templates.sql"),
+    include_str!("sql/018_focus.sql"),
 ];
 
 pub const SCHEMA_VERSION: i32 = MIGRATIONS.len() as i32;

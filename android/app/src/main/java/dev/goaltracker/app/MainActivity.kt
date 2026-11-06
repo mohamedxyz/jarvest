@@ -286,7 +286,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                     onAddTask = { push("newtask") },
                     onOpenSettings = { push("settings") },
                 )
-                route == "tasks" -> TasksScreen(controller, onEdit = { push("edittask/$it") })
+                route == "tasks" -> TasksScreen(controller, onEdit = { push("edittask/$it") }, onFocus = { push("focus/task/$it") })
                 route == "newtask" -> TaskEditorScreen(controller, taskId = null, presetGoalId = null, onDone = pop)
                 route.startsWith("newtask/") -> TaskEditorScreen(
                     controller,
@@ -300,6 +300,14 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                 route == "habits" -> GoalsScreen(controller, habits = true, onOpenGoal = { push("goal/$it") })
                 route == "newgoal" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.YES_NO, onDone = pop)
                 route == "newhabit" -> GoalEditorScreen(controller, goalId = null, startKind = GoalKind.HABIT, onDone = pop)
+                route.startsWith("focus/") -> route.removePrefix("focus/").split("/").let { parts ->
+                    FocusScreen(
+                        controller,
+                        if (parts.getOrNull(0) == "goal") dev.goaltracker.core.FocusKind.GOAL else dev.goaltracker.core.FocusKind.TASK,
+                        parts.getOrNull(1) ?: "",
+                        onDone = pop,
+                    )
+                }
                 route == "history" -> HistoryScreen(controller)
                 route == "more" -> MoreScreen(onOpen = { push(it) })
                 route == "calendar" -> CalendarScreen(
@@ -307,6 +315,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                     onEditEvent = { push("event/$it") },
                     onEditTask = { push("edittask/$it") },
                     onOpenGoal = { push("goal/$it") },
+                    onFocus = { kind, id -> push("focus/$kind/$id") },
                 )
                 route == "newevent" -> EventEditorScreen(controller, eventId = null, onDone = pop)
                 route.startsWith("event/") -> EventEditorScreen(controller, eventId = route.removePrefix("event/"), onDone = pop)
@@ -341,6 +350,7 @@ private fun titleFor(route: String): String = when {
     route == "settings" -> "Settings"
     route == "stats" -> "Stats"
     route == "history" -> "History"
+    route.startsWith("focus/") -> "Focus"
     route == "treats" -> "Rewards"
     route == "newevent" -> "New event"
     route.startsWith("event/") -> "Edit event"

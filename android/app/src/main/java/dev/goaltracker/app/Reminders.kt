@@ -134,7 +134,7 @@ object Reminders {
         )
     }
 
-    private fun cancel(context: Context, key: String) {
+    internal fun cancel(context: Context, key: String) {
         val alarms = context.getSystemService(AlarmManager::class.java)
         alarms.cancel(pendingIntent(context, key))
     }
@@ -154,7 +154,7 @@ object Reminders {
     }
 
     /** Sets one alarm for an exact moment. Used for event reminders. */
-    private fun scheduleAt(context: Context, key: String, millis: Long) {
+    internal fun scheduleAt(context: Context, key: String, millis: Long) {
         val alarms = context.getSystemService(AlarmManager::class.java)
         if (canScheduleExact(context)) {
             alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent(context, key))
@@ -215,6 +215,7 @@ object Reminders {
     fun fire(context: Context, key: String) {
         if (key == KEY_STALE) return fireStaleBackup(context)
         if (key.startsWith(EVENT_PREFIX)) return fireEvent(context, key)
+        if (key == FocusTimer.ALARM_KEY) return FocusTimer.onAlarm(context)
         val app = context.applicationContext as GoalTrackerApp
         try {
             val goalId = key.takeIf { it != KEY_DAILY && it != KEY_EVENING }
@@ -262,7 +263,7 @@ object Reminders {
         return "Test notification sent."
     }
 
-    private fun notify(context: Context, key: String, text: String) {
+    internal fun notify(context: Context, key: String, text: String) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_DEFAULT),
