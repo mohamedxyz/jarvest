@@ -4252,6 +4252,8 @@ fn event(title: &str, date: &str, start: u32, minutes: u32) -> NewEvent {
         minutes,
         repeat: EventRepeat::None,
         weekdays: None,
+        until_date: None,
+        remind_minutes: None,
     }
 }
 
@@ -4480,4 +4482,55 @@ fn emptying_the_task_trash_removes_only_trashed_tasks_even_with_repeats() {
     assert_eq!(core.empty_task_trash().unwrap(), 2);
     assert!(core.get_task(kept, DAY.into()).is_ok());
     assert_eq!(core.empty_task_trash().unwrap(), 0);
+}
+
+#[test]
+fn a_repeating_event_can_end_and_skip_a_day() {
+    let (core, _dir) = core();
+    let mut stand_up = event("Stand-up", DAY, 600, 15);
+    stand_up.repeat = EventRepeat::Daily;
+    stand_up.until_date = Some(d(2));
+    let id = core.create_event(stand_up).unwrap();
+    let count = |date: String| core.calendar_day(date).unwrap().len();
+    assert_eq!((count(DAY.into()), count(d(1)), count(d(2)), count(d(3))), (1, 1, 1, 0));
+    core.skip_event_day(id.clone(), d(1)).unwrap();
+    assert_eq!((count(DAY.into()), count(d(1)), count(d(2))), (1, 0, 1));
+    // Skipping twice is harmless, and a one-off event has nothing to skip.
+    core.skip_event_day(id, d(1)).unwrap();
+    let once = core.create_event(event("Once", DAY, 60, 30)).unwrap();
+    assert!(core.skip_event_day(once, DAY.into()).is_err());
+}
+
+#[test]
+fn event_end_dates_are_checked() {
+    let (core, _dir) = core();
+    let mut bad = event("x", DAY, 60, 30);
+    bad.until_date = Some(DAY.into());
+    // A one-off event has nothing to end.
+    assert!(core.create_event(bad.clone()).is_err());
+    bad.repeat = EventRepeat::Daily;
+    bad.until_date = Some("2026-11-01".into());
+    assert!(core.create_event(bad).is_err());
+}
+
+#[test]
+fn event_reminders_list_the_coming_days_with_a_reminder() {
+    let (core, _dir) = core();
+    let mut daily = event("Meds", DAY, 8 * 60, 5);
+    daily.repeat = EventRepeat::Daily;
+    daily.remind_minutes = Some(10);
+    core.create_event(daily).unwrap();
+    core.create_event(event("No reminder", DAY, 9 * 60, 30)).unwrap();
+    let list = core.event_reminders(DAY.into(), 3).unwrap();
+    assert_eq!(list.len(), 3);
+    assert_eq!((list[0].date.as_str(), list[0].start_minutes, list[0].remind_minutes), (DAY, 480, 10));
+    assert_eq!(list[2].date, d(2));
+}
+
+#[test]
+fn the_month_overview_counts_blocks_per_day() {
+    let (core, _dir) = core();
+    core.create_event(event("One", &d(1), 60, 30)).unwrap();
+    let marks = core.calendar_month(DAY.into(), 3).unwrap();
+    assert_eq!(marks.iter().map(|m| m.count).collect::<Vec<_>>(), [0, 1, 0]);
 }

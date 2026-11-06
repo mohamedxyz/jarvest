@@ -24,6 +24,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/013_monsters.sql"),
     include_str!("sql/014_progress.sql"),
     include_str!("sql/015_calendar.sql"),
+    include_str!("sql/016_calendar_events.sql"),
 ];
 
 pub const SCHEMA_VERSION: i32 = MIGRATIONS.len() as i32;

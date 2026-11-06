@@ -46,6 +46,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -140,6 +144,7 @@ fun CalendarScreen(
         (0..6).map { i -> controller.read(0) { calendarDay(weekStart.plusDays(i.toLong()).toString()).size } }
     }
     var selected by remember { mutableStateOf<CalendarBlock?>(null) }
+    var showMonth by rememberSaveable { mutableStateOf(false) }
     val anytime = blocks.filter { it.startMinutes == null }
     val placed = remember(blocks) { place(blocks) }
 
@@ -156,7 +161,12 @@ fun CalendarScreen(
             IconButton(onClick = { controller.calendarDate = day.plusWeeks(1).toString() }) {
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next week")
             }
+            TextButton(onClick = { showMonth = !showMonth }) { Text(if (showMonth) "Week" else "Month") }
             TextButton(onClick = { controller.calendarDate = controller.today }) { Text("Today") }
+        }
+        if (showMonth) MonthOverview(controller, day) { picked ->
+            controller.calendarDate = picked
+            showMonth = false
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             (0..6).forEach { i ->
@@ -235,6 +245,7 @@ fun CalendarScreen(
                                 .offset(x = laneWidth * p.lane, y = HOUR_HEIGHT * (start / 60f) + 8.dp)
                                 .width(laneWidth - 2.dp)
                                 .height(maxOf(HOUR_HEIGHT * (p.block.minutes.toInt() / 60f), 28.dp) - 2.dp),
+                            onMove = { delta -> moveBlock(controller, p.block, delta) },
                         ) { selected = p.block }
                     }
                     if (date == controller.today) {
@@ -270,10 +281,30 @@ private fun BlockChip(block: CalendarBlock, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TimedBlock(block: CalendarBlock, modifier: Modifier, onClick: () -> Unit) {
+private fun TimedBlock(block: CalendarBlock, modifier: Modifier, onMove: (Int) -> Unit, onClick: () -> Unit) {
+    // Press and hold, then drag up or down to move the block. It snaps to 15 minutes.
+    var dragPx by remember { mutableStateOf(0f) }
+    val hourPx = with(LocalDensity.current) { HOUR_HEIGHT.toPx() }
     Surface(
         onClick = onClick,
-        modifier = modifier.label("${kindName(block.kind)} ${block.title}, ${timeText(block)}"),
+        modifier = modifier
+            .offset { IntOffset(0, dragPx.roundToInt()) }
+            .pointerInput(block.id, block.startMinutes) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {},
+                    onDrag = { change, amount ->
+                        change.consume()
+                        dragPx += amount.y
+                    },
+                    onDragEnd = {
+                        val delta = (dragPx / hourPx * 4f).roundToInt() * 15
+                        dragPx = 0f
+                        if (delta != 0) onMove(delta)
+                    },
+                    onDragCancel = { dragPx = 0f },
+                )
+            }
+            .label("${kindName(block.kind)} ${block.title}, ${timeText(block)}. Press and hold, then drag to move."),
         shape = RoundedCornerShape(10.dp),
         color = blockColor(block.kind).copy(alpha = if (block.done) 0.6f else 1f),
     ) {
@@ -355,6 +386,23 @@ private fun BlockSheet(
     }
 }
 
+/** Moves a block by [delta] minutes (a multiple of 15) and keeps it inside the day. */
+private fun moveBlock(controller: AppController, block: CalendarBlock, delta: Int) {
+    val start = block.startMinutes?.toInt() ?: return
+    val minutes = block.minutes.toInt()
+    val moved = (start + delta).coerceIn(0, 24 * 60 - minutes)
+    if (moved == start) return
+    when (block.kind) {
+        CalendarKind.EVENT -> {
+            val e = controller.read(null) { getEvent(block.id) } ?: return
+            controller.act {
+                updateEvent(e.id, NewEvent(e.title, e.date, moved.toUInt(), e.minutes, e.repeat, e.weekdays, e.untilDate, e.remindMinutes))
+            }
+        }
+        else -> applyBlock(controller, block, moved, minutes)
+    }
+}
+
 private fun applyBlock(controller: AppController, block: CalendarBlock, start: Int?, minutes: Int?) {
     controller.act {
         when (block.kind) {
@@ -380,9 +428,13 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
     var mask by rememberSaveable {
         mutableStateOf(existing?.weekdays?.toInt() ?: (1 shl (LocalDate.parse(date).dayOfWeek.value - 1)))
     }
+    var until by rememberSaveable { mutableStateOf(existing?.untilDate) }
+    var remind by rememberSaveable { mutableStateOf(existing?.remindMinutes?.toInt()) }
     var pickingDate by remember { mutableStateOf(false) }
+    var pickingUntil by remember { mutableStateOf(false) }
     var pickingTime by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmSkip by remember { mutableStateOf(false) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -416,6 +468,23 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
                 }
             }
         }
+        if (repeat != "NONE") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedButton(onClick = { pickingUntil = true }) {
+                    Text(until?.let { "Ends ${formatDate(it)}" } ?: "Repeats forever")
+                }
+                if (until != null) TextButton(onClick = { until = null }) { Text("Clear") }
+            }
+        }
+        Text("Remind me", style = MaterialTheme.typography.labelLarge)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf<Int?>(null, 0, 5, 10, 30, 60).forEach { m ->
+                FilterChip(
+                    remind == m, { remind = m },
+                    label = { Text(when (m) { null -> "No reminder"; 0 -> "At the start"; 60 -> "1 h before"; else -> "$m min before" }) },
+                )
+            }
+        }
         Text(
             "Events are only for planning your time. They never change your score, XP, streaks or treats.",
             style = MaterialTheme.typography.bodySmall,
@@ -427,6 +496,8 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
                 val event = NewEvent(
                     title, date, start.toUInt(), minutes.toUInt(), EventRepeat.valueOf(repeat),
                     if (repeat == "WEEKLY") mask.toUByte() else null,
+                    if (repeat == "NONE") null else until,
+                    remind?.toUInt(),
                 )
                 val ok = if (eventId == null) controller.act { createEvent(event) } else controller.act { updateEvent(eventId, event) }
                 if (ok) {
@@ -435,6 +506,9 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
                 }
             },
         ) { Text(if (eventId == null) "Add event" else "Save changes") }
+        if (eventId != null && repeat != "NONE") {
+            TextButton(onClick = { confirmSkip = true }) { Text("Skip ${formatDate(controller.calendarDate)} only") }
+        }
         if (eventId != null) {
             TextButton(onClick = { confirmDelete = true }) { Text("Delete event", color = MaterialTheme.colorScheme.error) }
         }
@@ -442,6 +516,18 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
 
     if (pickingDate) {
         DayPickerDialog("2000-01-01", "2100-12-31", onPick = { date = it; pickingDate = false }, onDismiss = { pickingDate = false })
+    }
+    if (pickingUntil) {
+        DayPickerDialog(date, "2100-12-31", onPick = { until = it; pickingUntil = false }, onDismiss = { pickingUntil = false })
+    }
+    if (confirmSkip && eventId != null) {
+        ConfirmDialog(
+            title = "Skip this day?",
+            body = "\"$title\" will not happen on ${formatDate(controller.calendarDate)}. Other days stay.",
+            confirm = "Skip this day",
+            onConfirm = { confirmSkip = false; if (controller.act { skipEventDay(eventId, controller.calendarDate) }) onDone() },
+            onDismiss = { confirmSkip = false },
+        )
     }
     if (pickingTime) {
         TimePickerDialog(start, onPick = { start = it; pickingTime = false }, onDismiss = { pickingTime = false })
@@ -454,5 +540,46 @@ fun EventEditorScreen(controller: AppController, eventId: String?, onDone: () ->
             onConfirm = { confirmDelete = false; if (controller.act { deleteEvent(eventId) }) onDone() },
             onDismiss = { confirmDelete = false },
         )
+    }
+}
+
+/** A month grid. A dot marks a day with something planned. Tap a day to open it. */
+@Composable
+private fun MonthOverview(controller: AppController, day: LocalDate, onPick: (String) -> Unit) {
+    val first = day.withDayOfMonth(1)
+    val lead = first.dayOfWeek.value - 1
+    val gridStart = first.minusDays(lead.toLong())
+    val marks = remember(controller.version, first) {
+        controller.read(emptyList()) { calendarMonth(gridStart.toString(), 42u) }
+    }.associate { it.date to it.count.toInt() }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        (0 until 6).forEach { row ->
+            Row(Modifier.fillMaxWidth()) {
+                (0 until 7).forEach { col ->
+                    val d = gridStart.plusDays((row * 7 + col).toLong())
+                    val inMonth = d.month == first.month
+                    val isSelected = d == day
+                    Column(
+                        Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent)
+                            .clickable { onPick(d.toString()) }
+                            .padding(vertical = 6.dp)
+                            .label("${d.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${d.dayOfMonth}, ${marks[d.toString()] ?: 0} planned"),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        val color = when {
+                            isSelected -> MaterialTheme.colorScheme.onPrimary
+                            inMonth -> MaterialTheme.colorScheme.onSurface
+                            else -> MaterialTheme.colorScheme.outline
+                        }
+                        Text("${d.dayOfMonth}", style = MaterialTheme.typography.bodyMedium, color = color)
+                        Box(
+                            Modifier.padding(top = 2.dp).size(5.dp).clip(CircleShape)
+                                .background(if ((marks[d.toString()] ?: 0) > 0) color else androidx.compose.ui.graphics.Color.Transparent),
+                        )
+                    }
+                }
+            }
+        }
     }
 }

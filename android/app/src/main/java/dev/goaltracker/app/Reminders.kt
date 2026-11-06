@@ -42,6 +42,7 @@ object Reminders {
     private const val PREFS = "reminders"
     private const val SCHEDULED = "scheduled"
     private const val KEY_STALE = "stale_backup"
+    private const val EVENT_PREFIX = "event~"
     private const val STALE_DAYS = 7L
 
     fun formatMinutes(minutes: Int): String =
@@ -65,6 +66,18 @@ object Reminders {
             app.core.listReminders().forEach {
                 schedule(context, it.goalId, it.minutes.toInt())
                 keys += it.goalId
+            }
+            // Event reminders are one-off alarms for the next two days. They are rebuilt on every
+            // change and every app start, and when the phone starts.
+            val now = System.currentTimeMillis()
+            app.core.eventReminders(todayString(), 3u).forEach { r ->
+                val at = LocalDate.parse(r.date).atTime(0, 0).plusMinutes(r.startMinutes.toLong() - r.remindMinutes.toLong())
+                    .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                if (at > now) {
+                    val key = "$EVENT_PREFIX${r.eventId}~${r.date}"
+                    scheduleAt(context, key, at)
+                    keys += key
+                }
             }
         } catch (_: CoreException) {
             // Alarms are rebuilt on the next change or app start.
@@ -140,6 +153,32 @@ object Reminders {
         }
     }
 
+    /** Sets one alarm for an exact moment. Used for event reminders. */
+    private fun scheduleAt(context: Context, key: String, millis: Long) {
+        val alarms = context.getSystemService(AlarmManager::class.java)
+        if (canScheduleExact(context)) {
+            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent(context, key))
+        } else {
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, millis, pendingIntent(context, key))
+        }
+    }
+
+    /** Called by an event alarm. Checks the event still exists and still wants this reminder. */
+    private fun fireEvent(context: Context, key: String) {
+        val app = context.applicationContext as GoalTrackerApp
+        val (eventId, date) = key.removePrefix(EVENT_PREFIX).split("~").let { it.getOrNull(0) to it.getOrNull(1) }
+        if (eventId == null || date == null) return
+        try {
+            val reminder = app.core.eventReminders(date, 1u).firstOrNull { it.eventId == eventId } ?: return
+            val minutes = reminder.remindMinutes.toInt()
+            val text = if (minutes == 0) "${reminder.title} starts now"
+            else "${reminder.title} starts at ${formatMinutes(reminder.startMinutes.toInt())}"
+            if (canNotify(context)) notify(context, key, text)
+        } catch (_: CoreException) {
+            // Nothing to show.
+        }
+    }
+
     fun canScheduleExact(context: Context): Boolean =
         Build.VERSION.SDK_INT < 31 || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
 
@@ -175,6 +214,7 @@ object Reminders {
     /** Called by the alarm. Posts a notification if something is due, then sets tomorrow's alarm. */
     fun fire(context: Context, key: String) {
         if (key == KEY_STALE) return fireStaleBackup(context)
+        if (key.startsWith(EVENT_PREFIX)) return fireEvent(context, key)
         val app = context.applicationContext as GoalTrackerApp
         try {
             val goalId = key.takeIf { it != KEY_DAILY && it != KEY_EVENING }

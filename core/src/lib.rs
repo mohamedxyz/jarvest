@@ -577,6 +577,21 @@ impl GoalCore {
         calendar::get_event(&self.conn(), &event_id)
     }
 
+    /// Skips one day of a repeating event.
+    pub fn skip_event_day(&self, event_id: String, date: String) -> Result<(), CoreError> {
+        calendar::skip_event_day(&self.conn(), &event_id, &date)
+    }
+
+    /// Event reminders coming up from `from` for a few days (at most 14), for the app to set alarms.
+    pub fn event_reminders(&self, from: String, days: u32) -> Result<Vec<EventReminder>, CoreError> {
+        calendar::event_reminders(&self.conn(), &from, days)
+    }
+
+    /// How many blocks are planned on each day from `first` for `days` days (at most 42).
+    pub fn calendar_month(&self, first: String, days: u32) -> Result<Vec<DayMark>, CoreError> {
+        calendar::month_marks(&self.conn(), &first, days)
+    }
+
     /// Sets or clears a task's start time and length (minutes). A start time needs a due day.
     pub fn set_task_time(
         &self,

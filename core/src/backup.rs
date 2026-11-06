@@ -237,6 +237,21 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // Event end dates and skipped days arrived in schema version 16.
+    if version >= 16 {
+        let bad_event_dates: i64 = conn
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM events
+                         WHERE until_date IS NOT NULL AND date(until_date) IS NOT until_date)
+                      + (SELECT COUNT(*) FROM event_skips WHERE date(skip_date) IS NOT skip_date)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_event_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

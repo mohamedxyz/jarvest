@@ -763,6 +763,10 @@ pub struct NewEvent {
     pub repeat: EventRepeat,
     /// For a weekly event: weekdays (Monday = 1 up to Sunday = 64). Nothing means the date's weekday.
     pub weekdays: Option<u8>,
+    /// The last day a repeating event happens. Nothing means it goes on forever.
+    pub until_date: Option<String>,
+    /// Remind this many minutes before the start. Nothing means no reminder.
+    pub remind_minutes: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -774,6 +778,25 @@ pub struct CalendarEvent {
     pub minutes: u32,
     pub repeat: EventRepeat,
     pub weekdays: Option<u8>,
+    pub until_date: Option<String>,
+    pub remind_minutes: Option<u32>,
+}
+
+/// One coming reminder for an event, so the app can set an alarm for it.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct EventReminder {
+    pub event_id: String,
+    pub title: String,
+    pub date: String,
+    pub start_minutes: u32,
+    pub remind_minutes: u32,
+}
+
+/// How much is planned on one day, for the month overview.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DayMark {
+    pub date: String,
+    pub count: u32,
 }
 
 /// A goal's or habit's time block.

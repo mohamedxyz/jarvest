@@ -45,6 +45,17 @@ fn check_event(event: &NewEvent) -> Result<(String, Option<u8>), CoreError> {
     let title = clean_title(&event.title)?;
     parse_date(&event.date)?;
     check_times(event.start_minutes, event.minutes)?;
+    if let Some(until) = &event.until_date {
+        if parse_date(until)? < parse_date(&event.date)? {
+            return Err(invalid("The end date can't be before the start date"));
+        }
+        if event.repeat == EventRepeat::None {
+            return Err(invalid("Only a repeating event can have an end date"));
+        }
+    }
+    if event.remind_minutes.is_some_and(|m| m > DAY_MINUTES) {
+        return Err(invalid("A reminder can be at most a day before"));
+    }
     let mask = match (event.repeat, event.weekdays) {
         (EventRepeat::Weekly, Some(0)) => {
             return Err(invalid("Pick at least one weekday"));
@@ -63,8 +74,8 @@ pub fn create_event(conn: &Connection, event: &NewEvent) -> Result<String, CoreE
     let (title, mask) = check_event(event)?;
     let id = new_id();
     conn.execute(
-        "INSERT INTO events (id, title, start_date, start_minutes, minutes, repeat, weekdays)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO events (id, title, start_date, start_minutes, minutes, repeat, weekdays, until_date, remind_minutes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             id,
             title,
@@ -72,7 +83,9 @@ pub fn create_event(conn: &Connection, event: &NewEvent) -> Result<String, CoreE
             event.start_minutes,
             event.minutes,
             repeat_sql(event.repeat),
-            mask
+            mask,
+            event.until_date,
+            event.remind_minutes
         ],
     )?;
     Ok(id)
@@ -82,7 +95,7 @@ pub fn update_event(conn: &Connection, id: &str, event: &NewEvent) -> Result<(),
     let (title, mask) = check_event(event)?;
     let changed = conn.execute(
         "UPDATE events SET title = ?2, start_date = ?3, start_minutes = ?4, minutes = ?5,
-                           repeat = ?6, weekdays = ?7
+                           repeat = ?6, weekdays = ?7, until_date = ?8, remind_minutes = ?9
          WHERE id = ?1",
         params![
             id,
@@ -91,7 +104,9 @@ pub fn update_event(conn: &Connection, id: &str, event: &NewEvent) -> Result<(),
             event.start_minutes,
             event.minutes,
             repeat_sql(event.repeat),
-            mask
+            mask,
+            event.until_date,
+            event.remind_minutes
         ],
     )?;
     if changed == 0 {
@@ -108,7 +123,8 @@ pub fn delete_event(conn: &Connection, id: &str) -> Result<(), CoreError> {
 pub fn get_event(conn: &Connection, id: &str) -> Result<Option<CalendarEvent>, CoreError> {
     Ok(conn
         .query_row(
-            "SELECT id, title, start_date, start_minutes, minutes, repeat, weekdays FROM events WHERE id = ?1",
+            "SELECT id, title, start_date, start_minutes, minutes, repeat, weekdays, until_date, remind_minutes
+             FROM events WHERE id = ?1",
             [id],
             |r| {
                 Ok(CalendarEvent {
@@ -119,6 +135,8 @@ pub fn get_event(conn: &Connection, id: &str) -> Result<Option<CalendarEvent>, C
                     minutes: r.get(4)?,
                     repeat: repeat_from(&r.get::<_, String>(5)?),
                     weekdays: r.get(6)?,
+                    until_date: r.get(7)?,
+                    remind_minutes: r.get(8)?,
                 })
             },
         )
@@ -196,50 +214,118 @@ pub fn goal_block(conn: &Connection, goal_id: &str) -> Result<GoalBlock, CoreErr
     })
 }
 
+/// Events that happen on `day`: the start day, or a repeat that is not ended or skipped.
+fn events_on(conn: &Connection, day: chrono::NaiveDate) -> Result<Vec<CalendarEvent>, CoreError> {
+    let date = day.to_string();
+    let mut stmt = conn.prepare(
+        "SELECT id, title, start_date, start_minutes, minutes, repeat, weekdays, until_date, remind_minutes
+         FROM events
+         WHERE start_date <= ?1 AND (until_date IS NULL OR until_date >= ?1)
+           AND NOT EXISTS (SELECT 1 FROM event_skips k WHERE k.event_id = events.id AND k.skip_date = ?1)
+         ORDER BY start_minutes, rowid",
+    )?;
+    let rows = stmt.query_map([&date], |r| {
+        Ok(CalendarEvent {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            date: r.get(2)?,
+            start_minutes: r.get(3)?,
+            minutes: r.get(4)?,
+            repeat: repeat_from(&r.get::<_, String>(5)?),
+            weekdays: r.get(6)?,
+            until_date: r.get(7)?,
+            remind_minutes: r.get(8)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let e = row?;
+        let occurs = match e.repeat {
+            EventRepeat::Daily => true,
+            EventRepeat::Weekly => match e.weekdays {
+                Some(mask) => is_scheduled(Some(mask), day),
+                // The weekday the event started on.
+                None => parse_date(&e.date)?.weekday() == day.weekday(),
+            },
+            EventRepeat::None => e.date == date,
+        };
+        if occurs {
+            out.push(e);
+        }
+    }
+    Ok(out)
+}
+
+/// Skips one day of a repeating event ("delete only this one").
+pub fn skip_event_day(conn: &Connection, id: &str, date: &str) -> Result<(), CoreError> {
+    parse_date(date)?;
+    let repeat: Option<String> = conn
+        .query_row("SELECT repeat FROM events WHERE id = ?1", [id], |r| r.get(0))
+        .optional()?;
+    match repeat.as_deref() {
+        None => Err(invalid("That event no longer exists")),
+        Some("none") => Err(invalid("Only a repeating event has days to skip")),
+        Some(_) => {
+            conn.execute(
+                "INSERT OR IGNORE INTO event_skips (event_id, skip_date) VALUES (?1, ?2)",
+                params![id, date],
+            )?;
+            Ok(())
+        }
+    }
+}
+
+/// Every reminder due on the days from `from` for `days` days, soonest first. The app sets one alarm per row.
+pub fn event_reminders(conn: &Connection, from: &str, days: u32) -> Result<Vec<EventReminder>, CoreError> {
+    let start = parse_date(from)?;
+    let mut out = Vec::new();
+    for offset in 0..days.min(14) {
+        let day = start + chrono::Days::new(u64::from(offset));
+        for e in events_on(conn, day)? {
+            if let Some(remind) = e.remind_minutes {
+                out.push(EventReminder {
+                    event_id: e.id,
+                    title: e.title,
+                    date: day.to_string(),
+                    start_minutes: e.start_minutes,
+                    remind_minutes: remind,
+                });
+            }
+        }
+    }
+    out.sort_by_key(|r| (r.date.clone(), r.start_minutes.saturating_sub(r.remind_minutes)));
+    Ok(out)
+}
+
+/// How many blocks are planned on each day from `first` for `days` days, for the month overview.
+pub fn month_marks(conn: &Connection, first: &str, days: u32) -> Result<Vec<DayMark>, CoreError> {
+    let start = parse_date(first)?;
+    let mut out = Vec::new();
+    for offset in 0..days.min(42) {
+        let date = (start + chrono::Days::new(u64::from(offset))).to_string();
+        let count = day(conn, &date)?.len() as u32;
+        out.push(DayMark { date, count });
+    }
+    Ok(out)
+}
+
 /// Everything planned on `date`: events, tasks due that day, and goals planned that day.
 /// Timed blocks come first in time order, then the "anytime" ones in the order they were made.
 pub fn day(conn: &Connection, date: &str) -> Result<Vec<CalendarBlock>, CoreError> {
     let day = parse_date(date)?;
     let mut blocks = Vec::new();
 
-    let mut stmt = conn.prepare(
-        "SELECT id, title, start_date, start_minutes, minutes, repeat, weekdays FROM events
-         WHERE start_date <= ?1 ORDER BY start_minutes, rowid",
-    )?;
-    let rows = stmt.query_map([date], |r| {
-        Ok((
-            r.get::<_, String>(0)?,
-            r.get::<_, String>(1)?,
-            r.get::<_, String>(2)?,
-            r.get::<_, u32>(3)?,
-            r.get::<_, u32>(4)?,
-            r.get::<_, String>(5)?,
-            r.get::<_, Option<u8>>(6)?,
-        ))
-    })?;
-    for row in rows {
-        let (id, title, start_date, start, minutes, repeat, weekdays) = row?;
-        let occurs = match repeat.as_str() {
-            "daily" => true,
-            "weekly" => match weekdays {
-                Some(mask) => is_scheduled(Some(mask), day),
-                // The weekday the event started on.
-                None => parse_date(&start_date)?.weekday() == day.weekday(),
-            },
-            _ => start_date == date,
-        };
-        if occurs {
-            blocks.push(CalendarBlock {
-                kind: CalendarKind::Event,
-                id,
-                title,
-                start_minutes: Some(start),
-                minutes,
-                done: false,
-                icon: None,
-                repeating: repeat != "none",
-            });
-        }
+    for e in events_on(conn, day)? {
+        blocks.push(CalendarBlock {
+            kind: CalendarKind::Event,
+            id: e.id,
+            title: e.title,
+            start_minutes: Some(e.start_minutes),
+            minutes: e.minutes,
+            done: false,
+            icon: None,
+            repeating: e.repeat != EventRepeat::None,
+        });
     }
 
     let mut stmt = conn.prepare(
