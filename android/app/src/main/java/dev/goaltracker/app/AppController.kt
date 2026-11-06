@@ -271,6 +271,11 @@ class AppController(private val app: GoalTrackerApp) {
         enumValues<E>().firstOrNull { it.name == prefs.getString(key, null) } ?: default
 
     /** Counts typed in on numeric goals but not submitted yet, by goal ID. */
+    /** Text shared from another app, waiting to fill the quick-add box on the Tasks tab. */
+    var pendingQuickAdd: String? = null
+
+    fun takePendingQuickAdd(): String? = pendingQuickAdd.also { pendingQuickAdd = null }
+
     val counters = mutableStateMapOf<String, Int>()
 
     /** Logs a goal's counter as one entry, then resets it. Returns whether it worked. */

@@ -21,6 +21,8 @@ fun MoreScreen(onOpen: (String) -> Unit) {
     ) {
         listOf(
             Triple("history", "🗓️ History", "Every day colored by its level, your streaks and best day."),
+            Triple("routines", "🔁 Routines", "Goals you do together, such as a morning routine."),
+            Triple("holiday", "🏖️ Holiday mode", "Pause every goal for a few days without losing your streaks."),
             Triple("stats", "📊 Stats", "Streaks, trends, the heatmap and your weekly recap."),
             Triple("treats", "🎁 Rewards", "Your treat jar, treats you've won, badges and monsters."),
             Triple("settings", "⚙️ Settings", "Look, sounds, reminders, backups and more."),

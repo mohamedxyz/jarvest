@@ -94,7 +94,7 @@ private val tabs = listOf(
 )
 
 /** Screens opened from the More tab. They still show the bottom bar, with More selected. */
-private val moreRoutes = setOf("more", "stats", "treats", "history")
+private val moreRoutes = setOf("more", "stats", "treats", "history", "routines", "holiday")
 
 class MainActivity : ComponentActivity() {
     private val controller get() = (application as GoalTrackerApp).controller
@@ -102,12 +102,27 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Text shared from another app only fills the quick-add box. Nothing is saved until it is confirmed.
+        // It is read once, so turning the phone does not fill the box again.
+        val shared = if (savedInstanceState == null) sharedTextFrom(intent) else null
+        if (shared != null) controller.pendingQuickAdd = shared
         setContent {
             GoalTrackerTheme(controller.themeMode, controller.accent) {
                 // The quick-add widget opens the app straight on the new task screen.
-                AppEntry(controller, startOnNewTask = (intent?.action == ACTION_QUICK_ADD || intent?.getBooleanExtra(EXTRA_QUICK_ADD, false) == true))
+                AppEntry(
+                    controller,
+                    startOnNewTask = (intent?.action == ACTION_QUICK_ADD || intent?.getBooleanExtra(EXTRA_QUICK_ADD, false) == true),
+                    startOnTasks = shared != null,
+                )
             }
         }
+    }
+
+    /** Shared text is untrusted: one line, at most 500 characters, or nothing. */
+    private fun sharedTextFrom(intent: android.content.Intent?): String? {
+        if (intent?.action != android.content.Intent.ACTION_SEND || intent.type?.startsWith("text/") != true) return null
+        return intent.getStringExtra(android.content.Intent.EXTRA_TEXT)
+            ?.replace(Regex("\\s+"), " ")?.trim()?.take(500)?.takeIf { it.isNotEmpty() }
     }
 
     companion object {
@@ -124,10 +139,16 @@ class MainActivity : ComponentActivity() {
 /** Routes are strings so the back stack survives rotation: `goal/<id>`, `edit/<id>`, and so on. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false) {
+internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false, startOnTasks: Boolean = false) {
     val stack = rememberSaveable(
         saver = listSaver(save = { it.toList() }, restore = { it.toMutableStateList() }),
-    ) { if (startOnNewTask) mutableStateListOf("today", "newtask") else mutableStateListOf("today") }
+    ) {
+        when {
+            startOnNewTask -> mutableStateListOf("today", "newtask")
+            startOnTasks -> mutableStateListOf("today", "tasks")
+            else -> mutableStateListOf("today")
+        }
+    }
     val route = stack.last()
     // Hide the bottom bar while the keyboard is up, so it does not eat the screen.
     val imeVisible = WindowInsets.isImeVisible
@@ -292,7 +313,11 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                     onAddGoal = { push("new") },
                     onAddTask = { push("newtask") },
                     onOpenSettings = { push("settings") },
+                    onStartReview = { push("review") },
                 )
+                route == "routines" -> RoutinesScreen(controller)
+                route == "holiday" -> HolidayScreen(controller)
+                route == "review" -> WeeklyReviewScreen(controller, onDone = pop)
                 route == "tasks" -> TasksScreen(controller, onEdit = { push("edittask/$it") }, onFocus = { push("focus/task/$it") })
                 route == "newtask" -> TaskEditorScreen(controller, taskId = null, presetGoalId = null, onDone = pop)
                 route.startsWith("newtask/") -> TaskEditorScreen(
@@ -358,6 +383,9 @@ private fun titleFor(route: String): String = when {
     route == "settings" -> "Settings"
     route == "stats" -> "Stats"
     route == "history" -> "History"
+    route == "routines" -> "Routines"
+    route == "holiday" -> "Holiday mode"
+    route == "review" -> "Weekly review"
     route.startsWith("focus/") -> "Focus"
     route == "treats" -> "Rewards"
     route == "newevent" -> "New event"

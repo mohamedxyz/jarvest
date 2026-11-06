@@ -108,7 +108,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
     val filter = controller.taskFilter
     val sort = controller.taskSort
     var showTrash by rememberSaveable { mutableStateOf(false) }
-    var quick by rememberSaveable { mutableStateOf("") }
+    var quick by rememberSaveable { mutableStateOf(controller.takePendingQuickAdd() ?: "") }
     var sortMenu by remember { mutableStateOf(false) }
     var opened by remember { mutableStateOf<Task?>(null) }
     var showArchive by rememberSaveable { mutableStateOf(false) }
@@ -719,7 +719,7 @@ private fun ArchiveRow(task: Task, onUnarchive: () -> Unit) {
 }
 
 /** A bulk change that does nothing unless you switch one thing on. */
-private fun bulk(
+internal fun bulk(
     done: Boolean = false,
     archive: Boolean = false,
     trash: Boolean = false,

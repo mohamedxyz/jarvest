@@ -205,6 +205,7 @@ private fun DaySheet(controller: AppController, date: String, onDismiss: () -> U
             } else {
                 Text("${row.level.word()} · ${row.earned} of ${row.possible} points", style = MaterialTheme.typography.titleMedium, color = row.level.fill())
             }
+            DayNoteCard(controller, date)
             detail?.let {
                 if (it.goalsLogged.isNotEmpty()) {
                     Text(stringResource(R.string.ui_goals_and_habits_logged), style = MaterialTheme.typography.labelLarge)

@@ -56,7 +56,14 @@ fun DayPickerDialog(min: String, max: String, onPick: (String) -> Unit, onDismis
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RangePickerDialog(min: String, max: String, onPick: (String, String) -> Unit, onDismiss: () -> Unit) {
+fun RangePickerDialog(
+    min: String,
+    max: String,
+    onPick: (String, String) -> Unit,
+    onDismiss: () -> Unit,
+    title: String? = null,
+    confirm: String? = null,
+) {
     val state = rememberDateRangePickerState(selectableDates = remember(min, max) { between(min, max) })
     val start = state.selectedStartDateMillis
     val end = state.selectedEndDateMillis ?: start
@@ -66,14 +73,14 @@ fun RangePickerDialog(min: String, max: String, onPick: (String, String) -> Unit
             TextButton(
                 enabled = start != null && end != null,
                 onClick = { if (start != null && end != null) onPick(start.toLocalDate().toString(), end.toLocalDate().toString()) },
-            ) { Text(stringResource(R.string.ui_pause)) }
+            ) { Text(confirm ?: stringResource(R.string.ui_pause)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ui_cancel)) } },
     ) {
         DateRangePicker(
             state,
             Modifier.fillMaxWidth().padding(top = 8.dp),
-            title = { Text(stringResource(R.string.ui_pick_the_days_to_skip), Modifier.padding(start = 24.dp, top = 16.dp)) },
+            title = { Text(title ?: stringResource(R.string.ui_pick_the_days_to_skip), Modifier.padding(start = 24.dp, top = 16.dp)) },
         )
     }
 }

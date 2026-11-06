@@ -66,6 +66,23 @@ fun InsightsCard(controller: AppController) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            // Mood lines show only with enough notes, and they are never part of the text that is shared.
+            insights.averageMood?.let { avg ->
+                Text(
+                    "Mood: ${"%.1f".format(avg)} of 5 on average over ${insights.moodNotes} days",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val good = insights.moodGoodDays
+                val other = insights.moodOtherDays
+                if (good != null && other != null) {
+                    Text(
+                        "${"%.1f".format(good)} on Blaze and Titan days, ${"%.1f".format(other)} on the others",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             TextButton(onClick = {
                 val send = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"

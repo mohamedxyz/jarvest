@@ -216,7 +216,7 @@ private fun needsIntro(controller: AppController): Boolean {
 
 /** Chooses between the first-run intro and the app. */
 @Composable
-fun AppEntry(controller: AppController, startOnNewTask: Boolean = false) {
+fun AppEntry(controller: AppController, startOnNewTask: Boolean = false, startOnTasks: Boolean = false) {
     var firstRun by rememberSaveable { mutableStateOf(needsIntro(controller)) }
     if (firstRun || Feel.introRequested) {
         IntroScreen(controller, onDone = {
@@ -225,7 +225,7 @@ fun AppEntry(controller: AppController, startOnNewTask: Boolean = false) {
             firstRun = false
         })
     } else {
-        AppRoot(controller, startOnNewTask)
+        AppRoot(controller, startOnNewTask, startOnTasks)
     }
 }
 

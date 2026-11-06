@@ -1,5 +1,9 @@
 <resources>
     <string name="app_name">Jarvest</string>
+    <string name="shortcut_new_task">New task</string>
+    <string name="shortcut_new_task_long">Add a new task</string>
+    <string name="shortcut_today">Today</string>
+    <string name="shortcut_today_long">Open Today</string>
     <string name="widget_description">Tick off today\'s goals from your home screen</string>
     <string name="score_widget_description">Today\'s score, level and quest.</string>
     <string name="agenda_widget_description">Today\'s calendar.</string>

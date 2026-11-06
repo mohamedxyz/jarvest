@@ -47,6 +47,7 @@ fun TodayScreen(
     onAddGoal: () -> Unit,
     onAddTask: () -> Unit,
     onOpenSettings: () -> Unit,
+    onStartReview: () -> Unit = {},
 ) {
     val allItems = remember(controller.version, controller.today) {
         controller.read(emptyList()) { today(controller.today) }
@@ -62,6 +63,11 @@ fun TodayScreen(
     var logging by remember { mutableStateOf<TodayItem?>(null) }
     var openedGoal by remember { mutableStateOf<TodayItem?>(null) }
     var openedTask by remember { mutableStateOf<String?>(null) }
+    var openedRoutine by remember { mutableStateOf<String?>(null) }
+    // Routines with something planned today. A routine with nothing left today is not shown.
+    val routines = remember(controller.version, controller.today) {
+        controller.read(emptyList()) { listRoutines(controller.today) }.filter { it.stepsToday > 0u }
+    }
 
     if (allItems.isEmpty() && dueTasks.isEmpty()) {
         if (hasGoals) {
@@ -71,6 +77,9 @@ fun TodayScreen(
             }
             Column(Modifier.fillMaxSize()) {
                 SampleBanner(controller)
+                HolidayBanner(controller, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                ReviewCard(controller, onStartReview, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                FocusCard(controller, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 EmptyState(
                     "Nothing due today",
                     if (resting > 0) "${countOf(resting, "goal")} off today. Enjoy the break." else "Enjoy your day.",
@@ -97,10 +106,19 @@ fun TodayScreen(
         ) {
             item { TodayHero(controller) }
             item { SampleBanner(controller) }
+            item { HolidayBanner(controller) }
+            item { ReviewCard(controller, onStartReview) }
+            item { FocusCard(controller) }
             item { BackupNudgeCard(controller, onOpenSettings) }
             item { EmptyJarBanner(controller, onAddTreat = onOpenRewards) }
             item {
                 TipCard(controller, "today_cards", "Tap a card to see its details. Tick the box to log it for today.")
+            }
+            if (routines.isNotEmpty()) {
+                item { SectionTitle("Routines") }
+                items(routines, key = { "routine-${it.id}" }) { routine ->
+                    RoutineCard(routine, onOpen = { openedRoutine = routine.id })
+                }
             }
             if (dueTasks.isNotEmpty()) {
                 item { SectionTitle("Tasks due") }
@@ -149,6 +167,7 @@ fun TodayScreen(
                     }
                 }
             }
+            item { DayNoteCard(controller, controller.today) }
             items(items, key = { it.goalId }) { item ->
                 TodayCard(
                     item,
@@ -173,6 +192,7 @@ fun TodayScreen(
             onDismiss = { logging = null },
         )
     }
+    openedRoutine?.let { id -> RoutineSheet(controller, id, onDismiss = { openedRoutine = null }) }
     openedTask?.let { id ->
         TaskSheet(controller, id, onEdit = { openedTask = null; onEditTask(id) }, onDismiss = { openedTask = null })
     }
