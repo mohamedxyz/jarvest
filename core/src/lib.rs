@@ -14,6 +14,7 @@ mod quickadd;
 mod reminders;
 mod rewards;
 mod samples;
+mod score;
 mod search;
 mod stats;
 mod tasks;
@@ -458,6 +459,11 @@ impl GoalCore {
 
     pub fn set_rewards_enabled(&self, enabled: bool) -> Result<(), CoreError> {
         rewards::set_enabled(&self.conn(), enabled)
+    }
+
+    /// How today is going: points done out of points planned, and the level that gives.
+    pub fn day_score(&self, today: String) -> Result<DayScore, CoreError> {
+        score::day_score(&self.conn(), &today)
     }
 
     /// How close the next treat is, for the meter on the Treats screen.

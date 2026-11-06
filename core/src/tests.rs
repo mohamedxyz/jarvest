@@ -3431,8 +3431,12 @@ fn the_countdown_ignores_misses_from_trashed_goals() {
     let mut missed = Vec::new();
     for n in 0..3 {
         let id = yes_no(&core, &format!("Goal {n}"));
-        if tick(&core, &id, DAY).no_treat == 1 {
+        let result = tick(&core, &id, DAY);
+        if result.no_treat == 1 {
             missed.push(id);
+        } else if result.drew > 0 {
+            // A win resets the countdown, so earlier misses no longer count.
+            missed.clear();
         }
     }
     let before = core.reward_progress().unwrap().misses_since_draw;
@@ -3679,4 +3683,130 @@ fn the_evening_check_in_counts_what_is_left_and_stays_silent_when_nothing_is() {
     );
     core.set_evening_reminder(None).unwrap();
     assert_eq!(core.evening_reminder().unwrap(), None);
+}
+
+// Day score
+
+fn due_today(title: &str, priority: Priority) -> NewTask {
+    NewTask {
+        due: Some(DAY.into()),
+        priority,
+        ..new_task(title)
+    }
+}
+
+#[test]
+fn an_empty_day_has_no_level() {
+    let (core, _dir) = core();
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!((score.possible, score.earned, score.percent), (0, 0, 0));
+    assert_eq!((score.level, score.points_to_next), (DayLevel::None, 0));
+}
+
+#[test]
+fn levels_follow_the_percent_of_planned_points() {
+    let (core, _dir) = core();
+    let a = yes_no(&core, "A");
+    let b = yes_no(&core, "B");
+    let c = yes_no(&core, "C");
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!(
+        (score.level, score.possible, score.goals_total),
+        (DayLevel::None, 30, 3)
+    );
+    assert_eq!(score.points_to_next, 1);
+
+    tick(&core, &a, DAY);
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!((score.percent, score.level), (33, DayLevel::Spark));
+    // Half of 30 is 15, so one more card (10 points) gets there.
+    assert_eq!(score.points_to_next, 5);
+
+    tick(&core, &b, DAY);
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!((score.percent, score.level), (66, DayLevel::Blaze));
+    assert_eq!(score.points_to_next, 10);
+
+    tick(&core, &c, DAY);
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!(
+        (score.percent, score.level, score.points_to_next),
+        (100, DayLevel::Titan, 0)
+    );
+    assert_eq!((score.goals_done, score.goals_total), (3, 3));
+}
+
+#[test]
+fn exactly_half_is_blaze() {
+    let (core, _dir) = core();
+    let a = yes_no(&core, "A");
+    yes_no(&core, "B");
+    tick(&core, &a, DAY);
+    assert_eq!(core.day_score(DAY.into()).unwrap().level, DayLevel::Blaze);
+}
+
+#[test]
+fn tasks_count_by_priority_and_only_when_due_or_done_today() {
+    let (core, _dir) = core();
+    let high = add_task(&core, due_today("High", Priority::High));
+    add_task(&core, due_today("Low", Priority::Low));
+    // Overdue still counts. Due tomorrow and undated tasks are not planned for today.
+    add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-01".into()),
+            ..new_task("Late")
+        },
+    );
+    add_task(
+        &core,
+        NewTask {
+            due: Some("2026-11-06".into()),
+            ..new_task("Later")
+        },
+    );
+    add_task(&core, new_task("Someday"));
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!((score.possible, score.tasks_total), (15 + 5 + 10, 3));
+
+    core.toggle_task(high, DAY.into()).unwrap();
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!(
+        (score.earned, score.tasks_done, score.possible),
+        (15, 1, 30)
+    );
+    assert_eq!((score.percent, score.level), (50, DayLevel::Blaze));
+}
+
+#[test]
+fn an_undated_task_finished_today_counts_for_today() {
+    let (core, _dir) = core();
+    let id = add_task(&core, new_task("Quick"));
+    assert_eq!(core.day_score(DAY.into()).unwrap().possible, 0);
+    core.toggle_task(id, DAY.into()).unwrap();
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!(
+        (score.earned, score.possible, score.level),
+        (10, 10, DayLevel::Titan)
+    );
+}
+
+#[test]
+fn trashed_tasks_and_milestone_tasks_do_not_count() {
+    let (core, _dir) = core();
+    let gone = add_task(&core, due_today("Gone", Priority::Med));
+    core.delete_task(gone, DAY.into()).unwrap();
+    assert_eq!(core.day_score(DAY.into()).unwrap().possible, 0);
+
+    let goal = yes_no(&core, "Goal");
+    core.add_milestone(goal, "Step".into(), DAY.into()).unwrap();
+    // Only the goal's card is planned: the milestone's mirror task adds nothing.
+    let score = core.day_score(DAY.into()).unwrap();
+    assert_eq!((score.possible, score.tasks_total), (10, 0));
+}
+
+#[test]
+fn the_score_rejects_a_bad_date() {
+    let (core, _dir) = core();
+    assert!(core.day_score("nope".into()).is_err());
 }

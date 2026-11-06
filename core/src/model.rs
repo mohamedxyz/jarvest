@@ -577,3 +577,31 @@ pub struct SearchResults {
     /// Up to 30 goals.
     pub goals: Vec<GoalHit>,
 }
+
+/// How a day is going, from nothing done up to everything done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum DayLevel {
+    /// Nothing is planned, or nothing is done yet.
+    None,
+    /// Some of the plan is done (1% to 49%).
+    Spark,
+    /// Half or more is done (50% to 99%).
+    Blaze,
+    /// Everything planned is done.
+    Titan,
+}
+
+/// Today's score. See "V0.7.0 plan" in PLAN.md for the rules.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DayScore {
+    pub earned: u32,
+    pub possible: u32,
+    pub percent: u32,
+    pub level: DayLevel,
+    pub goals_done: u32,
+    pub goals_total: u32,
+    pub tasks_done: u32,
+    pub tasks_total: u32,
+    /// Points still needed for the next level. 0 at Titan or when nothing is planned.
+    pub points_to_next: u32,
+}

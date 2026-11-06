@@ -94,18 +94,7 @@ fun TodayScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item {
-                // One line that answers "how am I doing today?" before the lists start.
-                val goalsDone = allItems.count { it.complete }
-                Text(
-                    buildList {
-                        if (allItems.isNotEmpty()) add("$goalsDone of ${allItems.size} goals done")
-                        if (dueTasks.isNotEmpty()) add(countOf(dueTasks.size, "task") + " due")
-                        if (allItems.isNotEmpty() && goalsDone == allItems.size && dueTasks.isEmpty()) add("All done")
-                    }.joinToString(" · "),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
+            item { DayScoreCard(controller) }
             item { SampleBanner(controller) }
             item { BackupNudgeCard(controller, onOpenSettings) }
             item { EmptyJarBanner(controller, onAddTreat = onOpenRewards) }

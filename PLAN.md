@@ -539,3 +539,16 @@ its own commit and its own test pass before anything else is built on top.
 Built: automatic daily backup and restore preview; task archive, bulk select, tags, search, trash details; icons, sample data, onboarding, OLED theme; quit habits, week start, month calendar, folders; goal trash, evening check-in, tasks and quick-add widgets.
 Not built, moved to 0.7.0: task calendar, focus timer, custom repeat screen and checklist editing (core `set_task_repeat_rule` / `replace_task_items` exist but have no UI), tag grouping and confirm-before-trash settings (stored, not used yet).
 Never run on a device; test the upgrade from 0.5.2, auto backup, widgets and reminders on the phone.
+
+## V0.7.0 plan: day score and level (core), polished Today
+
+The day score answers "how is today going?" with one number. It is computed in the Rust core from `today` (no clock), and it never changes any data, rewards, or stats.
+
+**Points.** Everything planned for today is worth points; what is done today earns them.
+- Each goal or habit on today's list (`today_items`) is worth 10 points and earns them when its card is `complete` (a quit habit is complete while it has no slip).
+- A task is worth 5 (low), 10 (medium) or 15 (high) points. A task counts if it is open and due today or earlier, or if it was finished today. Milestone tasks are left out, because their goal already counts. Trashed and archived-while-open tasks are left out.
+- `possible` is all planned points, `earned` is the done part, `percent = earned * 100 / possible` rounded down, and 0 when nothing is planned.
+
+**Level of the day.** None while nothing is done or nothing is planned. Spark from 1% to 49%. Blaze from 50% to 99%. Titan at 100%. Finishing everything on a day with a plan is always Titan. The score also reports the points left to reach the next level.
+
+Not in 0.7.0 (planned for 0.8.0): hero XP and levels that never go down, the weekly boss and bestiary, a calendar of past day levels (needs a stored daily snapshot and a migration).
