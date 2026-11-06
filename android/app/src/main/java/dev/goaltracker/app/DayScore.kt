@@ -168,6 +168,7 @@ fun TodayHero(controller: AppController) {
         }
         DayScoreCard(controller)
         HeroCard(controller)
+        DailyQuestCard(controller)
         WeeklyBossCard(controller)
     }
 }
@@ -196,6 +197,28 @@ fun HeroCard(controller: AppController) {
                 "${hero.xpForNext - hero.xpIntoLevel} XP to level ${hero.level + 1u}. Day-score points become XP and are never lost.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Today's small suggested target. Finishing it pays bonus XP. Missing it costs nothing. */
+@Composable
+fun DailyQuestCard(controller: AppController) {
+    val quest = remember(controller.version, controller.today) { controller.read(null) { dailyQuest(controller.today) } } ?: return
+    SoftCard(Modifier.fillMaxWidth().label("Daily quest: ${quest.text}, ${quest.progress} of ${quest.target}")) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (quest.done) "✅ Daily quest done" else "🎯 Daily quest",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text("+${quest.bonus} XP", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                "${quest.text} (${quest.progress}/${quest.target})",
+                style = MaterialTheme.typography.bodyMedium,
             )
         }
     }

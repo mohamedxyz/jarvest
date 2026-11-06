@@ -547,6 +547,15 @@ pub fn tick(conn: &mut Connection, today: &str) -> Result<Vec<MonsterEvent>, Cor
                             }
                         }
                     }
+                    // Beating a monster round is worth XP. It stays, like the win itself.
+                    tx.execute(
+                        "INSERT OR IGNORE INTO xp_bonuses (local_date, kind, points) VALUES (?1, ?2, ?3)",
+                        params![
+                            day.to_string(),
+                            format!("monster:{}:{}", monster.id, last.number),
+                            if last.final_boss { 60 } else { 15 }
+                        ],
+                    )?;
                     if last.final_boss {
                         // Gone for good: its links are freed for a new monster.
                         tx.execute(

@@ -71,9 +71,13 @@ fn points_between(conn: &Connection, from: NaiveDate, to: NaiveDate) -> Result<u
 }
 
 pub fn hero(conn: &Connection) -> Result<Hero, CoreError> {
-    let xp: u32 = conn.query_row("SELECT COALESCE(SUM(earned), 0) FROM day_scores", [], |r| {
-        r.get(0)
-    })?;
+    // Day points plus bonuses (Titan days, quests, streaks, bosses, monsters).
+    let xp: u32 = conn.query_row(
+        "SELECT (SELECT COALESCE(SUM(earned), 0) FROM day_scores)
+              + (SELECT COALESCE(SUM(points), 0) FROM xp_bonuses)",
+        [],
+        |r| r.get(0),
+    )?;
     let level = level_for(xp);
     Ok(Hero {
         xp,
@@ -213,13 +217,115 @@ pub fn tick(conn: &mut Connection, today: &str) -> Result<Vec<BossEvent>, CoreEr
             prizes = 1;
         }
         tx.commit()?;
+        // Beating the boss is worth XP on the day it fell, and it stays.
+        conn.execute(
+            "INSERT OR IGNORE INTO xp_bonuses (local_date, kind, points) VALUES (?1, ?2, ?3)",
+            params![day, format!("boss:{week}"), BOSS_BONUS],
+        )?;
         events.push(BossEvent {
             name: boss_name(&week).to_string(),
             week_start: week,
             prizes,
         });
     }
+    update_bonuses(conn, today)?;
     Ok(events)
+}
+
+const TITAN_BONUS: u32 = 10;
+const QUEST_BONUS: u32 = 10;
+const STREAK_BONUS: u32 = 20;
+const BOSS_BONUS: u32 = 25;
+
+fn set_bonus(conn: &Connection, date: &str, kind: &str, points: u32, on: bool) -> Result<(), CoreError> {
+    if on {
+        conn.execute(
+            "INSERT OR IGNORE INTO xp_bonuses (local_date, kind, points) VALUES (?1, ?2, ?3)",
+            params![date, kind, points],
+        )?;
+    } else {
+        conn.execute(
+            "DELETE FROM xp_bonuses WHERE local_date = ?1 AND kind = ?2",
+            params![date, kind],
+        )?;
+    }
+    Ok(())
+}
+
+/// The bonuses of the day in progress: a Titan day, the daily quest, and each full week of Blaze days.
+/// They are given and taken back with the day, so undoing something never leaves XP behind.
+fn update_bonuses(conn: &Connection, today: &str) -> Result<(), CoreError> {
+    let score = score::day_score(conn, today)?;
+    set_bonus(conn, today, "titan", TITAN_BONUS, score.level == DayLevel::Titan)?;
+    ensure_quest(conn, today, &score)?;
+    if let Some(quest) = daily_quest(conn, today)? {
+        set_bonus(conn, today, "quest", QUEST_BONUS, quest.done)?;
+    }
+    let blaze_today = rank(score.level) >= 2;
+    let streak = day_records(conn, today)?.blaze_streak;
+    set_bonus(conn, today, "streak", STREAK_BONUS, blaze_today && streak > 0 && streak % 7 == 0)?;
+    Ok(())
+}
+
+/// Makes today's quest the first time the day has something planned. It never changes afterwards.
+fn ensure_quest(conn: &Connection, today: &str, score: &DayScore) -> Result<(), CoreError> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM daily_quests WHERE local_date = ?1)",
+        [today],
+        |r| r.get(0),
+    )?;
+    if exists {
+        return Ok(());
+    }
+    // Only goals that can be met today: 20 points, 2 tasks, or 2 goals.
+    let mut options: Vec<(&str, u32)> = Vec::new();
+    if score.possible >= 20 {
+        let target = if score.possible >= 40 { 30 } else { 20 };
+        options.push(("points", target));
+    }
+    if score.tasks_total >= 2 {
+        options.push(("tasks", 2));
+    }
+    if score.goals_total >= 2 {
+        options.push(("goals", 2));
+    }
+    if options.is_empty() {
+        return Ok(());
+    }
+    let digest = Sha256::digest(format!("{}:{today}", rewards::seed(conn)?).as_bytes());
+    let (kind, target) = options[usize::from(digest[0]) % options.len()];
+    conn.execute(
+        "INSERT INTO daily_quests (local_date, kind, target) VALUES (?1, ?2, ?3)",
+        params![today, kind, target],
+    )?;
+    Ok(())
+}
+
+pub fn daily_quest(conn: &Connection, today: &str) -> Result<Option<DailyQuest>, CoreError> {
+    parse_date(today)?;
+    let row: Option<(String, u32)> = conn
+        .query_row(
+            "SELECT kind, target FROM daily_quests WHERE local_date = ?1",
+            [today],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((kind, target)) = row else {
+        return Ok(None);
+    };
+    let score = score::day_score(conn, today)?;
+    let (text, progress) = match kind.as_str() {
+        "points" => (format!("Earn {target} points today"), score.earned),
+        "tasks" => (format!("Finish {target} tasks today"), score.tasks_done),
+        _ => (format!("Complete {target} goals or habits today"), score.goals_done),
+    };
+    Ok(Some(DailyQuest {
+        text,
+        target,
+        progress: progress.min(target),
+        done: progress >= target,
+        bonus: QUEST_BONUS,
+    }))
 }
 
 fn record(

@@ -596,6 +596,11 @@ impl GoalCore {
         progress::day_records(&self.conn(), &today)
     }
 
+    /// Today's small suggested target, or nothing before the first `progress_tick` of a day with a plan.
+    pub fn daily_quest(&self, today: String) -> Result<Option<DailyQuest>, CoreError> {
+        progress::daily_quest(&self.conn(), &today)
+    }
+
     /// Every weekly boss so far, newest first, for the bestiary.
     pub fn boss_history(&self) -> Result<Vec<BossRecord>, CoreError> {
         progress::boss_history(&self.conn())

@@ -4141,14 +4141,15 @@ fn xp_is_the_sum_of_every_days_points_and_levels_grow() {
     let hero = core.hero().unwrap();
     assert_eq!((hero.xp, hero.level, hero.title.as_str()), (0, 1, "Rookie"));
     let ids = habits(&core, 1);
-    // One habit is 10 points a day, so ten days is 100 XP: level 2.
+    // One habit is 10 points a day, so ten days is 100 XP. Every day is a Titan day (+10 each), and
+    // the seventh Blaze day in a row adds a streak bonus (+20): 100 + 100 + 20 = 220.
     for n in 0..10 {
         tick(&core, &ids[0], &d(n));
         core.progress_tick(d(n)).unwrap();
     }
     let hero = core.hero().unwrap();
-    assert_eq!((hero.xp, hero.level), (100, 2));
-    assert_eq!((hero.xp_into_level, hero.xp_for_next), (0, 150));
+    assert_eq!((hero.xp, hero.level), (220, 2));
+    assert_eq!((hero.xp_into_level, hero.xp_for_next), (120, 150));
 }
 
 #[test]
@@ -4159,11 +4160,12 @@ fn undoing_today_takes_todays_xp_back_but_old_days_stay() {
     core.progress_tick(d(0)).unwrap();
     tick(&core, &ids[0], &d(1));
     core.progress_tick(d(1)).unwrap();
-    assert_eq!(core.hero().unwrap().xp, 20);
-    // Undo today.
+    // Two days of 10 points, plus a Titan bonus (10) for each.
+    assert_eq!(core.hero().unwrap().xp, 40);
+    // Undo today: its points and its Titan bonus both go, yesterday's stay.
     tick(&core, &ids[0], &d(1));
     core.progress_tick(d(1)).unwrap();
-    assert_eq!(core.hero().unwrap().xp, 10);
+    assert_eq!(core.hero().unwrap().xp, 20);
 }
 
 #[test]
@@ -4707,4 +4709,49 @@ fn a_focus_session_keeps_its_title_after_the_task_is_deleted() {
     core.delete_task(task.clone(), DAY.into()).unwrap();
     core.delete_task_forever(task).unwrap();
     assert_eq!(core.focus_on_day(DAY.into()).unwrap()[0].title, "Essay");
+}
+
+// ---- XP bonuses, daily quest and the extra badges ----
+
+#[test]
+fn the_daily_quest_is_made_once_and_pays_only_while_done() {
+    let (core, _dir) = core();
+    assert!(core.daily_quest(DAY.into()).unwrap().is_none());
+    let ids = habits(&core, 3);
+    core.progress_tick(DAY.into()).unwrap();
+    let quest = core.daily_quest(DAY.into()).unwrap().unwrap();
+    assert!(!quest.done);
+    // Asking again never changes the quest.
+    core.progress_tick(DAY.into()).unwrap();
+    assert_eq!(core.daily_quest(DAY.into()).unwrap().unwrap(), quest);
+    for id in &ids {
+        tick(&core, id, DAY);
+    }
+    core.progress_tick(DAY.into()).unwrap();
+    let done = core.daily_quest(DAY.into()).unwrap().unwrap();
+    assert!(done.done);
+    // 30 points, a Titan day (+10) and the quest (+10).
+    assert_eq!(core.hero().unwrap().xp, 50);
+    // Undo one habit: the quest and the Titan bonus are taken back with it.
+    tick(&core, &ids[0], DAY);
+    core.progress_tick(DAY.into()).unwrap();
+    assert!(core.hero().unwrap().xp < 50);
+}
+
+#[test]
+fn bonus_badges_follow_the_data() {
+    let (core, _dir) = core();
+    let earned = |core: &GoalCore, id: &str| {
+        core.badges(DAY.into())
+            .unwrap()
+            .iter()
+            .find(|b| b.id == id)
+            .unwrap()
+            .earned
+    };
+    assert!(!earned(&core, "titan_1"));
+    let ids = habits(&core, 1);
+    tick(&core, &ids[0], DAY);
+    core.progress_tick(DAY.into()).unwrap();
+    assert!(earned(&core, "titan_1"));
 }

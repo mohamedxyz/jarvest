@@ -876,3 +876,16 @@ pub struct FocusSession {
     pub start_minutes: u32,
     pub minutes: u32,
 }
+
+// Daily quest and XP bonuses
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct DailyQuest {
+    /// For example "Finish 2 tasks today".
+    pub text: String,
+    pub target: u32,
+    pub progress: u32,
+    pub done: bool,
+    /// XP for finishing it.
+    pub bonus: u32,
+}
