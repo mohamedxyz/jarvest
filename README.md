@@ -39,7 +39,7 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
 - **Also:** search and filter, reorder goals, quick-start templates, light, dark, and
   accent themes, a streaks widget, and CSV export
 - **Backup:** everything saves to a single SQLite file that you can restore later. Settings shows
-  when you last saved one, and Today nudges you when it has been a week. Saved and shared backups can have a password (automatic daily backups cannot)
+  when you last saved one, and Today nudges you when it has been a week
 
 ## Project layout
 
@@ -160,7 +160,7 @@ The Rust tests cannot see the screens, so run this on a real phone (or an emulat
 6. Add the Today widget and tick something from it. Add a reminder two minutes ahead and check it arrives.
 7. Settings: the version number is right, a test notification arrives, "Back up now" makes a file, restore it.
 8. Today shows the daily quest card. History shows Insights. Add the Score and Agenda widgets. Turn on quiet hours and tap Snooze on a reminder. Export tasks to CSV and import them back.
-9. Save a backup with a password, restore it with a wrong password (rejected) and the right one. Start and end a holiday, save a day note, make a routine and tick a step, share text from another app into Tasks.
+9. Start and end a holiday, save a day note, make a routine and tick a step, share text from another app into Tasks.
 10. Turn the phone sideways and use the big text setting once. Nothing is cut off.
 
 ## Back up and restore your data
@@ -168,7 +168,7 @@ The Rust tests cannot see the screens, so run this on a real phone (or an emulat
 In the app, open **Settings** using the gear icon.
 
 - **Save backup** writes one `.sqlite` file to a location you choose.
-- **Share backup** sends a fresh backup file to another app. Both Save and Share ask for an optional password. A lost password cannot be recovered, and neither can the backup. Restoring a protected file asks for it.
+- **Share backup** sends a fresh backup file to another app. 
 - **Restore from backup** replaces all current data with that file. A file that
   isn't a valid backup is rejected, and nothing changes.
 

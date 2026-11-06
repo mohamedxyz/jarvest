@@ -54,10 +54,6 @@ fun SettingsScreen(controller: AppController) {
     val askNotifications = rememberNotificationPermissionRequest(controller)
     var busy by remember { mutableStateOf(false) }
     var restorePreview by remember { mutableStateOf<RestorePreview?>(null) }
-    // Password choice for the backup being saved or shared. `askPassword` is "save" or "share" while the dialog is open.
-    var askPassword by remember { mutableStateOf<String?>(null) }
-    var savePassword by remember { mutableStateOf<String?>(null) }
-    var lockedUri by remember { mutableStateOf<Uri?>(null) }
     // The automatic worker may have saved a backup while the app was closed.
     LaunchedEffect(Unit) { controller.reloadBackupDate() }
 
@@ -67,8 +63,7 @@ fun SettingsScreen(controller: AppController) {
         if (uri != null) {
             busy = true
             scope.launch {
-                val error = withContext(Dispatchers.IO) { exportTo(context, controller.core, uri, savePassword) }
-                savePassword = null
+                val error = withContext(Dispatchers.IO) { exportTo(context, controller.core, uri) }
                 if (error == null) controller.markBackup()
                 controller.message = error ?: "Backup saved"
                 busy = false
@@ -124,7 +119,6 @@ fun SettingsScreen(controller: AppController) {
             scope.launch {
                 val result = withContext(Dispatchers.IO) { previewFrom(context, controller.core, uri) }
                 restorePreview = result.preview
-                lockedUri = result.locked
                 result.error?.let { controller.message = it }
                 busy = false
             }
@@ -348,19 +342,19 @@ fun SettingsScreen(controller: AppController) {
                 color = if (controller.backupLevel() == 2) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
             )
             Button(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
-                askPassword = "save"
+                exporter.launch("jarvest-backup-${controller.today}.sqlite")
             }) { Text(stringResource(R.string.ui_save_backup)) }
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
                 importer.launch(arrayOf("*/*"))
             }) { Text(stringResource(R.string.ui_restore_from_backup)) }
             OutlinedButton(enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = {
-                askPassword = "share"
+                busy = true
+                scope.launch {
+                    val error = withContext(Dispatchers.IO) { shareBackup(context, controller.core, controller.today) }
+                    if (error != null) controller.message = error
+                    busy = false
+                }
             }) { Text(stringResource(R.string.ui_share_backup)) }
-            Text(
-                "Automatic daily backups are never password protected. Saved and shared backups can be.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
         AutoBackupSection(controller)
@@ -415,40 +409,6 @@ fun SettingsScreen(controller: AppController) {
             onDismiss = { pickingEvening = false },
         )
     }
-    askPassword?.let { mode ->
-        BackupPasswordDialog(
-            onChoose = { password ->
-                askPassword = null
-                if (mode == "save") {
-                    savePassword = password
-                    exporter.launch("jarvest-backup-${controller.today}.sqlite")
-                } else {
-                    busy = true
-                    scope.launch {
-                        val error = withContext(Dispatchers.IO) { shareBackup(context, controller.core, controller.today, password) }
-                        if (error != null) controller.message = error
-                        busy = false
-                    }
-                }
-            },
-            onDismiss = { askPassword = null },
-        )
-    }
-    lockedUri?.let { uri ->
-        BackupUnlockDialog(
-            onUnlock = { password ->
-                lockedUri = null
-                busy = true
-                scope.launch {
-                    val result = withContext(Dispatchers.IO) { previewFrom(context, controller.core, uri, password) }
-                    restorePreview = result.preview
-                    result.error?.let { controller.message = it }
-                    busy = false
-                }
-            },
-            onDismiss = { lockedUri = null },
-        )
-    }
     restorePreview?.let { preview ->
         RestorePreviewDialog(
             preview = preview,
@@ -456,7 +416,7 @@ fun SettingsScreen(controller: AppController) {
                 restorePreview = null
                 busy = true
                 scope.launch {
-                    val error = withContext(Dispatchers.IO) { restoreFrom(context, controller.core, preview.uri, preview.password) }
+                    val error = withContext(Dispatchers.IO) { restoreFrom(context, controller.core, preview.uri) }
                     controller.message = error ?: "Backup restored"
                     if (error == null) controller.refresh()
                     busy = false
@@ -468,10 +428,10 @@ fun SettingsScreen(controller: AppController) {
 }
 
 /** Returns an error message, or null on success. */
-private fun exportTo(context: Context, core: GoalCore, uri: Uri, password: String?): String? {
+private fun exportTo(context: Context, core: GoalCore, uri: Uri): String? {
     val temp = File(context.cacheDir, "export.sqlite")
     return try {
-        if (password == null) core.exportBackup(temp.path) else core.exportBackupEncrypted(temp.path, password)
+        core.exportBackup(temp.path)
         val output = context.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("no output")
         output.use { out -> temp.inputStream().use { it.copyTo(out) } }
         null
@@ -485,12 +445,12 @@ private fun exportTo(context: Context, core: GoalCore, uri: Uri, password: Strin
 }
 
 /** Returns an error message, or null on success. */
-private fun restoreFrom(context: Context, core: GoalCore, uri: Uri, password: String?): String? {
+private fun restoreFrom(context: Context, core: GoalCore, uri: Uri): String? {
     val temp = File(context.cacheDir, "import.sqlite")
     return try {
         val input = context.contentResolver.openInputStream(uri) ?: throw IOException("no input")
         input.use { source -> temp.outputStream().use { source.copyTo(it) } }
-        if (password == null) core.restoreBackup(temp.path) else core.restoreEncryptedBackup(temp.path, password)
+        core.restoreBackup(temp.path)
         null
     } catch (e: CoreException) {
         e.userMessage()
@@ -553,13 +513,13 @@ private fun importTasksCsv(context: Context, core: GoalCore, uri: Uri, today: St
 }
 
 /** Opens the share sheet with a fresh backup file. Old shared copies are deleted first. Returns an error or null. */
-private fun shareBackup(context: Context, core: GoalCore, today: String, password: String?): String? {
+private fun shareBackup(context: Context, core: GoalCore, today: String): String? {
     val dir = File(context.cacheDir, "share")
     return try {
         dir.deleteRecursively()
         dir.mkdirs()
         val file = File(dir, "jarvest-backup-$today.sqlite")
-        if (password == null) core.exportBackup(file.path) else core.exportBackupEncrypted(file.path, password)
+        core.exportBackup(file.path)
         val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.share", file)
         val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "application/octet-stream"

@@ -6,7 +6,6 @@
 mod backup;
 mod badges;
 mod calendar;
-mod crypto;
 mod dates;
 mod db;
 mod export;
@@ -1063,51 +1062,6 @@ impl GoalCore {
 
     pub fn export_backup(&self, dest_path: String) -> Result<(), CoreError> {
         backup::export(&self.conn(), &dest_path)
-    }
-
-    /// Writes a backup that needs `password` to open. The password can't be recovered if it is lost.
-    pub fn export_backup_encrypted(
-        &self,
-        dest_path: String,
-        password: String,
-    ) -> Result<(), CoreError> {
-        let plain = format!("{dest_path}.plain");
-        let result = backup::export(&self.conn(), &plain).and_then(|()| {
-            crypto::encrypt_file(&plain, &dest_path, &password, crypto::DEFAULT_KDF)
-        });
-        let _ = std::fs::remove_file(&plain);
-        result
-    }
-
-    /// True when the file is a password-protected backup.
-    pub fn is_encrypted_backup(&self, backup_path: String) -> Result<bool, CoreError> {
-        crypto::is_encrypted(&backup_path)
-    }
-
-    /// Like `preview_backup`, for a password-protected file.
-    pub fn preview_encrypted_backup(
-        &self,
-        backup_path: String,
-        password: String,
-    ) -> Result<BackupPreview, CoreError> {
-        let plain = format!("{backup_path}.dec");
-        let result = crypto::decrypt_file(&backup_path, &password, &plain)
-            .and_then(|()| backup::preview(&self.db_path, &plain));
-        let _ = std::fs::remove_file(&plain);
-        result
-    }
-
-    /// Like `restore_backup`, for a password-protected file.
-    pub fn restore_encrypted_backup(
-        &self,
-        backup_path: String,
-        password: String,
-    ) -> Result<(), CoreError> {
-        let plain = format!("{backup_path}.dec");
-        let result = crypto::decrypt_file(&backup_path, &password, &plain)
-            .and_then(|()| self.restore_backup(plain.clone()));
-        let _ = std::fs::remove_file(&plain);
-        result
     }
 
     pub fn restore_backup(&self, backup_path: String) -> Result<(), CoreError> {

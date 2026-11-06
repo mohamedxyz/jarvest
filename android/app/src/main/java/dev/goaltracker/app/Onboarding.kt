@@ -382,7 +382,6 @@ private val changelog = listOf(
     Release(
         "0.11.0",
         listOf(
-            "Password-protected backups: save or share a backup with an optional password. A lost password cannot be recovered.",
             "Holiday mode pauses every goal for the days you choose. Streaks wait for you.",
             "Day notes with a mood, private to you, and mood lines in Insights once you have enough notes.",
             "Weekly review: look back, clear overdue tasks, and pick up to three things to focus on.",
