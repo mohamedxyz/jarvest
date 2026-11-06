@@ -1,6 +1,8 @@
 <resources>
     <string name="app_name">Jarvest</string>
     <string name="widget_description">Tick off today\'s goals from your home screen</string>
+    <string name="score_widget_description">Today's score, level and quest.</string>
+    <string name="agenda_widget_description">Today's calendar.</string>
     <string name="streak_widget_description">Your longest running streaks.</string>
     <string name="tasks_widget_description">Tasks that are due, with a tick box.</string>
     <string name="quick_add_widget_description">One tap to add a task.</string>

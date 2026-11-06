@@ -214,6 +214,7 @@ object Reminders {
     /** Called by the alarm. Posts a notification if something is due, then sets tomorrow's alarm. */
     fun fire(context: Context, key: String) {
         if (key == KEY_STALE) return fireStaleBackup(context)
+        if (key == SNOOZE_KEY) return fireSnooze(context)
         if (key.startsWith(EVENT_PREFIX)) return fireEvent(context, key)
         if (key == FocusTimer.ALARM_KEY) return FocusTimer.onAlarm(context)
         val app = context.applicationContext as GoalTrackerApp
@@ -263,30 +264,91 @@ object Reminders {
         return "Test notification sent."
     }
 
-    internal fun notify(context: Context, key: String, text: String) {
+    // ---- Sound and quiet hours (kept on the phone, because they describe this phone) ----
+
+    private const val KEY_SOUND = "sound"
+    private const val KEY_QUIET_ON = "quiet_on"
+    private const val KEY_QUIET_START = "quiet_start"
+    private const val KEY_QUIET_END = "quiet_end"
+    private const val CHANNEL_SILENT = "reminders_silent"
+    private const val SNOOZE_KEY = "snooze"
+    private const val SNOOZE_TEXT = "snooze_text"
+    const val ACTION_SNOOZE = "dev.goaltracker.app.SNOOZE"
+
+    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun soundOn(context: Context) = prefs(context).getBoolean(KEY_SOUND, true)
+    fun setSound(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SOUND, on).apply()
+    fun quietOn(context: Context) = prefs(context).getBoolean(KEY_QUIET_ON, false)
+    fun setQuietOn(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_QUIET_ON, on).apply()
+    fun quietStart(context: Context) = prefs(context).getInt(KEY_QUIET_START, 22 * 60)
+    fun quietEnd(context: Context) = prefs(context).getInt(KEY_QUIET_END, 7 * 60)
+    fun setQuiet(context: Context, start: Int, end: Int) =
+        prefs(context).edit().putInt(KEY_QUIET_START, start).putInt(KEY_QUIET_END, end).apply()
+
+    /** True when `now` (minutes after midnight) falls in the quiet window. The window may cross midnight. */
+    fun isQuiet(start: Int, end: Int, now: Int): Boolean =
+        if (start == end) false else if (start < end) now in start until end else now >= start || now < end
+
+    private fun quietNow(context: Context): Boolean {
+        if (!quietOn(context)) return false
+        val now = LocalTime.now()
+        return isQuiet(quietStart(context), quietEnd(context), now.hour * 60 + now.minute)
+    }
+
+    /** A reminder in quiet hours, or with sound switched off, still shows. It just makes no noise. */
+    internal fun notify(context: Context, key: String, text: String, snoozable: Boolean = true) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL, "Reminders", NotificationManager.IMPORTANCE_DEFAULT),
         )
+        manager.createNotificationChannel(
+            NotificationChannel(CHANNEL_SILENT, "Quiet reminders", NotificationManager.IMPORTANCE_LOW),
+        )
+        val quiet = !soundOn(context) || quietNow(context)
         val open = PendingIntent.getActivity(
             context, 0, Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val notification = NotificationCompat.Builder(context, CHANNEL)
+        val builder = NotificationCompat.Builder(context, if (quiet) CHANNEL_SILENT else CHANNEL)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Jarvest")
             .setContentText(text)
             .setContentIntent(open)
             .setAutoCancel(true)
-            .build()
+        if (snoozable && key != "test") {
+            val snooze = PendingIntent.getBroadcast(
+                context, key.hashCode(),
+                Intent(context, ReminderReceiver::class.java).setAction(ACTION_SNOOZE).putExtra(SNOOZE_TEXT, text).putExtra("notif_id", key.hashCode()),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            builder.addAction(0, "Snooze 10 min", snooze)
+        }
         // The permission was checked in canNotify.
         @Suppress("MissingPermission")
-        NotificationManagerCompat.from(context).notify(key.hashCode(), notification)
+        NotificationManagerCompat.from(context).notify(key.hashCode(), builder.build())
+    }
+
+    /** Called by the Snooze button: shows the same text again in ten minutes. */
+    fun snooze(context: Context, text: String) {
+        prefs(context).edit().putString(SNOOZE_TEXT, text).apply()
+        scheduleAt(context, SNOOZE_KEY, System.currentTimeMillis() + 10 * 60_000L)
+    }
+
+    private fun fireSnooze(context: Context) {
+        val text = prefs(context).getString(SNOOZE_TEXT, null) ?: return
+        if (canNotify(context)) notify(context, SNOOZE_KEY, text)
     }
 }
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Reminders.ACTION_SNOOZE) {
+            // Dismiss the notification the button was on, then come back in ten minutes.
+            NotificationManagerCompat.from(context).cancel(intent.getIntExtra("notif_id", 0))
+            intent.getStringExtra("snooze_text")?.let { Reminders.snooze(context, it) }
+            return
+        }
         val key = intent.data?.lastPathSegment ?: return
         Reminders.fire(context, key)
     }

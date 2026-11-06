@@ -222,6 +222,41 @@ fun SettingsScreen(controller: AppController) {
             evening?.let {
                 OutlinedButton(onClick = { pickingEvening = true }) { Text("Evening check-in at ${Reminders.formatMinutes(it.toInt())}") }
             }
+            var sound by remember { mutableStateOf(Reminders.soundOn(context)) }
+            var quiet by remember { mutableStateOf(Reminders.quietOn(context)) }
+            var quietStart by remember { mutableStateOf(Reminders.quietStart(context)) }
+            var quietEnd by remember { mutableStateOf(Reminders.quietEnd(context)) }
+            var pickQuiet by remember { mutableStateOf<String?>(null) }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Reminders make a sound", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                Switch(sound, { sound = it; Reminders.setSound(context, it) })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    "Quiet hours: reminders still show, but silently.",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Switch(quiet, { quiet = it; Reminders.setQuietOn(context, it) })
+            }
+            if (quiet) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { pickQuiet = "start" }) { Text("From ${Reminders.formatMinutes(quietStart)}") }
+                    OutlinedButton(onClick = { pickQuiet = "end" }) { Text("Until ${Reminders.formatMinutes(quietEnd)}") }
+                }
+            }
+            pickQuiet?.let { which ->
+                TimePickerDialog(
+                    initialMinutes = if (which == "start") quietStart else quietEnd,
+                    onPick = {
+                        if (which == "start") quietStart = it else quietEnd = it
+                        Reminders.setQuiet(context, quietStart, quietEnd)
+                        pickQuiet = null
+                    },
+                    onDismiss = { pickQuiet = null },
+                )
+            }
             OutlinedButton(onClick = { controller.message = Reminders.sendTest(context) }) {
                 Text("Send a test notification")
             }

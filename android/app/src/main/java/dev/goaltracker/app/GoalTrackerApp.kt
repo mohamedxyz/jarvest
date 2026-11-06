@@ -43,6 +43,8 @@ class GoalTrackerApp : Application() {
             TodayWidget().updateAll(this@GoalTrackerApp)
             StreakWidget().updateAll(this@GoalTrackerApp)
             TasksWidget().updateAll(this@GoalTrackerApp)
+            ScoreWidget().updateAll(this@GoalTrackerApp)
+            AgendaWidget().updateAll(this@GoalTrackerApp)
         }
     }
 }
