@@ -552,3 +552,24 @@ The day score answers "how is today going?" with one number. It is computed in t
 **Level of the day.** None while nothing is done or nothing is planned. Spark from 1% to 49%. Blaze from 50% to 99%. Titan at 100%. Finishing everything on a day with a plan is always Titan. The score also reports the points left to reach the next level.
 
 Not in 0.7.0 (planned for 0.8.0): hero XP and levels that never go down, the weekly boss and bestiary, a calendar of past day levels (needs a stored daily snapshot and a migration).
+
+## V0.8.0 plan: custom monsters
+
+A monster stands for a struggle the person names, such as a habit they want to beat. They link habits, goals and tasks to it, and doing those things damages it. It is a display layer: it never changes goals, streaks, stats, or the treat odds.
+
+**A monster has:** a name (up to 60 characters), a starting health (default 100, set by the person), a round number (starts at 1), and its current health.
+
+**Links.** Each linked habit, goal or task has a power: light (5), medium (10) or heavy (20) damage.
+- A habit or goal deals its power when it is ticked on a day, once per day. A task deals its power when it is finished.
+- A quit habit deals its power for each clean day. A day is clean when nothing is logged on it and the habit existed that day. Clean days are counted when the app opens, up to today, so a closed app does not lose days.
+- Damage is derived from history: health = max health for the round minus the damage done since the round started. Undoing a tick takes that damage back. Nothing is stored that could drift.
+
+**Slips.** A slip on a linked quit habit heals the monster by half of that habit's power, never above full health. A slip never removes damage from past rounds and never removes a trophy. The message is kind: a slip is not a failure.
+
+**Defeat and respawn.** At 0 health the monster is beaten: a celebration, one trophy in the trophy list, and one treat draw from the jar (or the treat attached to that monster, if any). With no treat in the jar there is only a celebration. The monster then rests for 3 days. Damage on rest days does not count. After the rest, the next round starts at full health, which is 25% higher than the round before (rounded up). Round 1 uses the starting health the person set.
+
+**Privacy.** Widgets, reminders, notifications and the share sheet show "Monster" instead of the name unless the person turns that off in Settings.
+
+**Core.** Rules live in a new `core/src/monsters.rs`. `today` comes from the caller. New tables (migration 013): `monsters`, `monster_links` (monster, kind goal or task, item id, power), `monster_rounds` (monster, round number, start date, defeated date). Health and damage are computed from entries and task completions, so restore and undo stay consistent. Backups validate the new dates, gated by schema version.
+
+**Not in this release:** hero XP and levels, the weekly boss, and the calendar of past day levels.
