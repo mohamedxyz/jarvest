@@ -52,6 +52,10 @@ object Feel {
     var sounds by mutableStateOf(false)
         private set
 
+    /** The in-app Motion switch. The phone's "remove animations" setting always wins over it. */
+    var motion by mutableStateOf(true)
+        private set
+
     /** Set to true (for example by "Show intro again") to open the intro. */
     var introRequested by mutableStateOf(false)
 
@@ -64,6 +68,12 @@ object Feel {
         prefs = p
         haptics = p.getBoolean("haptics", true)
         sounds = p.getBoolean("sounds", false)
+        motion = p.getBoolean("motion", true)
+    }
+
+    fun chooseMotion(on: Boolean) {
+        motion = on
+        prefs?.edit()?.putBoolean("motion", on)?.apply()
     }
 
     fun chooseHaptics(on: Boolean) {

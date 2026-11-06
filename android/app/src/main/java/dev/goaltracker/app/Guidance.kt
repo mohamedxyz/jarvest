@@ -57,7 +57,7 @@ fun onDone(action: () -> Unit) = KeyboardActions(onDone = { action() })
 @Composable
 fun TipCard(controller: AppController, id: String, text: String, modifier: Modifier = Modifier) {
     if (controller.isTipDismissed(id)) return
-    Card(
+    SoftCard(
         modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
     ) {
@@ -110,7 +110,7 @@ fun InfoHint(title: String, text: String) {
 fun EmptyJarBanner(controller: AppController, onAddTreat: (() -> Unit)?, modifier: Modifier = Modifier) {
     val progress = remember(controller.version) { controller.read(null) { rewardProgress() } } ?: return
     if (!progress.enabled || progress.treatsInJar > 0u) return
-    Card(
+    SoftCard(
         modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
     ) {
@@ -143,7 +143,7 @@ fun BackupNudgeCard(controller: AppController, onOpenSettings: () -> Unit, modif
         val days = ChronoUnit.DAYS.between(LocalDate.parse(last), LocalDate.parse(controller.today)).toInt()
         "Your last backup was ${countOf(days, "day")} ago."
     }
-    Card(
+    SoftCard(
         modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = if (level == 2) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,

@@ -94,7 +94,7 @@ fun TodayScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 88.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item { DayScoreCard(controller) }
+            item { TodayHero(controller) }
             item { SampleBanner(controller) }
             item { BackupNudgeCard(controller, onOpenSettings) }
             item { EmptyJarBanner(controller, onAddTreat = onOpenRewards) }
@@ -105,7 +105,7 @@ fun TodayScreen(
                 item { SectionTitle("Tasks due") }
                 // The three most urgent. The rest are one tap away, so goals are not buried.
                 items(dueTasks.take(3), key = { "task-${it.id}" }) { task ->
-                    Card(Modifier.fillMaxWidth().clickable { openedTask = task.id }) {
+                    SoftCard(softItem().fillMaxWidth().clickable { openedTask = task.id }) {
                         Row(
                             Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -151,6 +151,7 @@ fun TodayScreen(
             items(items, key = { it.goalId }) { item ->
                 TodayCard(
                     item,
+                    modifier = softItem(),
                     onOpen = { openedGoal = item },
                     onCheck = { controller.log { toggleCheckIn(item.goalId, controller.today) } },
                     onLog = { logging = item },
@@ -202,8 +203,9 @@ private fun TodayCard(
     count: Int,
     onCount: (Int) -> Unit,
     onSubmit: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+    SoftCard(modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(
             Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

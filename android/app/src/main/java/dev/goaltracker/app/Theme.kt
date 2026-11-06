@@ -1,7 +1,17 @@
 package dev.goaltracker.app
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardColors
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -219,11 +229,49 @@ fun GoalTrackerTheme(
             }
         }
     }
-    CompositionLocalProvider(LocalDarkTheme provides dark) {
+    val context = LocalContext.current
+    val motion = Feel.motion && !Feel.reducedMotion(context)
+    CompositionLocalProvider(LocalDarkTheme provides dark, LocalMotion provides motion) {
         MaterialTheme(
             colorScheme = colorSchemeFor(mode, dark, accent),
+            shapes = SoftShapes,
             content = content,
         )
+    }
+}
+
+/** Rounder corners everywhere: cards, sheets, dialogs, chips and buttons pick these up. */
+internal val SoftShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(20.dp),
+    large = RoundedCornerShape(28.dp),
+    extraLarge = RoundedCornerShape(36.dp),
+)
+
+/** Card colors: a soft tinted surface with no shadow, so lists look calm. */
+@Composable
+fun softCardColors(): CardColors = CardDefaults.cardColors(
+    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+)
+
+/**
+ * The app's card. It has big rounded corners, a faint outline instead of a shadow, and works
+ * like `Card` whether or not it is clickable.
+ */
+@Composable
+fun SoftCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    colors: CardColors = softCardColors(),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val shape = MaterialTheme.shapes.medium
+    val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    if (onClick != null) {
+        Card(onClick = onClick, modifier = modifier, shape = shape, colors = colors, border = border, content = content)
+    } else {
+        Card(modifier = modifier, shape = shape, colors = colors, border = border, content = content)
     }
 }
 

@@ -106,7 +106,7 @@ fun MomentumBanner(momentum: Momentum, modifier: Modifier = Modifier) {
         MomentumStatus.SLIPPING -> Triple("Slipping", Icons.AutoMirrored.Filled.TrendingDown, negativeColor())
         MomentumStatus.NOT_ENOUGH_DATA -> Triple("Not enough data yet", Icons.Outlined.HourglassEmpty, MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    Card(
+    SoftCard(
         modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f)),
     ) {

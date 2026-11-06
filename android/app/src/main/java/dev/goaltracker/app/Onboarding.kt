@@ -152,7 +152,7 @@ fun FirstRunHelpers(controller: AppController) {
 fun SampleBanner(controller: AppController) {
     val has = remember(controller.version) { controller.read(false) { hasSampleData() } }
     if (!has) return
-    Card(
+    SoftCard(
         Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
     ) {
@@ -329,6 +329,10 @@ fun FeelSettings() {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Play a short sound when you tick or undo.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Switch(Feel.sounds, { Feel.chooseSounds(it) }, modifier = Modifier.label("Sounds"))
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Animate screens, lists and the score. Turn off for a calmer, instant app.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Switch(Feel.motion, { Feel.chooseMotion(it) }, modifier = Modifier.label("Motion"))
         }
         FlowRowOfPreviews(view)
         if (Feel.reducedMotion(context)) {

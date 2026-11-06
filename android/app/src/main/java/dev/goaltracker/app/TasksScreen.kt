@@ -49,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -363,6 +364,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                                 },
                                 onLongPress = { selected = selected + task.id },
                                 onCheck = { controller.toggleTaskWithUndo(task.id, task.title) },
+                                modifier = softItem(),
                             )
                         }
                     }
@@ -391,6 +393,7 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
                             },
                             onLongPress = { selected = selected + task.id },
                             onCheck = { controller.toggleTaskWithUndo(task.id, task.title) },
+                            modifier = softItem(),
                         )
                     }
                 }
@@ -461,9 +464,9 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit) {
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun TaskRow(controller: AppController, task: Task, today: String, selected: Boolean, onOpen: () -> Unit, onLongPress: () -> Unit, onCheck: () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onLongPress),
+private fun TaskRow(controller: AppController, task: Task, today: String, selected: Boolean, onOpen: () -> Unit, onLongPress: () -> Unit, onCheck: () -> Unit, modifier: Modifier = Modifier) {
+    SoftCard(
+        modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onLongPress),
         colors = if (selected) CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer) else CardDefaults.cardColors(),
     ) {
         Row(
@@ -471,7 +474,10 @@ private fun TaskRow(controller: AppController, task: Task, today: String, select
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            val fade by androidx.compose.animation.core.animateFloatAsState(
+                if (task.done) 0.6f else 1f, motionTween(LocalMotion.current, 250), label = "done",
+            )
+            Column(Modifier.weight(1f).graphicsLayer { alpha = fade }, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     task.title.withIcon(task.icon),
                     style = MaterialTheme.typography.titleMedium,
@@ -531,7 +537,7 @@ private fun TrashRow(task: Task, today: String, onRestore: () -> Unit, onDeleteF
         val gone = LocalDate.parse(it).plusDays(30)
         ChronoUnit.DAYS.between(LocalDate.parse(today), gone).coerceAtLeast(0)
     }
-    Card(Modifier.fillMaxWidth()) {
+    SoftCard(Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -555,7 +561,7 @@ private fun TrashRow(task: Task, today: String, onRestore: () -> Unit, onDeleteF
 
 @Composable
 private fun ArchiveRow(task: Task, onUnarchive: () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+    SoftCard(Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,

@@ -1,6 +1,17 @@
 package dev.goaltracker.app
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CardDefaults
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,8 +78,25 @@ fun DayScoreCard(controller: AppController) {
         controller.read(null) { dayScore(controller.today) }
     } ?: return
     val color = score.level.color()
+    val motion = LocalMotion.current
+    // The ring and the number fill up from 0 the first time the card shows, then follow changes.
+    var started by remember { mutableStateOf(!motion) }
+    LaunchedEffect(Unit) { started = true }
+    val shown by animateFloatAsState(
+        targetValue = if (started) score.percent.toFloat() else 0f,
+        animationSpec = motionTween(motion, 900),
+        label = "score",
+    )
+    // The level name pops a little whenever the level changes.
+    val pop = remember { Animatable(1f) }
+    LaunchedEffect(score.level) {
+        if (motion) {
+            pop.snapTo(0.75f)
+            pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
+    }
     val track = MaterialTheme.colorScheme.outlineVariant
-    Card(onClick = { help = true }, modifier = Modifier.fillMaxWidth().label("Day score ${score.percent} percent, ${score.level.title()}")) {
+    SoftCard(onClick = { help = true }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)), modifier = Modifier.fillMaxWidth().label("Day score ${score.percent} percent, ${score.level.title()}")) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
                 Canvas(Modifier.size(72.dp)) {
@@ -76,14 +104,19 @@ fun DayScoreCard(controller: AppController) {
                     val inset = stroke.width / 2
                     val box = Size(size.width - stroke.width, size.height - stroke.width)
                     drawArc(track, 0f, 360f, false, topLeft = Offset(inset, inset), size = box, style = stroke)
-                    if (score.percent > 0u) {
-                        drawArc(color, -90f, 360f * score.percent.toFloat() / 100f, false, topLeft = Offset(inset, inset), size = box, style = stroke)
+                    if (shown > 0f) {
+                        drawArc(color, -90f, 360f * shown / 100f, false, topLeft = Offset(inset, inset), size = box, style = stroke)
                     }
                 }
-                Text("${score.percent}%", style = MaterialTheme.typography.titleMedium)
+                Text("${shown.toInt()}%", style = MaterialTheme.typography.titleMedium)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("${score.level.icon()} ${score.level.title()} day", style = MaterialTheme.typography.titleLarge, color = color)
+                Text(
+                    "${score.level.icon()} ${score.level.title()} day",
+                    Modifier.graphicsLayer { scaleX = pop.value; scaleY = pop.value; transformOrigin = TransformOrigin(0f, 0.5f) },
+                    style = MaterialTheme.typography.titleLarge,
+                    color = color,
+                )
                 Text(
                     buildList {
                         if (score.goalsTotal > 0u) add("${score.goalsDone} of ${score.goalsTotal} goals")
@@ -102,5 +135,34 @@ fun DayScoreCard(controller: AppController) {
             InfoRow("Levels", "Spark from 1%, Blaze from 50%, Titan when everything planned is done.")
             InfoRow("Safe", "The score only describes your day. It never changes your goals, streaks or treats.")
         }
+    }
+}
+
+private fun greeting(): String {
+    val hour = java.time.LocalTime.now().hour
+    return when {
+        hour < 5 -> "Still up?"
+        hour < 12 -> "Good morning"
+        hour < 18 -> "Good afternoon"
+        else -> "Good evening"
+    }
+}
+
+/** The top of Today: a soft gradient with a greeting, the date, and the day score. */
+@Composable
+fun TodayHero(controller: AppController) {
+    val top = MaterialTheme.colorScheme.primaryContainer
+    val bottom = MaterialTheme.colorScheme.surface
+    Column(
+        Modifier.fillMaxWidth()
+            .background(Brush.verticalGradient(listOf(top, bottom)), RoundedCornerShape(28.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column {
+            Text(greeting(), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text(formatDate(controller.today), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        DayScoreCard(controller)
     }
 }

@@ -22,7 +22,7 @@ import dev.goaltracker.core.TrashedGoal
  */
 @Composable
 fun GoalTrashRow(goal: TrashedGoal, onRestore: () -> Unit, onDeleteForever: () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+    SoftCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp)) {
             Text("Goal: ${goal.title}", maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(

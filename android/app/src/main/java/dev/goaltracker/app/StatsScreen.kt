@@ -88,7 +88,7 @@ fun StatsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
                     .map { (name, group) -> Triple(name, group.sumOf { it.met.toInt() }.toUInt(), group.sumOf { it.eligible.toInt() }.toUInt()) }
                     .sortedByDescending { (_, met, eligible) -> if (eligible == 0u) -1.0 else met.toDouble() / eligible.toDouble() }
                     .forEach { (name, met, eligible) ->
-                        Card(Modifier.fillMaxWidth()) {
+                        SoftCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
@@ -114,7 +114,7 @@ private fun percent(met: UInt, eligible: UInt): String =
 
 @Composable
 private fun StatTile(label: String, value: String, detail: String, modifier: Modifier = Modifier) {
-    Card(modifier) {
+    SoftCard(modifier) {
         Column(Modifier.padding(16.dp)) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.headlineMedium)
@@ -137,7 +137,7 @@ fun StreakTiles(stats: GoalStats) {
 @Composable
 private fun GoalStatsCard(stats: GoalStats, onClick: () -> Unit) {
     val noun = stats.period.noun()
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    SoftCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stats.title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
@@ -281,7 +281,7 @@ private fun RecapCard(controller: AppController) {
     val before = remember(controller.version, controller.today, period, back) {
         controller.read(null) { recap(period, (back + 1).toUInt(), controller.today) }
     }
-    Card(Modifier.fillMaxWidth()) {
+    SoftCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionTitle("Summary", Modifier.weight(1f))
@@ -355,7 +355,7 @@ private fun WeekdayCard(controller: AppController) {
     val names = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     fun rate(s: WeekdayStat) = s.met.toDouble() / s.eligible.toDouble()
     val ranked = stats.filter { it.eligible >= 2u }.sortedBy { rate(it) }
-    Card(Modifier.fillMaxWidth()) {
+    SoftCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Best and worst days")
             val weekStart = controller.weekStart()

@@ -188,6 +188,7 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
                             canMoveDown = false,
                             onOpen = { onOpenGoal(goal.id) },
                             onMove = {},
+                            modifier = softItem(),
                         )
                     }
                 }
@@ -230,6 +231,7 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
                             canMoveDown = index < inFolder.lastIndex,
                             onOpen = { onOpenGoal(goal.id) },
                             onMove = { earlier -> controller.act { moveGoal(goal.id, earlier) } },
+                            modifier = softItem(),
                         )
                     }
                 }
@@ -294,10 +296,11 @@ private fun GoalCard(
     canMoveDown: Boolean,
     onOpen: () -> Unit,
     onMove: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     val stepPx = with(density) { DRAG_STEP_DP.dp.toPx() }
-    Card(Modifier.fillMaxWidth().clickable(enabled = !reordering, onClick = onOpen)) {
+    SoftCard(modifier.fillMaxWidth().clickable(enabled = !reordering, onClick = onOpen)) {
         Row(
             Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

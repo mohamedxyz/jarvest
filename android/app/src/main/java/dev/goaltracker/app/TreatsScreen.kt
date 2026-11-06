@@ -137,7 +137,7 @@ fun TreatsScreen(controller: AppController) {
 @Composable
 private fun NextTreatCard(progress: dev.goaltracker.core.RewardProgress) {
     var help by remember { mutableStateOf(false) }
-    Card(Modifier.fillMaxWidth()) {
+    SoftCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SectionTitle("Your next treat", Modifier.weight(1f))

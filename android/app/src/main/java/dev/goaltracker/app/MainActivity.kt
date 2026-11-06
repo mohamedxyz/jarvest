@@ -1,5 +1,14 @@
 package dev.goaltracker.app
 
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.AnimatedContent
 import dev.goaltracker.core.GoalKind
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -222,7 +231,28 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
+        val motion = LocalMotion.current
         Box(Modifier.padding(padding).consumeWindowInsets(padding).imePadding()) {
+            // Tabs cross-fade. Opening a screen slides it in from the right; going back slides it out.
+            AnimatedContent(
+                targetState = route,
+                transitionSpec = {
+                    val toTab = tabs.any { it.route == targetState }
+                    val fromTab = tabs.any { it.route == initialState }
+                    when {
+                        !motion -> EnterTransition.None togetherWith ExitTransition.None
+                        toTab && fromTab ->
+                            fadeIn(tween(220, delayMillis = 60)) togetherWith fadeOut(tween(90))
+                        toTab ->
+                            (slideInHorizontally(tween(260)) { -it / 5 } + fadeIn(tween(260))) togetherWith
+                                (slideOutHorizontally(tween(260)) { it / 5 } + fadeOut(tween(160)))
+                        else ->
+                            (slideInHorizontally(tween(260)) { it / 5 } + fadeIn(tween(260))) togetherWith
+                                (slideOutHorizontally(tween(260)) { -it / 5 } + fadeOut(tween(160)))
+                    }
+                },
+                label = "screens",
+            ) { route ->
             when {
                 route == "today" -> TodayScreen(
                     controller,
@@ -263,6 +293,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false)
                     onEditTask = { push("edittask/$it") },
                     onClose = pop,
                 )
+            }
             }
         }
     }

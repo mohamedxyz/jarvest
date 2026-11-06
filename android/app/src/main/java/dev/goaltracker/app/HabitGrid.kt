@@ -139,7 +139,7 @@ fun HabitGrid(controller: AppController, goals: List<Goal>, onOpenGoal: (String)
                 val color = colorOf(goal)
                 val marks = logged[goal.id].orEmpty()
                 Row(
-                    Modifier.fillMaxWidth().height(56.dp).padding(start = 16.dp),
+                    softItem().fillMaxWidth().height(56.dp).padding(start = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Row(
