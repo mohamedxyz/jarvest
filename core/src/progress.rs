@@ -237,7 +237,13 @@ const QUEST_BONUS: u32 = 10;
 const STREAK_BONUS: u32 = 20;
 const BOSS_BONUS: u32 = 25;
 
-fn set_bonus(conn: &Connection, date: &str, kind: &str, points: u32, on: bool) -> Result<(), CoreError> {
+fn set_bonus(
+    conn: &Connection,
+    date: &str,
+    kind: &str,
+    points: u32,
+    on: bool,
+) -> Result<(), CoreError> {
     if on {
         conn.execute(
             "INSERT OR IGNORE INTO xp_bonuses (local_date, kind, points) VALUES (?1, ?2, ?3)",
@@ -256,14 +262,26 @@ fn set_bonus(conn: &Connection, date: &str, kind: &str, points: u32, on: bool) -
 /// They are given and taken back with the day, so undoing something never leaves XP behind.
 fn update_bonuses(conn: &Connection, today: &str) -> Result<(), CoreError> {
     let score = score::day_score(conn, today)?;
-    set_bonus(conn, today, "titan", TITAN_BONUS, score.level == DayLevel::Titan)?;
+    set_bonus(
+        conn,
+        today,
+        "titan",
+        TITAN_BONUS,
+        score.level == DayLevel::Titan,
+    )?;
     ensure_quest(conn, today, &score)?;
     if let Some(quest) = daily_quest(conn, today)? {
         set_bonus(conn, today, "quest", QUEST_BONUS, quest.done)?;
     }
     let blaze_today = rank(score.level) >= 2;
     let streak = day_records(conn, today)?.blaze_streak;
-    set_bonus(conn, today, "streak", STREAK_BONUS, blaze_today && streak > 0 && streak % 7 == 0)?;
+    set_bonus(
+        conn,
+        today,
+        "streak",
+        STREAK_BONUS,
+        blaze_today && streak > 0 && streak % 7 == 0,
+    )?;
     Ok(())
 }
 
@@ -317,7 +335,10 @@ pub fn daily_quest(conn: &Connection, today: &str) -> Result<Option<DailyQuest>,
     let (text, progress) = match kind.as_str() {
         "points" => (format!("Earn {target} points today"), score.earned),
         "tasks" => (format!("Finish {target} tasks today"), score.tasks_done),
-        _ => (format!("Complete {target} goals or habits today"), score.goals_done),
+        _ => (
+            format!("Complete {target} goals or habits today"),
+            score.goals_done,
+        ),
     };
     Ok(Some(DailyQuest {
         text,
@@ -450,7 +471,8 @@ pub fn day_detail(conn: &Connection, date: &str) -> Result<DayDetail, CoreError>
 
 pub fn day_records(conn: &Connection, today: &str) -> Result<DayRecords, CoreError> {
     let today_date = parse_date(today)?;
-    let mut stmt = conn.prepare("SELECT local_date, earned, level FROM day_scores ORDER BY local_date")?;
+    let mut stmt =
+        conn.prepare("SELECT local_date, earned, level FROM day_scores ORDER BY local_date")?;
     let rows: Vec<(NaiveDate, u32, DayLevel)> = stmt
         .query_map([], |r| {
             Ok((
@@ -471,7 +493,11 @@ pub fn day_records(conn: &Connection, today: &str) -> Result<DayRecords, CoreErr
             best = Some((day, *earned));
         }
         if rank(*level) >= 2 {
-            run = if previous.is_some_and(|p| p + Days::new(1) == *day) { run + 1 } else { 1 };
+            run = if previous.is_some_and(|p| p + Days::new(1) == *day) {
+                run + 1
+            } else {
+                1
+            };
             longest = longest.max(run);
             previous = Some(*day);
         } else {
@@ -481,7 +507,11 @@ pub fn day_records(conn: &Connection, today: &str) -> Result<DayRecords, CoreErr
     }
     // The current streak counts back from today, or from yesterday when today is still in progress.
     let blaze = |day: NaiveDate| rows.iter().any(|(d, _, l)| *d == day && rank(*l) >= 2);
-    let mut cursor = if blaze(today_date) { today_date } else { today_date - Days::new(1) };
+    let mut cursor = if blaze(today_date) {
+        today_date
+    } else {
+        today_date - Days::new(1)
+    };
     let mut streak = 0;
     while blaze(cursor) {
         streak += 1;
@@ -489,7 +519,10 @@ pub fn day_records(conn: &Connection, today: &str) -> Result<DayRecords, CoreErr
     }
     Ok(DayRecords {
         days_recorded: rows.len() as u32,
-        titan_days: rows.iter().filter(|(_, _, l)| *l == DayLevel::Titan).count() as u32,
+        titan_days: rows
+            .iter()
+            .filter(|(_, _, l)| *l == DayLevel::Titan)
+            .count() as u32,
         best_day_date: best.map(|(d, _)| d.to_string()),
         best_day_points: best.map_or(0, |(_, p)| p),
         blaze_streak: streak,

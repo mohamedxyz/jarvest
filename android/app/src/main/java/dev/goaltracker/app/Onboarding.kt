@@ -380,6 +380,19 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.10.0",
+        listOf(
+            "Daily quest on Today: a small target that pays bonus XP. Missing it costs nothing. Titan days, Blaze streaks, bosses and monsters also pay bonus XP.",
+            "Focus timer for tasks and goals, with a countdown in the notification and a history of sessions.",
+            "History calendar with day details, records and Blaze streaks. Insights for any week or month, with a button to share them.",
+            "Calendar: event end dates, reminders, skipping one day of a repeat, month overview, drag to move, and suggested times for plans without one.",
+            "Tasks: quick-add times like \"Essay tomorrow 3pm 1h\", templates, custom repeat, editable steps, and grouping by tag.",
+            "Quiet hours, a sound switch and a Snooze button on reminders. New Score and Agenda widgets.",
+            "Export tasks to CSV, export everything to JSON, import tasks from CSV, and share a backup.",
+            "Seven new badges. Content stays centered on tablets and in landscape.",
+        ),
+    ),
+    Release(
         "0.9.0",
         listOf(
             "New Calendar tab for time blocking: a week strip and the day hour by hour, with events, tasks and goals as blocks.",

@@ -122,9 +122,7 @@ pub fn export_json(conn: &Connection, dest: &str) -> Result<(), CoreError> {
                             rusqlite::types::ValueRef::Null => "null".to_string(),
                             rusqlite::types::ValueRef::Integer(n) => n.to_string(),
                             rusqlite::types::ValueRef::Real(f) => f.to_string(),
-                            rusqlite::types::ValueRef::Text(t) => {
-                                json(&String::from_utf8_lossy(t))
-                            }
+                            rusqlite::types::ValueRef::Text(t) => json(&String::from_utf8_lossy(t)),
                             rusqlite::types::ValueRef::Blob(_) => "null".to_string(),
                         })
                     })
@@ -139,9 +137,19 @@ pub fn export_json(conn: &Connection, dest: &str) -> Result<(), CoreError> {
                 .zip(&names)
                 .map(|(v, n)| format!("{n}: {v}"))
                 .collect();
-            let _ = write!(out, "{}\n    {{{}}}", if i > 0 { "," } else { "" }, fields.join(", "));
+            let _ = write!(
+                out,
+                "{}\n    {{{}}}",
+                if i > 0 { "," } else { "" },
+                fields.join(", ")
+            );
         }
-        let _ = writeln!(out, "{}]{}", if rows.is_empty() { "" } else { "\n  " }, if last { "" } else { "," });
+        let _ = writeln!(
+            out,
+            "{}]{}",
+            if rows.is_empty() { "" } else { "\n  " },
+            if last { "" } else { "," }
+        );
         Ok(())
     };
     list(

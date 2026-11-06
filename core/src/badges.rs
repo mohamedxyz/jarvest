@@ -42,10 +42,16 @@ pub fn badges(conn: &Connection, today: &str) -> Result<Vec<Badge>, CoreError> {
         .max()
         .unwrap_or(0);
 
-    let titan_days = count(conn, "SELECT COUNT(*) FROM day_scores WHERE level = 'titan'")?;
+    let titan_days = count(
+        conn,
+        "SELECT COUNT(*) FROM day_scores WHERE level = 'titan'",
+    )?;
     let focus_minutes = count(conn, "SELECT COALESCE(SUM(minutes), 0) FROM focus_sessions")?;
     let events = count(conn, "SELECT COUNT(*) FROM events")?;
-    let bosses = count(conn, "SELECT COUNT(*) FROM weekly_bosses WHERE defeated_date IS NOT NULL")?;
+    let bosses = count(
+        conn,
+        "SELECT COUNT(*) FROM weekly_bosses WHERE defeated_date IS NOT NULL",
+    )?;
     let blaze_streak = crate::progress::day_records(conn, today)?.longest_blaze_streak;
 
     let list = [
@@ -82,13 +88,43 @@ pub fn badges(conn: &Connection, today: &str) -> Result<Vec<Badge>, CoreError> {
         ("finished_5", "Closer", "Finish 5 goals", finished >= 5),
         ("draw_1", "Lucky draw", "Win a treat", draws >= 1),
         ("draw_10", "Treat collector", "Win 10 treats", draws >= 10),
-        ("titan_1", "Titan day", "Finish everything planned in a day", titan_days >= 1),
-        ("titan_10", "Ten Titans", "Have 10 Titan days", titan_days >= 10),
-        ("blaze_7", "Seven blazing days", "Reach Blaze or better 7 days in a row", blaze_streak >= 7),
+        (
+            "titan_1",
+            "Titan day",
+            "Finish everything planned in a day",
+            titan_days >= 1,
+        ),
+        (
+            "titan_10",
+            "Ten Titans",
+            "Have 10 Titan days",
+            titan_days >= 10,
+        ),
+        (
+            "blaze_7",
+            "Seven blazing days",
+            "Reach Blaze or better 7 days in a row",
+            blaze_streak >= 7,
+        ),
         ("boss_1", "Boss slayer", "Beat a weekly boss", bosses >= 1),
-        ("focus_60", "Deep focus", "Focus for 60 minutes in total", focus_minutes >= 60),
-        ("focus_1000", "Flow state", "Focus for 1000 minutes in total", focus_minutes >= 1000),
-        ("planner_5", "Planner", "Add 5 events to the calendar", events >= 5),
+        (
+            "focus_60",
+            "Deep focus",
+            "Focus for 60 minutes in total",
+            focus_minutes >= 60,
+        ),
+        (
+            "focus_1000",
+            "Flow state",
+            "Focus for 1000 minutes in total",
+            focus_minutes >= 1000,
+        ),
+        (
+            "planner_5",
+            "Planner",
+            "Add 5 events to the calendar",
+            events >= 5,
+        ),
     ];
     Ok(list
         .into_iter()

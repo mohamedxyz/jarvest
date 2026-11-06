@@ -298,7 +298,14 @@ fn clock_time(word: &str) -> Option<u32> {
         },
     };
     let (hours, mins) = match body.split_once(':') {
-        Some((h, m)) => (number(h, 2)?, if m.len() == 2 { number(m, 2)? } else { return None }),
+        Some((h, m)) => (
+            number(h, 2)?,
+            if m.len() == 2 {
+                number(m, 2)?
+            } else {
+                return None;
+            },
+        ),
         // A bare number is only a time with am or pm, so "3" and "2026" stay in the title.
         None if meridiem.is_some() => (number(body, 2)?, 0),
         None => return None,
@@ -322,16 +329,18 @@ fn clock_time(word: &str) -> Option<u32> {
 /// `45m`, `45min`, `2h` or `1.5h`, as minutes (5 to 1440).
 fn length_of(word: &str) -> Option<u32> {
     let lower = word.to_lowercase();
-    let total = if let Some(n) = lower.strip_suffix("min").or_else(|| lower.strip_suffix('m')) {
+    let total = if let Some(n) = lower
+        .strip_suffix("min")
+        .or_else(|| lower.strip_suffix('m'))
+    {
         number(n, 4)?
-    } else if let Some(n) = lower.strip_suffix('h') {
+    } else {
+        let n = lower.strip_suffix('h')?;
         match n.split_once('.') {
             Some((whole, frac)) if frac.len() == 1 => number(whole, 2)? * 60 + number(frac, 1)? * 6,
             Some(_) => return None,
             None => number(n, 2)? * 60,
         }
-    } else {
-        return None;
     };
     (5..=1440).contains(&total).then_some(total)
 }

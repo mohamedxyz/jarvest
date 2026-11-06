@@ -260,7 +260,9 @@ fn events_on(conn: &Connection, day: chrono::NaiveDate) -> Result<Vec<CalendarEv
 pub fn skip_event_day(conn: &Connection, id: &str, date: &str) -> Result<(), CoreError> {
     parse_date(date)?;
     let repeat: Option<String> = conn
-        .query_row("SELECT repeat FROM events WHERE id = ?1", [id], |r| r.get(0))
+        .query_row("SELECT repeat FROM events WHERE id = ?1", [id], |r| {
+            r.get(0)
+        })
         .optional()?;
     match repeat.as_deref() {
         None => Err(invalid("That event no longer exists")),
@@ -276,7 +278,11 @@ pub fn skip_event_day(conn: &Connection, id: &str, date: &str) -> Result<(), Cor
 }
 
 /// Every reminder due on the days from `from` for `days` days, soonest first. The app sets one alarm per row.
-pub fn event_reminders(conn: &Connection, from: &str, days: u32) -> Result<Vec<EventReminder>, CoreError> {
+pub fn event_reminders(
+    conn: &Connection,
+    from: &str,
+    days: u32,
+) -> Result<Vec<EventReminder>, CoreError> {
     let start = parse_date(from)?;
     let mut out = Vec::new();
     for offset in 0..days.min(14) {
@@ -293,7 +299,12 @@ pub fn event_reminders(conn: &Connection, from: &str, days: u32) -> Result<Vec<E
             }
         }
     }
-    out.sort_by_key(|r| (r.date.clone(), r.start_minutes.saturating_sub(r.remind_minutes)));
+    out.sort_by_key(|r| {
+        (
+            r.date.clone(),
+            r.start_minutes.saturating_sub(r.remind_minutes),
+        )
+    });
     Ok(out)
 }
 

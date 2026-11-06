@@ -10,7 +10,12 @@ use crate::tasks;
 
 const MAX_TEMPLATES: i64 = 50;
 
-pub fn save(conn: &Connection, task_id: &str, name: &str, today: &str) -> Result<String, CoreError> {
+pub fn save(
+    conn: &Connection,
+    task_id: &str,
+    name: &str,
+    today: &str,
+) -> Result<String, CoreError> {
     let name = name.trim();
     if name.is_empty() || name.chars().count() > 60 {
         return Err(invalid("A template name needs 1 to 60 characters"));
@@ -109,7 +114,11 @@ pub fn use_template(
             priority,
             tag,
             repeat: None,
-            items: steps.lines().filter(|l| !l.is_empty()).map(String::from).collect(),
+            items: steps
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect(),
             goal_id: None,
         },
         today,

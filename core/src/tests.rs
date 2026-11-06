@@ -4454,9 +4454,18 @@ fn emptying_the_goal_trash_removes_goals_with_all_their_history() {
     // A log (which wins a treat), a reminder, a monster link and a linked task all hang off the goal.
     tick(&core, &goal, DAY);
     core.set_goal_reminder(goal.clone(), Some(7 * 60)).unwrap();
-    let monster = core.create_monster("Couch".into(), 100, DAY.into()).unwrap();
-    core.link_monster_item(monster, MonsterLinkKind::Goal, goal.clone(), 10).unwrap();
-    add_task(&core, NewTask { goal_id: Some(goal.clone()), ..new_task("Buy shoes") });
+    let monster = core
+        .create_monster("Couch".into(), 100, DAY.into())
+        .unwrap();
+    core.link_monster_item(monster, MonsterLinkKind::Goal, goal.clone(), 10)
+        .unwrap();
+    add_task(
+        &core,
+        NewTask {
+            goal_id: Some(goal.clone()),
+            ..new_task("Buy shoes")
+        },
+    );
     let keep = daily_habit(&core, "Read");
     core.trash_goal(goal, DAY.into()).unwrap();
     assert_eq!(core.list_goal_trash(DAY.into()).unwrap().len(), 1);
@@ -4473,11 +4482,21 @@ fn emptying_the_task_trash_removes_only_trashed_tasks_even_with_repeats() {
     let (core, _dir) = core();
     let repeating = add_task(
         &core,
-        NewTask { due: Some(DAY.into()), repeat: Some(Repeat::Daily), ..new_task("Water plants") },
+        NewTask {
+            due: Some(DAY.into()),
+            repeat: Some(Repeat::Daily),
+            ..new_task("Water plants")
+        },
     );
     // Finishing a repeating task makes its next copy, so the two point at each other.
     core.toggle_task(repeating.clone(), DAY.into()).unwrap();
-    let steps = add_task(&core, NewTask { items: vec!["a".into(), "b".into()], ..new_task("With steps") });
+    let steps = add_task(
+        &core,
+        NewTask {
+            items: vec!["a".into(), "b".into()],
+            ..new_task("With steps")
+        },
+    );
     let kept = add_task(&core, new_task("Keep me"));
     core.delete_task(repeating, DAY.into()).unwrap();
     core.delete_task(steps, DAY.into()).unwrap();
@@ -4494,7 +4513,10 @@ fn a_repeating_event_can_end_and_skip_a_day() {
     stand_up.until_date = Some(d(2));
     let id = core.create_event(stand_up).unwrap();
     let count = |date: String| core.calendar_day(date).unwrap().len();
-    assert_eq!((count(DAY.into()), count(d(1)), count(d(2)), count(d(3))), (1, 1, 1, 0));
+    assert_eq!(
+        (count(DAY.into()), count(d(1)), count(d(2)), count(d(3))),
+        (1, 1, 1, 0)
+    );
     core.skip_event_day(id.clone(), d(1)).unwrap();
     assert_eq!((count(DAY.into()), count(d(1)), count(d(2))), (1, 0, 1));
     // Skipping twice is harmless, and a one-off event has nothing to skip.
@@ -4522,10 +4544,18 @@ fn event_reminders_list_the_coming_days_with_a_reminder() {
     daily.repeat = EventRepeat::Daily;
     daily.remind_minutes = Some(10);
     core.create_event(daily).unwrap();
-    core.create_event(event("No reminder", DAY, 9 * 60, 30)).unwrap();
+    core.create_event(event("No reminder", DAY, 9 * 60, 30))
+        .unwrap();
     let list = core.event_reminders(DAY.into(), 3).unwrap();
     assert_eq!(list.len(), 3);
-    assert_eq!((list[0].date.as_str(), list[0].start_minutes, list[0].remind_minutes), (DAY, 480, 10));
+    assert_eq!(
+        (
+            list[0].date.as_str(),
+            list[0].start_minutes,
+            list[0].remind_minutes
+        ),
+        (DAY, 480, 10)
+    );
     assert_eq!(list[2].date, d(2));
 }
 
@@ -4544,7 +4574,13 @@ fn day_history_lists_recorded_days_and_what_happened() {
     let (core, _dir) = core();
     let ids = habits(&core, 2);
     tick(&core, &ids[0], DAY);
-    let task = add_task(&core, NewTask { due: Some(DAY.into()), ..new_task("Email") });
+    let task = add_task(
+        &core,
+        NewTask {
+            due: Some(DAY.into()),
+            ..new_task("Email")
+        },
+    );
     core.toggle_task(task, DAY.into()).unwrap();
     core.progress_tick(DAY.into()).unwrap();
     let rows = core.day_rows(DAY.into(), 7).unwrap();
@@ -4569,10 +4605,20 @@ fn blaze_streaks_count_days_in_a_row_and_forgive_a_day_in_progress() {
         core.progress_tick(d(n)).unwrap();
     }
     let on_day_two = core.day_records(d(2)).unwrap();
-    assert_eq!((on_day_two.blaze_streak, on_day_two.longest_blaze_streak), (3, 3));
+    assert_eq!(
+        (on_day_two.blaze_streak, on_day_two.longest_blaze_streak),
+        (3, 3)
+    );
     // Day 3 was missed, so the streak restarted; day 4 is done.
     let on_day_four = core.day_records(d(4)).unwrap();
-    assert_eq!((on_day_four.blaze_streak, on_day_four.longest_blaze_streak, on_day_four.titan_days), (1, 3, 4));
+    assert_eq!(
+        (
+            on_day_four.blaze_streak,
+            on_day_four.longest_blaze_streak,
+            on_day_four.titan_days
+        ),
+        (1, 3, 4)
+    );
     // Day 5 is still in progress, so it does not break the streak yet.
     assert_eq!(core.day_records(d(5)).unwrap().blaze_streak, 1);
     // Day 6 had nothing done by its end of day 5, so the streak is over.
@@ -4594,7 +4640,10 @@ fn quick_add_reads_a_start_time_and_length() {
     assert_eq!((p.time, p.minutes), (Some(15 * 60), Some(45)));
     assert_eq!(p.due.as_deref(), Some("2026-11-06"));
     let p = quick("Standup tomorrow at 9:30am 15m");
-    assert_eq!((p.title.as_str(), p.time, p.minutes), ("Standup", Some(570), Some(15)));
+    assert_eq!(
+        (p.title.as_str(), p.time, p.minutes),
+        ("Standup", Some(570), Some(15))
+    );
     let p = quick("Train today 18:05 1.5h");
     assert_eq!((p.time, p.minutes), (Some(18 * 60 + 5), Some(90)));
     let p = quick("Call mum tomorrow 12am");
@@ -4636,14 +4685,27 @@ fn a_template_makes_new_tasks_with_the_same_steps() {
         },
     );
     core.set_task_time(source.clone(), None, Some(20)).unwrap();
-    let template = core.save_task_template(source, "Leaving".into(), DAY.into()).unwrap();
+    let template = core
+        .save_task_template(source, "Leaving".into(), DAY.into())
+        .unwrap();
     let list = core.list_task_templates().unwrap();
-    assert_eq!((list[0].name.as_str(), list[0].steps, list[0].minutes), ("Leaving", 2, Some(20)));
+    assert_eq!(
+        (list[0].name.as_str(), list[0].steps, list[0].minutes),
+        ("Leaving", 2, Some(20))
+    );
 
-    let made = core.task_from_template(template.clone(), Some(d(1)), DAY.into()).unwrap();
+    let made = core
+        .task_from_template(template.clone(), Some(d(1)), DAY.into())
+        .unwrap();
     let task = core.get_task(made.clone(), DAY.into()).unwrap();
-    assert_eq!((task.title.as_str(), task.priority, task.tag.as_deref()), ("Leave the house", Priority::High, Some("home")));
-    assert_eq!((task.due.as_deref(), task.duration, task.items_total), (Some(d(1).as_str()), Some(20), 2));
+    assert_eq!(
+        (task.title.as_str(), task.priority, task.tag.as_deref()),
+        ("Leave the house", Priority::High, Some("home"))
+    );
+    assert_eq!(
+        (task.due.as_deref(), task.duration, task.items_total),
+        (Some(d(1).as_str()), Some(20), 2)
+    );
     // A copy is its own task, with steps that start unticked.
     assert_eq!(task.items_done, 0);
     core.delete_task_template(template.clone()).unwrap();
@@ -4654,15 +4716,24 @@ fn a_template_makes_new_tasks_with_the_same_steps() {
 fn template_names_are_checked() {
     let (core, _dir) = core();
     let id = add_task(&core, new_task("A"));
-    assert!(core.save_task_template(id.clone(), "  ".into(), DAY.into()).is_err());
-    core.save_task_template(id.clone(), "Mine".into(), DAY.into()).unwrap();
-    assert!(core.save_task_template(id, "mine".into(), DAY.into()).is_err());
+    assert!(
+        core.save_task_template(id.clone(), "  ".into(), DAY.into())
+            .is_err()
+    );
+    core.save_task_template(id.clone(), "Mine".into(), DAY.into())
+        .unwrap();
+    assert!(
+        core.save_task_template(id, "mine".into(), DAY.into())
+            .is_err()
+    );
 }
 
 #[test]
 fn quick_add_saves_the_start_time_and_length() {
     let (core, _dir) = core();
-    let id = core.quick_add_task("Dentist friday 3pm 45m".into(), DAY.into()).unwrap();
+    let id = core
+        .quick_add_task("Dentist friday 3pm 45m".into(), DAY.into())
+        .unwrap();
     let task = core.get_task(id, DAY.into()).unwrap();
     assert_eq!((task.due_time, task.duration), (Some(15 * 60), Some(45)));
 }
@@ -4673,15 +4744,45 @@ fn quick_add_saves_the_start_time_and_length() {
 fn focus_sessions_add_up_per_item_and_per_day() {
     let (core, _dir) = core();
     let task = add_task(&core, new_task("Essay"));
-    core.record_focus(FocusKind::Task, task.clone(), "Essay".into(), DAY.into(), 9 * 60, 25).unwrap();
-    core.record_focus(FocusKind::Task, task.clone(), "Essay".into(), DAY.into(), 10 * 60, 25).unwrap();
-    core.record_focus(FocusKind::Task, task.clone(), "Essay".into(), d(1), 9 * 60, 50).unwrap();
+    core.record_focus(
+        FocusKind::Task,
+        task.clone(),
+        "Essay".into(),
+        DAY.into(),
+        9 * 60,
+        25,
+    )
+    .unwrap();
+    core.record_focus(
+        FocusKind::Task,
+        task.clone(),
+        "Essay".into(),
+        DAY.into(),
+        10 * 60,
+        25,
+    )
+    .unwrap();
+    core.record_focus(
+        FocusKind::Task,
+        task.clone(),
+        "Essay".into(),
+        d(1),
+        9 * 60,
+        50,
+    )
+    .unwrap();
     assert_eq!(core.focus_total(task.clone()).unwrap(), 100);
     let week = core.focus_by_day(DAY.into(), 3).unwrap();
-    assert_eq!(week.iter().map(|d| d.minutes).collect::<Vec<_>>(), [50, 50, 0]);
+    assert_eq!(
+        week.iter().map(|d| d.minutes).collect::<Vec<_>>(),
+        [50, 50, 0]
+    );
     let sessions = core.focus_on_day(DAY.into()).unwrap();
     assert_eq!(sessions.len(), 2);
-    assert_eq!((sessions[0].start_minutes, sessions[1].start_minutes), (540, 600));
+    assert_eq!(
+        (sessions[0].start_minutes, sessions[1].start_minutes),
+        (540, 600)
+    );
     core.delete_focus_session(sessions[0].id.clone()).unwrap();
     assert_eq!(core.focus_total(task).unwrap(), 75);
 }
@@ -4690,12 +4791,46 @@ fn focus_sessions_add_up_per_item_and_per_day() {
 fn focus_sessions_are_checked_and_never_touch_score_or_xp() {
     let (core, _dir) = core();
     let task = add_task(&core, new_task("Essay"));
-    assert!(core.record_focus(FocusKind::Task, task.clone(), "x".into(), DAY.into(), 60, 0).is_err());
-    assert!(core.record_focus(FocusKind::Task, task.clone(), "x".into(), DAY.into(), 60, 601).is_err());
-    assert!(core.record_focus(FocusKind::Task, "missing".into(), "x".into(), DAY.into(), 60, 25).is_err());
-    assert!(core.record_focus(FocusKind::Task, task.clone(), "x".into(), "2026-02-30".into(), 60, 25).is_err());
+    assert!(
+        core.record_focus(FocusKind::Task, task.clone(), "x".into(), DAY.into(), 60, 0)
+            .is_err()
+    );
+    assert!(
+        core.record_focus(
+            FocusKind::Task,
+            task.clone(),
+            "x".into(),
+            DAY.into(),
+            60,
+            601
+        )
+        .is_err()
+    );
+    assert!(
+        core.record_focus(
+            FocusKind::Task,
+            "missing".into(),
+            "x".into(),
+            DAY.into(),
+            60,
+            25
+        )
+        .is_err()
+    );
+    assert!(
+        core.record_focus(
+            FocusKind::Task,
+            task.clone(),
+            "x".into(),
+            "2026-02-30".into(),
+            60,
+            25
+        )
+        .is_err()
+    );
     let before = core.day_score(DAY.into()).unwrap();
-    core.record_focus(FocusKind::Task, task, "Essay".into(), DAY.into(), 60, 25).unwrap();
+    core.record_focus(FocusKind::Task, task, "Essay".into(), DAY.into(), 60, 25)
+        .unwrap();
     assert_eq!(core.day_score(DAY.into()).unwrap(), before);
     core.progress_tick(DAY.into()).unwrap();
     assert_eq!(core.hero().unwrap().xp, 0);
@@ -4705,7 +4840,15 @@ fn focus_sessions_are_checked_and_never_touch_score_or_xp() {
 fn a_focus_session_keeps_its_title_after_the_task_is_deleted() {
     let (core, _dir) = core();
     let task = add_task(&core, new_task("Essay"));
-    core.record_focus(FocusKind::Task, task.clone(), "Essay".into(), DAY.into(), 60, 25).unwrap();
+    core.record_focus(
+        FocusKind::Task,
+        task.clone(),
+        "Essay".into(),
+        DAY.into(),
+        60,
+        25,
+    )
+    .unwrap();
     core.delete_task(task.clone(), DAY.into()).unwrap();
     core.delete_task_forever(task).unwrap();
     assert_eq!(core.focus_on_day(DAY.into()).unwrap()[0].title, "Essay");
@@ -4768,7 +4911,10 @@ fn insights_add_up_a_week_and_compare_with_the_last() {
         core.progress_tick(date.into()).unwrap();
     }
     let week = core.insights(Period::Week, 0, DAY.into()).unwrap();
-    assert_eq!((week.from.as_str(), week.to.as_str()), ("2026-11-02", "2026-11-08"));
+    assert_eq!(
+        (week.from.as_str(), week.to.as_str()),
+        ("2026-11-02", "2026-11-08")
+    );
     assert_eq!((week.points, week.active_days, week.titan_days), (20, 2, 2));
     assert_eq!(week.previous_points, 0);
     assert_eq!(week.best_date.as_deref(), Some("2026-11-05"));
@@ -4788,7 +4934,10 @@ fn suggested_blocks_use_free_gaps_and_save_nothing() {
     let id = daily_habit(&core, "Read");
     let first = core.suggest_blocks(DAY.into()).unwrap();
     assert_eq!(first.len(), 1);
-    assert_eq!((first[0].id.as_str(), first[0].start_minutes), (id.as_str(), 9 * 60));
+    assert_eq!(
+        (first[0].id.as_str(), first[0].start_minutes),
+        (id.as_str(), 9 * 60)
+    );
     // Asking again gives the same answer, because nothing was saved.
     assert_eq!(core.suggest_blocks(DAY.into()).unwrap(), first);
 }
@@ -4819,12 +4968,18 @@ fn tasks_and_json_export_and_the_csv_comes_back_in() {
     let json = dir.path().join("all.json").to_str().unwrap().to_string();
     core.export_json(json.clone()).unwrap();
     let text = std::fs::read_to_string(&json).unwrap();
-    assert!(text.contains("\"goals\"") && text.contains("\"Read\"") && text.contains("line one\\nline two"));
+    assert!(
+        text.contains("\"goals\"")
+            && text.contains("\"Read\"")
+            && text.contains("line one\\nline two")
+    );
 
     // Into a fresh app, the same task arrives with its details.
     let (other, _dir2) = crate::tests::core();
     assert_eq!(other.import_tasks_csv(csv, DAY.into()).unwrap(), 1);
-    let task = &other.list_tasks(TaskFilter::All, TaskSort::Due, DAY.into()).unwrap()[0];
+    let task = &other
+        .list_tasks(TaskFilter::All, TaskSort::Due, DAY.into())
+        .unwrap()[0];
     assert_eq!(task.title, "Essay, \"final\"");
     assert_eq!(task.notes, "line one\nline two");
     assert_eq!(task.priority, Priority::High);
@@ -4834,8 +4989,57 @@ fn tasks_and_json_export_and_the_csv_comes_back_in() {
 fn importing_skips_bad_rows_and_needs_a_title_column() {
     let (core, dir) = core();
     let path = dir.path().join("in.csv");
-    std::fs::write(&path, "title,due\nGood,2026-12-01\n,2026-12-02\nBad date,someday\n").unwrap();
-    assert_eq!(core.import_tasks_csv(path.to_str().unwrap().into(), DAY.into()).unwrap(), 2);
+    std::fs::write(
+        &path,
+        "title,due\nGood,2026-12-01\n,2026-12-02\nBad date,someday\n",
+    )
+    .unwrap();
+    assert_eq!(
+        core.import_tasks_csv(path.to_str().unwrap().into(), DAY.into())
+            .unwrap(),
+        2
+    );
     std::fs::write(&path, "name\nx\n").unwrap();
-    assert!(core.import_tasks_csv(path.to_str().unwrap().into(), DAY.into()).is_err());
+    assert!(
+        core.import_tasks_csv(path.to_str().unwrap().into(), DAY.into())
+            .is_err()
+    );
+}
+
+// ---- The whole upgrade chain ----
+
+#[test]
+fn a_database_from_every_older_version_opens_works_and_backs_up() {
+    for version in 1..db::SCHEMA_VERSION {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.db").to_str().unwrap().to_string();
+        {
+            let mut conn = rusqlite::Connection::open(&path).unwrap();
+            db::migrate_to(&mut conn, version).unwrap();
+            conn.execute_batch(
+                "INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old', 'yes_no', '2026-01-01');
+                 INSERT INTO entries (id, goal_id, local_date, amount, single_per_day, seq) VALUES ('e1', 'g1', '2026-01-02', 1, 1, 1);",
+            )
+            .unwrap_or_else(|e| panic!("seeding version {version}: {e}"));
+        }
+        let core =
+            GoalCore::open(path).unwrap_or_else(|e| panic!("opening version {version}: {e:?}"));
+        let user_version: i32 = rusqlite::Connection::open(dir.path().join("old.db"))
+            .unwrap()
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(user_version, db::SCHEMA_VERSION, "from version {version}");
+        // The old goal and its log survive, and the new features answer.
+        assert_eq!(core.get_goal("g1".into()).unwrap().title, "Old");
+        core.progress_tick("2026-11-05".into()).unwrap();
+        core.hero().unwrap();
+        core.daily_quest("2026-11-05".into()).unwrap();
+        core.insights(Period::Week, 0, "2026-11-05".into()).unwrap();
+        core.calendar_day("2026-11-05".into()).unwrap();
+        // And what it saves is a backup the app accepts again.
+        let backup = dir.path().join("out.db").to_str().unwrap().to_string();
+        core.export_backup(backup.clone()).unwrap();
+        core.restore_backup(backup)
+            .unwrap_or_else(|e| panic!("restoring a backup made from version {version}: {e:?}"));
+    }
 }

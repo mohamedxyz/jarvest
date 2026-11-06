@@ -330,7 +330,12 @@ impl GoalCore {
     }
 
     /// Saves a task as a template (title, notes, priority, tag, length and steps).
-    pub fn save_task_template(&self, task_id: String, name: String, today: String) -> Result<String, CoreError> {
+    pub fn save_task_template(
+        &self,
+        task_id: String,
+        name: String,
+        today: String,
+    ) -> Result<String, CoreError> {
         templates::save(&self.conn(), &task_id, &name, &today)
     }
 
@@ -638,7 +643,15 @@ impl GoalCore {
         start_minutes: u32,
         minutes: u32,
     ) -> Result<String, CoreError> {
-        focus::record(&self.conn(), kind, &item_id, &title, &date, start_minutes, minutes)
+        focus::record(
+            &self.conn(),
+            kind,
+            &item_id,
+            &title,
+            &date,
+            start_minutes,
+            minutes,
+        )
     }
 
     pub fn focus_total(&self, item_id: String) -> Result<u32, CoreError> {
@@ -663,7 +676,11 @@ impl GoalCore {
     }
 
     /// Event reminders coming up from `from` for a few days (at most 14), for the app to set alarms.
-    pub fn event_reminders(&self, from: String, days: u32) -> Result<Vec<EventReminder>, CoreError> {
+    pub fn event_reminders(
+        &self,
+        from: String,
+        days: u32,
+    ) -> Result<Vec<EventReminder>, CoreError> {
         calendar::event_reminders(&self.conn(), &from, days)
     }
 
@@ -762,7 +779,12 @@ impl GoalCore {
     }
 
     /// A look back at a week or month (`back` periods ago), with a sentence to share.
-    pub fn insights(&self, period: Period, back: u32, today: String) -> Result<Insights, CoreError> {
+    pub fn insights(
+        &self,
+        period: Period,
+        back: u32,
+        today: String,
+    ) -> Result<Insights, CoreError> {
         insights::insights(&self.conn(), period, back, &today)
     }
 
@@ -852,7 +874,11 @@ impl GoalCore {
         let Some((header, body)) = rows.split_first() else {
             return Ok(0);
         };
-        let col = |name: &str| header.iter().position(|h| h.trim().eq_ignore_ascii_case(name));
+        let col = |name: &str| {
+            header
+                .iter()
+                .position(|h| h.trim().eq_ignore_ascii_case(name))
+        };
         let Some(title_col) = col("title") else {
             return Err(CoreError::Invalid {
                 reason: "The first row must name the columns, and one must be \"title\"".into(),
@@ -861,12 +887,16 @@ impl GoalCore {
         let (due_col, pri_col, tag_col, notes_col) =
             (col("due"), col("priority"), col("tag"), col("notes"));
         let get = |row: &Vec<String>, c: Option<usize>| {
-            c.and_then(|i| row.get(i)).map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
+            c.and_then(|i| row.get(i))
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
         };
         let mut conn = self.conn();
         let mut added = 0;
         for row in body.iter().take(1000) {
-            let Some(title) = get(row, Some(title_col)) else { continue };
+            let Some(title) = get(row, Some(title_col)) else {
+                continue;
+            };
             let due = get(row, due_col).filter(|d| dates::parse_date(d).is_ok());
             let priority = match get(row, pri_col).map(|p| p.to_lowercase()).as_deref() {
                 Some("high") => Priority::High,

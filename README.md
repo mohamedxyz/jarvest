@@ -154,13 +154,15 @@ The Rust tests cannot see the screens, so run this on a real phone (or an emulat
 5. Delete a goal and a task, open Trash, restore one, empty the trash. A message says what happened.
 6. Add the Today widget and tick something from it. Add a reminder two minutes ahead and check it arrives.
 7. Settings: the version number is right, a test notification arrives, "Back up now" makes a file, restore it.
-8. Turn the phone sideways and use the big text setting once. Nothing is cut off.
+8. Today shows the daily quest card. History shows Insights. Add the Score and Agenda widgets. Turn on quiet hours and tap Snooze on a reminder. Export tasks to CSV and import them back.
+9. Turn the phone sideways and use the big text setting once. Nothing is cut off.
 
 ## Back up and restore your data
 
 In the app, open **Settings** using the gear icon.
 
 - **Save backup** writes one `.sqlite` file to a location you choose.
+- **Share backup** sends a fresh backup file to another app (a password-protected backup is not built yet).
 - **Restore from backup** replaces all current data with that file. A file that
   isn't a valid backup is rejected, and nothing changes.
 

@@ -21,7 +21,9 @@ fn range(period: Period, back: u32, today: NaiveDate) -> Result<(NaiveDate, Naiv
             let first = today.with_day(1).unwrap_or(today);
             let start = first
                 .checked_sub_months(Months::new(back))
-                .ok_or(CoreError::Invalid { reason: "That month is too far back".into() })?;
+                .ok_or(CoreError::Invalid {
+                    reason: "That month is too far back".into(),
+                })?;
             let end = start + Months::new(1) - Days::new(1);
             Ok((start, end))
         }
@@ -97,7 +99,11 @@ pub fn insights(
         &prev_start.to_string(),
         &prev_end.to_string(),
     )?;
-    let name = if period == Period::Week { "week" } else { "month" };
+    let name = if period == Period::Week {
+        "week"
+    } else {
+        "month"
+    };
     let mut text = format!(
         "My {name} {from} to {to}: {points} points over {active_days} active days, {titan_days} Titan days"
     );
@@ -133,7 +139,10 @@ pub fn suggest_blocks(conn: &Connection, date: &str) -> Result<Vec<SuggestedBloc
         .collect();
     busy.sort_unstable();
     let mut out = Vec::new();
-    for b in blocks.iter().filter(|b| b.start_minutes.is_none() && !b.done) {
+    for b in blocks
+        .iter()
+        .filter(|b| b.start_minutes.is_none() && !b.done)
+    {
         if !matches!(b.kind, CalendarKind::Goal | CalendarKind::Task) {
             continue;
         }
