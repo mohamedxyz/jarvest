@@ -195,19 +195,41 @@ fun GoalDetailScreen(
 
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("Tasks for this goal")
+                SectionTitle("Tasks and milestones")
                 InfoHint(
-                    "Tasks for a goal",
-                    "These are to-dos you linked to this goal. Finishing one only ticks it off here: it does not log the goal and does not earn a treat. " +
-                        "Milestones below are different. Ticking a milestone counts as a target, and each milestone also shows up in your Tasks tab.",
+                    "Tasks and milestones",
+                    "A milestone (marked with a flag) is a task that is also a target: ticking it counts for the goal and can win a treat. " +
+                        "Each milestone also shows up in your Tasks tab. Other tasks you link here are plain to-dos: finishing one does not log the goal or earn a treat.",
                 )
             }
-            if (linkedTasks.isNotEmpty()) {
+            val total = linkedTasks.size + milestones.size
+            if (total > 0) {
+                val done = linkedTasks.count { it.done } + milestones.count { it.doneDate != null }
                 Text(
-                    "${linkedTasks.count { it.done }} of ${linkedTasks.size} done",
+                    "$done of $total done",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            milestones.forEachIndexed { index, milestone ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TickBox(
+                        checked = milestone.doneDate != null,
+                        enabled = !goal.archived,
+                        onCheckedChange = { controller.log { toggleMilestone(milestone.id, controller.today) } },
+                        modifier = Modifier.label(if (milestone.doneDate != null) "Untick milestone ${milestone.title}" else "Tick milestone ${milestone.title}"),
+                    )
+                    Text("\uD83C\uDFC1 ${milestone.title}", Modifier.weight(1f))
+                    IconButton(enabled = index > 0, onClick = { controller.act { moveMilestone(milestone.id, true) } }) {
+                        Icon(Icons.Filled.KeyboardArrowUp, "Move ${milestone.title} up")
+                    }
+                    IconButton(enabled = index < milestones.lastIndex, onClick = { controller.act { moveMilestone(milestone.id, false) } }) {
+                        Icon(Icons.Filled.KeyboardArrowDown, "Move ${milestone.title} down")
+                    }
+                    IconButton(onClick = { milestoneToDelete = milestone }) {
+                        Icon(Icons.Filled.Close, "Delete ${milestone.title}")
+                    }
+                }
             }
             linkedTasks.forEach { task ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -223,30 +245,6 @@ fun GoalDetailScreen(
             }
             if (!goal.archived) {
                 OutlinedButton(onClick = { onAddTask(goalId) }) { Text(stringResource(R.string.ui_add_a_task_for_this_goal)) }
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SectionTitle("Milestones")
-            milestones.forEachIndexed { index, milestone ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TickBox(
-                        checked = milestone.doneDate != null,
-                        enabled = !goal.archived,
-                        onCheckedChange = { controller.log { toggleMilestone(milestone.id, controller.today) } },
-                        modifier = Modifier.label(if (milestone.doneDate != null) "Untick milestone ${milestone.title}" else "Tick milestone ${milestone.title}"),
-                    )
-                    Text(milestone.title, Modifier.weight(1f))
-                    IconButton(enabled = index > 0, onClick = { controller.act { moveMilestone(milestone.id, true) } }) {
-                        Icon(Icons.Filled.KeyboardArrowUp, "Move ${milestone.title} up")
-                    }
-                    IconButton(enabled = index < milestones.lastIndex, onClick = { controller.act { moveMilestone(milestone.id, false) } }) {
-                        Icon(Icons.Filled.KeyboardArrowDown, "Move ${milestone.title} down")
-                    }
-                    IconButton(onClick = { milestoneToDelete = milestone }) {
-                        Icon(Icons.Filled.Close, "Delete ${milestone.title}")
-                    }
-                }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val addMilestone = {

@@ -380,6 +380,13 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.11.1",
+        listOf(
+            "A goal page now shows tasks and milestones in one list. Milestones carry a flag.",
+            "Calendar: a long \"Anytime\" list shows a few items with Show more, so the day's timeline stays visible.",
+        ),
+    ),
+    Release(
         "0.11.0",
         listOf(
             "Holiday mode pauses every goal for the days you choose. Streaks wait for you.",

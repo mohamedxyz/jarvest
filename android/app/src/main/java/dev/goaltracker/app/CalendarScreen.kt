@@ -130,6 +130,9 @@ private fun timeText(block: CalendarBlock): String {
  * here changes the day score, XP, streaks or rewards.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/** How many "Anytime" items show before "Show more". */
+private const val ANYTIME_SHOWN = 4
+
 @Composable
 fun CalendarScreen(
     controller: AppController,
@@ -148,6 +151,7 @@ fun CalendarScreen(
     var selected by remember { mutableStateOf<CalendarBlock?>(null) }
     var showMonth by rememberSaveable { mutableStateOf(false) }
     var showSuggest by remember { mutableStateOf(false) }
+    var showAllAnytime by rememberSaveable(date) { mutableStateOf(false) }
     val anytime = blocks.filter { it.startMinutes == null }
     val placed = remember(blocks) { place(blocks) }
 
@@ -208,8 +212,15 @@ fun CalendarScreen(
         if (anytime.isNotEmpty()) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(R.string.ui_anytime), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // A long list would push the day's timeline off the screen, so only a few show at first.
+                val shown = if (showAllAnytime) anytime else anytime.take(ANYTIME_SHOWN)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    anytime.forEach { block -> BlockChip(block) { selected = block } }
+                    shown.forEach { block -> BlockChip(block) { selected = block } }
+                }
+                if (anytime.size > ANYTIME_SHOWN) {
+                    TextButton(onClick = { showAllAnytime = !showAllAnytime }) {
+                        Text(if (showAllAnytime) "Show less" else "Show ${anytime.size - ANYTIME_SHOWN} more")
+                    }
                 }
             }
         }

@@ -28,8 +28,8 @@ android {
         applicationId = "dev.goaltracker.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "0.11.0"
+        versionCode = 16
+        versionName = "0.11.1"
 
         ndk {
             // Only the CPU types the Rust core is built for. Real phones are arm64; x86_64 is for
