@@ -81,6 +81,14 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
     val categories = remember(allGoals) { allGoals.mapNotNull { it.category }.distinct() }
     // While reordering, filters are ignored so every move is among the real neighbours.
     val filtering = !reordering && (query.isNotBlank() || kindFilter != null || categoryFilter != null)
+    // A number goal shows how far it is this period, not only its target.
+    val currents = remember(controller.version, controller.today, allGoals) {
+        allGoals.filter { it.kind == GoalKind.NUMERIC && it.period != null }.associate { goal ->
+            goal.id to controller.read(0.0) {
+                periodSeries(goal.id, goal.period!!, 1u, controller.today).lastOrNull()?.total ?: 0.0
+            }
+        }
+    }
     val goals = if (reordering) allGoals else allGoals.filter { goal ->
         (query.isBlank() || goal.title.contains(query.trim(), ignoreCase = true) ||
             goal.category?.contains(query.trim(), ignoreCase = true) == true) &&
@@ -183,6 +191,7 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
                     items(list.size, key = { "timeline:${bucket.name}:${list[it].id}" }) { index ->
                         val goal = list[index]
                         GoalCard(
+                            current = currents[goal.id],
                             goal = goal,
                             reordering = false,
                             canMoveUp = false,
@@ -226,6 +235,7 @@ fun GoalsScreen(controller: AppController, habits: Boolean, onOpenGoal: (String)
                     items(inFolder.size, key = { inFolder[it].id }) { index ->
                         val goal = inFolder[index]
                         GoalCard(
+                            current = currents[goal.id],
                             goal = goal,
                             reordering = reordering,
                             canMoveUp = index > 0,
@@ -292,6 +302,7 @@ private fun FolderHeader(
 @Composable
 private fun GoalCard(
     goal: Goal,
+    current: Double?,
     reordering: Boolean,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
@@ -309,7 +320,7 @@ private fun GoalCard(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(goal.title.withIcon(goal.icon), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    describe(goal),
+                    describe(goal, current),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -375,7 +386,8 @@ fun weekdaysLabel(mask: UByte?): String? {
 }
 
 /** A one-line summary, such as "Health · 3 times per week". */
-fun describe(goal: Goal): String {
+/** A goal's one-line summary. [current] is a number goal's total so far this period. */
+fun describe(goal: Goal, current: Double? = null): String {
     if (goal.avoid) return listOfNotNull(goal.category, "Quit habit").joinToString(" · ")
     val period = goal.period
     val periodTarget = goal.periodTarget
@@ -388,7 +400,10 @@ fun describe(goal: Goal): String {
                 (weekdaysLabel(goal.weekdays)?.let { " ($it)" } ?: "")
         }
         GoalKind.NUMERIC -> listOfNotNull(
-            if (period != null && periodTarget != null) "${withUnit(periodTarget, goal.unit)} per ${period.noun()}" else null,
+            if (period != null && periodTarget != null) {
+                if (current != null) "${formatAmount(current)} of ${withUnit(periodTarget, goal.unit)} ${period.current()}"
+                else "${withUnit(periodTarget, goal.unit)} per ${period.noun()}"
+            } else null,
             if (totalTarget != null) "${formatAmount(goal.totalLogged)} of ${withUnit(totalTarget, goal.unit)}" else null,
             if (period == null && totalTarget == null) "${withUnit(goal.totalLogged, goal.unit)} logged" else null,
         ).joinToString(" · ")

@@ -35,16 +35,18 @@ pub fn search(conn: &Connection, query: &str, today: &str) -> Result<SearchResul
     let pattern = like_pattern(query);
     // Archived tasks are included (the screen labels them); trashed ones are not.
     let task_ids: Vec<String> = {
-        let mut stmt = conn.prepare(
+        // A trashed goal's milestone tasks are hidden here too, like everywhere else.
+        let mut stmt = conn.prepare(&format!(
             "SELECT t.id FROM tasks t
-             WHERE t.deleted_date IS NULL
+             WHERE t.deleted_date IS NULL AND {}
                AND (t.title LIKE ?1 ESCAPE '\\' OR t.notes LIKE ?1 ESCAPE '\\'
                     OR t.tag LIKE ?1 ESCAPE '\\'
                     OR EXISTS (SELECT 1 FROM task_items i
                                WHERE i.task_id = t.id AND i.text LIKE ?1 ESCAPE '\\'))
              ORDER BY (t.done_date IS NOT NULL), (t.archived_date IS NOT NULL), t.rowid DESC
              LIMIT ?2",
-        )?;
+            crate::tasks::VISIBLE
+        ))?;
         let rows = stmt.query_map(params![pattern, LIMIT], |r| r.get(0))?;
         rows.collect::<Result<_, _>>()?
     };

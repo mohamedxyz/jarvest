@@ -174,4 +174,5 @@
     <string name="ui_1_fill_your_jar_with_treats_you">1. Fill your jar with treats you enjoy, such as a movie night.</string>
     <string name="ui_3_you_always_win_one_within_10_t">3. You always win one within 10 targets in a row without a treat. The countdown above shows how close that is.</string>
     <string name="ui_4_if_you_undo_a_log_and_the_targ">4. If you undo a log and the target no longer counts, the treat it won is removed too. If your jar is empty or rewards are off, nothing is rolled.</string>
+    <string name="ui_total">Total</string>
 </resources>

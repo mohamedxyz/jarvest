@@ -315,6 +315,7 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
         controller.read(null) { getTask(taskId, controller.today) }
     }
     val items = remember(taskId, controller.version) { controller.read(emptyList()) { listTaskItems(taskId) } }
+    var confirmMilestoneDelete by remember(taskId) { mutableStateOf(false) }
     if (task == null) return
     InfoSheet(task.shownTitle().withIcon(task.icon), onDismiss) {
         IconPickerRow(task.icon) { icon -> controller.act { setTaskIcon(task.id, icon) } }
@@ -339,13 +340,35 @@ fun TaskSheet(controller: AppController, taskId: String, onEdit: () -> Unit, onD
             OutlinedButton(onClick = onEdit) { Text(stringResource(R.string.ui_edit)) }
             if (onFocus != null && !task.done) OutlinedButton(onClick = onFocus) { Text(stringResource(R.string.ui_focus)) }
         }
-        if (task.milestoneId != null) {
-            // A milestone's task is removed by removing the milestone, so the two never disagree.
+        val milestoneId = task.milestoneId
+        if (milestoneId != null) {
+            // Removing it here removes the milestone too, so the two never disagree.
             Text(
-                "This is a milestone of \"${task.goalTitle}\". Ticking it counts as a target. To remove it, delete the milestone on the goal's page.",
+                task.goalTitle?.let { "This is a milestone of \"$it\". Ticking it counts as a target." }
+                    ?: "This milestone's goal is gone. You can delete it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            TextButton(onClick = { confirmMilestoneDelete = true }) {
+                Text("Delete milestone", color = MaterialTheme.colorScheme.error)
+            }
+            if (confirmMilestoneDelete) {
+                ConfirmDialog(
+                    title = "Delete this milestone?",
+                    body = "\"${task.title}\" is removed from your Tasks tab" +
+                        (task.goalTitle?.let { " and from \"$it\"" } ?: "") +
+                        ". If you already ticked it, the treat it earned is removed too.",
+                    confirm = "Delete",
+                    onConfirm = {
+                        confirmMilestoneDelete = false
+                        if (controller.act { deleteMilestone(milestoneId) }) {
+                            controller.message = "Milestone deleted"
+                            onDismiss()
+                        }
+                    },
+                    onDismiss = { confirmMilestoneDelete = false },
+                )
+            }
         } else {
             // Kept apart from Done, and red, so it is not tapped by accident. It can be undone.
             TextButton(onClick = {

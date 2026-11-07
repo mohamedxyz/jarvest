@@ -36,7 +36,7 @@ type ToggleRow = (
 /// A milestone's task belongs to its goal, so it is hidden while the goal is in the
 /// trash. An ordinary task linked to a trashed goal stays visible but shows as
 /// unlinked (see `TASK_COLUMNS`); the link comes back when the goal is restored.
-const VISIBLE: &str = "NOT (t.milestone_id IS NOT NULL AND EXISTS
+pub(crate) const VISIBLE: &str = "NOT (t.milestone_id IS NOT NULL AND EXISTS
     (SELECT 1 FROM goals g WHERE g.id = t.goal_id AND g.deleted_date IS NOT NULL))";
 
 fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
@@ -583,7 +583,7 @@ pub fn list_archived(conn: &Connection, today: &str) -> Result<Vec<Task>, CoreEr
     parse_date(today)?;
     let mut stmt = conn.prepare(&format!(
         "SELECT {TASK_COLUMNS} FROM tasks t
-         WHERE t.archived_date IS NOT NULL AND t.deleted_date IS NULL
+         WHERE t.archived_date IS NOT NULL AND t.deleted_date IS NULL AND {VISIBLE}
          ORDER BY t.archived_date DESC, t.rowid DESC"
     ))?;
     let rows = stmt.query_map([], |row| task_from_row(row, today))?;
@@ -730,12 +730,12 @@ pub fn bulk_update(
 /// Every tag in use on tasks that are not trashed or archived, with counts.
 /// "Uni" and "uni" count as the same tag.
 pub fn list_tags(conn: &Connection) -> Result<Vec<TagCount>, CoreError> {
-    let mut stmt = conn.prepare(
-        "SELECT MIN(tag), SUM(done_date IS NULL), SUM(done_date IS NOT NULL)
-         FROM tasks
-         WHERE tag IS NOT NULL AND deleted_date IS NULL AND archived_date IS NULL
-         GROUP BY lower(tag) ORDER BY lower(tag)",
-    )?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT MIN(t.tag), SUM(t.done_date IS NULL), SUM(t.done_date IS NOT NULL)
+         FROM tasks t
+         WHERE t.tag IS NOT NULL AND t.deleted_date IS NULL AND t.archived_date IS NULL AND {VISIBLE}
+         GROUP BY lower(t.tag) ORDER BY lower(t.tag)"
+    ))?;
     let rows = stmt.query_map([], |r| {
         Ok(TagCount {
             tag: r.get(0)?,

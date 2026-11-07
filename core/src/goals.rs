@@ -883,8 +883,27 @@ pub fn delete_milestone(conn: &mut Connection, milestone_id: &str) -> Result<(),
             params![milestone_id],
         )?;
     }
+    // Its task goes too, even if the milestone row was already gone (a leftover task).
+    tx.execute(
+        "DELETE FROM tasks WHERE milestone_id = ?1",
+        params![milestone_id],
+    )?;
     tx.commit()?;
     Ok(())
+}
+
+/// Removes leftover milestone tasks: ones whose milestone or goal no longer exists.
+/// The database's cascade rules prevent this now, but data from older versions or a
+/// restored backup may still hold some. Returns how many were removed.
+pub fn remove_orphan_milestone_tasks(conn: &Connection) -> Result<u32, CoreError> {
+    let removed = conn.execute(
+        "DELETE FROM tasks WHERE milestone_id IS NOT NULL
+           AND (NOT EXISTS (SELECT 1 FROM milestones m WHERE m.id = tasks.milestone_id)
+                OR goal_id IS NULL
+                OR NOT EXISTS (SELECT 1 FROM goals g WHERE g.id = tasks.goal_id))",
+        [],
+    )?;
+    Ok(removed as u32)
 }
 
 /// Moves a milestone one place earlier or later in its goal's order.

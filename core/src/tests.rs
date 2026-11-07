@@ -6310,3 +6310,99 @@ fn a_backup_with_a_bad_shop_date_is_rejected() {
     drop(conn);
     assert!(fixture.core.restore_backup(path).is_err());
 }
+
+/// A goal with one milestone "100", and that milestone's task id.
+fn goal_with_milestone(core: &GoalCore, title: &str) -> (String, String, String) {
+    let goal = core
+        .create_goal(base(title, GoalKind::YesNo), DAY.into())
+        .unwrap();
+    core.add_milestone(goal.clone(), "100".into(), DAY.into())
+        .unwrap();
+    let milestone = core.list_milestones(goal.clone()).unwrap()[0].id.clone();
+    let task = core
+        .list_goal_tasks(goal.clone(), DAY.into())
+        .unwrap()
+        .into_iter()
+        .find(|t| t.milestone_id.is_some())
+        .unwrap()
+        .id;
+    (goal, milestone, task)
+}
+
+#[test]
+fn a_trashed_goals_milestone_tasks_stay_out_of_search_archive_and_tags() {
+    let (core, _dir) = core();
+    let (goal, _, task) = goal_with_milestone(&core, "Read");
+    core.conn()
+        .execute("UPDATE tasks SET tag = 'books', archived_date = NULL", [])
+        .unwrap();
+    assert_eq!(
+        core.search("100".into(), DAY.into()).unwrap().tasks.len(),
+        1
+    );
+    assert_eq!(core.list_tags().unwrap().len(), 1);
+    core.trash_goal(goal.clone(), DAY.into()).unwrap();
+    assert!(
+        core.search("100".into(), DAY.into())
+            .unwrap()
+            .tasks
+            .is_empty()
+    );
+    assert!(core.list_tags().unwrap().is_empty());
+    core.conn()
+        .execute(
+            "UPDATE tasks SET archived_date = ?1 WHERE id = ?2",
+            [DAY, &task],
+        )
+        .unwrap();
+    assert!(core.list_archived_tasks(DAY.into()).unwrap().is_empty());
+    // Restoring the goal brings them back.
+    core.restore_goal(goal).unwrap();
+    assert_eq!(core.list_archived_tasks(DAY.into()).unwrap().len(), 1);
+}
+
+#[test]
+fn deleting_a_milestone_removes_its_task_even_when_the_milestone_row_is_gone() {
+    let (core, _dir) = core();
+    let (_, milestone, task) = goal_with_milestone(&core, "Read");
+    // A leftover from older data: the task is there but its milestone is not.
+    {
+        let conn = core.conn();
+        conn.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        conn.execute("DELETE FROM milestones WHERE id = ?1", [&milestone])
+            .unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    }
+    assert!(core.get_task(task.clone(), DAY.into()).is_ok());
+    core.delete_milestone(milestone).unwrap();
+    assert!(core.get_task(task, DAY.into()).is_err());
+}
+
+#[test]
+fn leftover_milestone_tasks_are_removed_when_the_app_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("zombies.db").to_str().unwrap().to_string();
+    let (kept, zombie) = {
+        let core = GoalCore::open(path.clone()).unwrap();
+        let (_, _, kept) = goal_with_milestone(&core, "Read");
+        let (goal, _, zombie) = goal_with_milestone(&core, "Run");
+        let plain = add_task(&core, new_task("Plain"));
+        let conn = core.conn();
+        conn.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        conn.execute("DELETE FROM goals WHERE id = ?1", [&goal])
+            .unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        drop(conn);
+        assert!(core.get_task(plain, DAY.into()).is_ok());
+        (kept, zombie)
+    };
+    let core = GoalCore::open(path).unwrap();
+    assert!(core.get_task(kept, DAY.into()).is_ok());
+    assert!(core.get_task(zombie, DAY.into()).is_err());
+    assert_eq!(
+        core.list_tasks(TaskFilter::All, TaskSort::Due, DAY.into())
+            .unwrap()
+            .len(),
+        2
+    );
+}

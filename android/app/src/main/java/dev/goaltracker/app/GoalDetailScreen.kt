@@ -69,6 +69,13 @@ fun GoalDetailScreen(
     val skipped = remember(controller.version, goalId) { controller.read(emptyList()) { skippedDays(goalId) } }
     val upcomingSkips = skipped.count { it >= controller.today }
 
+    // A number goal's total so far in its own period (this day, week or month).
+    val currentTotal = remember(controller.version, controller.today, goalId) {
+        val period = goal.period
+        if (goal.kind != GoalKind.NUMERIC || period == null) null
+        else controller.read(0.0) { periodSeries(goalId, period, 1u, controller.today).lastOrNull()?.total ?: 0.0 }
+    }
+
     var pickingPastDay by remember { mutableStateOf(false) }
     var pastDay by remember { mutableStateOf<String?>(null) }
     var pickingPause by remember { mutableStateOf(false) }
@@ -85,7 +92,7 @@ fun GoalDetailScreen(
             Text(goal.title.withIcon(goal.icon), style = MaterialTheme.typography.headlineSmall)
             // Pick or clear an emoji shown on this goal's cards.
             IconPickerRow(goal.icon) { icon -> controller.act { setGoalIcon(goalId, icon) } }
-            Text(describe(goal), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(describe(goal, currentTotal), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             goal.deadline?.let { deadline ->
                 if (!goal.done && deadline < controller.today) {
                     OverdueLabel(deadline)
@@ -96,6 +103,8 @@ fun GoalDetailScreen(
             if (goal.notes.isNotBlank()) Text(goal.notes, style = MaterialTheme.typography.bodyMedium)
             if (goal.archived) Text(stringResource(R.string.ui_archived), style = MaterialTheme.typography.labelLarge)
         }
+
+        if (goal.kind == GoalKind.NUMERIC) NumberResult(goal, currentTotal)
 
         if (!goal.archived) {
             when (goal.kind) {
@@ -335,7 +344,8 @@ fun GoalDetailScreen(
         ConfirmDialog(
             title = "Move this $noun to the trash?",
             body = "\"${goal.title}\" leaves your lists, stats and reminders. Its history and rewards are kept for 30 days, " +
-                "and you can restore it from the trash on the Tasks tab.",
+                "and you can restore it from the trash on the Tasks tab. " +
+                (if (milestones.isNotEmpty()) "Its milestones leave your Tasks tab with it." else ""),
             confirm = "Move to trash",
             onConfirm = {
                 confirmDelete = false
@@ -431,6 +441,41 @@ private fun WeekdayInsight(
                 if (quit) "Slips usually happen $part." else "You usually log this $part.",
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
+    }
+}
+
+/** A number goal's result at a glance: this period against its target, and the total so far. */
+@Composable
+private fun NumberResult(goal: dev.goaltracker.core.Goal, current: Double?) {
+    val period = goal.period
+    val periodTarget = goal.periodTarget
+    val totalTarget = goal.totalTarget
+    SoftCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (period != null && periodTarget != null && current != null) {
+                Text(period.current().replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "${formatAmount(current)} / ${withUnit(periodTarget, goal.unit)}",
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+                androidx.compose.material3.LinearProgressIndicator(
+                    { (current / periodTarget).toFloat().coerceIn(0f, 1f) },
+                    Modifier.fillMaxWidth(),
+                )
+            }
+            Text(stringResource(R.string.ui_total), style = MaterialTheme.typography.labelLarge)
+            Text(
+                if (totalTarget != null) "${formatAmount(goal.totalLogged)} / ${withUnit(totalTarget, goal.unit)}"
+                else withUnit(goal.totalLogged, goal.unit),
+                style = if (period != null) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+            )
+            if (totalTarget != null) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    { (goal.totalLogged / totalTarget).toFloat().coerceIn(0f, 1f) },
+                    Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

@@ -78,6 +78,7 @@ impl GoalCore {
     pub fn open(db_path: String) -> Result<Arc<Self>, CoreError> {
         let conn = db::open(&db_path)?;
         rewards::ensure_meta(&conn)?;
+        goals::remove_orphan_milestone_tasks(&conn)?;
         Ok(Arc::new(Self {
             conn: Mutex::new(conn),
             db_path,
@@ -1154,7 +1155,10 @@ impl GoalCore {
         let current = std::mem::replace(&mut *guard, Connection::open_in_memory()?);
         let (conn, result) = backup::restore(current, &self.db_path, &backup_path);
         *guard = conn;
-        result
+        result?;
+        // A backup from an older version may hold leftover milestone tasks.
+        goals::remove_orphan_milestone_tasks(&guard)?;
+        Ok(())
     }
 
     /// Validates a backup file and returns what it holds, without restoring it.

@@ -380,6 +380,14 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.12.1",
+        listOf(
+            "A deleted goal's milestones no longer linger in search, the task archive or tags. Leftover milestones from older versions are cleaned up.",
+            "A milestone can be deleted from its task in the Tasks tab.",
+            "Number goals show their result on the goal page and in the Goals list, such as 3 of 8 glasses today.",
+        ),
+    ),
+    Release(
         "0.12.0",
         listOf(
             "Save-up shop: you get 1 coin per 10 XP. Give a treat a price, buy it when you can, and it waits in your stock.",
