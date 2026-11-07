@@ -380,6 +380,15 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.13.1",
+        listOf(
+            "The calendar has more room: a slim header, a shorter week strip, and one scrolling row for things waiting for a time.",
+            "Tap an empty spot on the day to add an event or task there, or give an existing item that time.",
+            "Press and hold a block to move it, drag its bottom edge to change its length, or drop it on a day above to change the day. Undo is one tap away.",
+            "Press and hold an Anytime chip and drag it onto the day. Pinch to zoom the hours.",
+        ),
+    ),
+    Release(
         "0.13.0",
         listOf(
             "A new dark-fantasy look, with a parchment version for light mode. The accent colors and the OLED black theme are gone.",

@@ -155,7 +155,7 @@ The Rust tests cannot see the screens, so run this on a real phone (or an emulat
 1. Open the app. Nothing crashes, and the "What's new" entry for this version is there.
 2. Visit every tab: Today, Plan (Tasks and Calendar), Quests (Goals and Habits), Hero (Stats, Rewards, History, Routines, Holiday, Settings).
 3. Create a goal, a habit, a task with a due day and a start time, an event, and a monster. Finish the task and the habit. The day score, the level card and the weekly boss move.
-4. Calendar: the task and the event show at the right hour. Move a block, open its sheet, change its time.
+4. Calendar: the task and the event show at the right hour. Tap an empty hour to add one, press and hold a block to move it, drag its bottom edge to resize, drop it on another day in the strip, drag an Anytime chip onto the day, pinch to zoom, and check Undo restores each change.
 5. Delete a goal and a task, open Trash, restore one, empty the trash. A message says what happened.
 6. Add the Today widget and tick something from it. Add a reminder two minutes ahead and check it arrives.
 7. Settings: the version number is right, a test notification arrives, "Back up now" makes a file, restore it.

@@ -2,22 +2,23 @@ package dev.goaltracker.app
 
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,7 +26,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -39,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,35 +53,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.ui.unit.IntOffset
-import kotlin.math.roundToInt
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.goaltracker.core.CalendarBlock
 import dev.goaltracker.core.CalendarKind
 import dev.goaltracker.core.EventRepeat
 import dev.goaltracker.core.NewEvent
+import dev.goaltracker.core.TaskEdit
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 
-private val HOUR_HEIGHT = 56.dp
-private val LABEL_WIDTH = 76.dp
-private val DURATIONS = listOf(15, 30, 45, 60, 90, 120)
+internal val DURATIONS = listOf(15, 30, 45, 60, 90, 120)
 
 private fun CalendarBlock.end() = startMinutes!!.toInt() + minutes.toInt()
 
 /** A block with the column it sits in, so blocks at the same time sit side by side. */
-private data class Placed(val block: CalendarBlock, val lane: Int, val lanes: Int)
+internal data class Placed(val block: CalendarBlock, val lane: Int, val lanes: Int)
 
 /** Gives every timed block a lane. Blocks that overlap share the width of the row. */
-private fun place(blocks: List<CalendarBlock>): List<Placed> {
+internal fun place(blocks: List<CalendarBlock>): List<Placed> {
     val timed = blocks.filter { it.startMinutes != null }.sortedBy { it.startMinutes!!.toInt() }
     val out = mutableListOf<Placed>()
     var i = 0
@@ -107,32 +114,31 @@ private fun place(blocks: List<CalendarBlock>): List<Placed> {
 }
 
 @Composable
-private fun blockColor(kind: CalendarKind) = when (kind) {
+internal fun blockColor(kind: CalendarKind) = when (kind) {
     CalendarKind.EVENT -> MaterialTheme.colorScheme.tertiaryContainer
     CalendarKind.TASK -> MaterialTheme.colorScheme.primaryContainer
     CalendarKind.GOAL -> MaterialTheme.colorScheme.secondaryContainer
 }
 
-private fun kindName(kind: CalendarKind) = when (kind) {
+internal fun kindName(kind: CalendarKind) = when (kind) {
     CalendarKind.EVENT -> "Event"
     CalendarKind.TASK -> "Task"
     CalendarKind.GOAL -> "Goal or habit"
 }
 
-private fun timeText(block: CalendarBlock): String {
+internal fun timeText(block: CalendarBlock): String {
     val start = block.startMinutes ?: return "Anytime · ${block.minutes} min"
     return "${Reminders.formatMinutes(start.toInt())} to ${Reminders.formatMinutes(block.end())}"
 }
 
 /**
- * The calendar tab: a week strip to pick a day, and that day hour by hour. Events, tasks that are
- * due that day, and goals and habits planned that day all show up as blocks. It only plans: nothing
- * here changes the day score, XP, streaks or rewards.
+ * The calendar tab: a slim header, a short week strip, a row of things waiting for a time, and the
+ * day hour by hour taking the rest of the screen. Events, tasks due that day, and goals and habits
+ * planned that day show up as blocks. Tap an empty spot to add; press and hold a block to move it;
+ * drag it onto a day above to change the day. It only plans: nothing here changes the day score, XP,
+ * streaks or rewards.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-/** How many "Anytime" items show before "Show more". */
-private const val ANYTIME_SHOWN = 4
-
 @Composable
 fun CalendarScreen(
     controller: AppController,
@@ -151,142 +157,223 @@ fun CalendarScreen(
     var selected by remember { mutableStateOf<CalendarBlock?>(null) }
     var showMonth by rememberSaveable { mutableStateOf(false) }
     var showSuggest by remember { mutableStateOf(false) }
-    var showAllAnytime by rememberSaveable(date) { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    // The spot picked for a new item: its start and length in minutes.
+    var quickAdd by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val anytime = blocks.filter { it.startMinutes == null }
     val placed = remember(blocks) { place(blocks) }
+    val drag = remember { CalendarDragState() }
+    var origin by remember { mutableStateOf(Offset.Zero) }
 
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { controller.calendarDate = day.minusWeeks(1).toString() }) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous week")
-            }
-            Text(
-                "${day.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${day.year}",
-                Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            IconButton(onClick = { controller.calendarDate = day.plusWeeks(1).toString() }) {
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next week")
-            }
-            TextButton(onClick = { showMonth = !showMonth }) { Text(if (showMonth) "Week" else "Month") }
-            TextButton(onClick = { controller.calendarDate = controller.today }) { Text(stringResource(R.string.ui_today)) }
+    // What a drop means. Over a day in the strip it changes the day; over the grid it sets the time.
+    fun dropOnDay(): String? = drag.dayUnderPointer()?.let { weekStart.plusDays(it.toLong()).toString() }
+    fun dropMove(block: CalendarBlock, start: Int) {
+        val otherDay = dropOnDay()?.takeIf { it != date }
+        when {
+            otherDay != null -> commitBlock(controller, block, otherDay, block.startMinutes?.toInt(), block.minutes.toInt())
+            drag.overGrid() -> commitBlock(controller, block, null, start, drag.carriedMinutes(block))
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-            TextButton(onClick = { showSuggest = true }) { Text(stringResource(R.string.ui_suggest_times)) }
-        }
-        if (showSuggest) SuggestTimesDialog(controller, date) { showSuggest = false }
-        if (showMonth) MonthOverview(controller, day) { picked ->
-            controller.calendarDate = picked
-            showMonth = false
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            (0..6).forEach { i ->
-                val d = weekStart.plusDays(i.toLong())
-                val isSelected = d == day
-                val isToday = d.toString() == controller.today
-                Column(
-                    Modifier.weight(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow)
-                        .clickable { controller.calendarDate = d.toString() }
-                        .padding(vertical = 8.dp)
-                        .label("${d.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${d.dayOfMonth}, ${counts[i]} planned"),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+    }
+
+    Box(Modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInRoot() }) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
+                        .clickable { showMonth = !showMonth }
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                        .label("${day.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${day.year}. ${if (showMonth) "Show week" else "Show month"}"),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                    Text(d.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()), style = MaterialTheme.typography.labelSmall, color = textColor)
                     Text(
-                        "${d.dayOfMonth}",
+                        "${day.month.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${day.year}",
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (isToday && !isSelected) MaterialTheme.colorScheme.primary else textColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    // A dot shows that something is planned that day.
-                    Box(
-                        Modifier.padding(top = 2.dp).size(6.dp).clip(CircleShape)
-                            .background(if (counts[i] > 0) textColor else androidx.compose.ui.graphics.Color.Transparent),
-                    )
+                    Icon(Icons.Default.ArrowDropDown, null)
                 }
-            }
-        }
-
-        if (anytime.isNotEmpty()) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(stringResource(R.string.ui_anytime), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                // A long list would push the day's timeline off the screen, so only a few show at first.
-                val shown = if (showAllAnytime) anytime else anytime.take(ANYTIME_SHOWN)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    shown.forEach { block -> BlockChip(block) { selected = block } }
+                IconButton(onClick = { controller.calendarDate = day.minusWeeks(1).toString() }, Modifier.size(40.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous week")
                 }
-                if (anytime.size > ANYTIME_SHOWN) {
-                    TextButton(onClick = { showAllAnytime = !showAllAnytime }) {
-                        Text(if (showAllAnytime) "Show less" else "Show ${anytime.size - ANYTIME_SHOWN} more")
-                    }
+                IconButton(onClick = { controller.calendarDate = day.plusWeeks(1).toString() }, Modifier.size(40.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next week")
                 }
-            }
-        }
-        if (blocks.isEmpty()) {
-            Text(
-                "Nothing planned. Tap New event, or give a task a due day.",
-                Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        // Opens near 7:00, or near the first block of the day.
-        val firstHour = (blocks.mapNotNull { it.startMinutes?.toInt() }.minOrNull()?.div(60) ?: 7).coerceAtLeast(0)
-        val startPx = with(LocalDensity.current) { (HOUR_HEIGHT * maxOf(firstHour - 1, 0)).roundToPx() }
-        val scroll = rememberScrollState(startPx)
-        Box(Modifier.weight(1f).verticalScroll(scroll)) {
-            Box(Modifier.fillMaxWidth().height(HOUR_HEIGHT * 24)) {
-                Column {
-                    (0..23).forEach { hour ->
-                        Row(Modifier.height(HOUR_HEIGHT)) {
-                            Text(
-                                Reminders.formatMinutes(hour * 60),
-                                Modifier.width(LABEL_WIDTH).padding(start = 8.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            HorizontalDivider(Modifier.weight(1f).padding(top = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                        }
-                    }
-                }
-                BoxWithConstraints(Modifier.padding(start = LABEL_WIDTH, end = 8.dp).fillMaxSize()) {
-                    val full: Dp = maxWidth
-                    placed.forEach { p ->
-                        val start = p.block.startMinutes!!.toInt()
-                        val laneWidth = full / p.lanes
-                        TimedBlock(
-                            p.block,
-                            Modifier
-                                .offset(x = laneWidth * p.lane, y = HOUR_HEIGHT * (start / 60f) + 8.dp)
-                                .width(laneWidth - 2.dp)
-                                .height(maxOf(HOUR_HEIGHT * (p.block.minutes.toInt() / 60f), 28.dp) - 2.dp),
-                            onMove = { delta -> moveBlock(controller, p.block, delta) },
-                        ) { selected = p.block }
-                    }
-                    if (date == controller.today) {
-                        val now = LocalTime.now()
-                        Box(
-                            Modifier.offset(y = HOUR_HEIGHT * ((now.hour * 60 + now.minute) / 60f) + 8.dp)
-                                .fillMaxWidth().height(2.dp).background(MaterialTheme.colorScheme.error),
+                TextButton(onClick = { controller.calendarDate = controller.today }) { Text(stringResource(R.string.ui_today)) }
+                Box {
+                    IconButton(onClick = { menuOpen = true }, Modifier.size(40.dp)) { Icon(Icons.Default.MoreVert, "More") }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.ui_suggest_times)) },
+                            onClick = { menuOpen = false; showSuggest = true },
                         )
                     }
                 }
             }
+            if (showSuggest) SuggestTimesDialog(controller, date) { showSuggest = false }
+            if (showMonth) MonthOverview(controller, day) { picked ->
+                controller.calendarDate = picked
+                showMonth = false
+            }
+
+            val hoverDay by remember { derivedStateOf { if (drag.carrying) drag.dayUnderPointer() else null } }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                (0..6).forEach { i ->
+                    val d = weekStart.plusDays(i.toLong())
+                    val isSelected = d == day
+                    val isToday = d.toString() == controller.today
+                    val shape = RoundedCornerShape(14.dp)
+                    Column(
+                        Modifier.weight(1f)
+                            .onGloballyPositioned { drag.dayRects[i] = it.boundsInRoot() }
+                            .clip(shape)
+                            .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerLow)
+                            .then(if (hoverDay == i) Modifier.border(2.dp, MaterialTheme.colorScheme.secondary, shape) else Modifier)
+                            .clickable { controller.calendarDate = d.toString() }
+                            .padding(vertical = 4.dp)
+                            .label("${d.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.getDefault())} ${d.dayOfMonth}, ${counts[i]} planned"),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                        Text(d.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()), style = MaterialTheme.typography.labelSmall, color = textColor)
+                        Text(
+                            "${d.dayOfMonth}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (isToday && !isSelected) MaterialTheme.colorScheme.primary else textColor,
+                        )
+                        // A dot shows that something is planned that day.
+                        Box(
+                            Modifier.size(5.dp).clip(CircleShape)
+                                .background(if (counts[i] > 0) textColor else androidx.compose.ui.graphics.Color.Transparent),
+                        )
+                    }
+                }
+            }
+
+            if (anytime.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().height(44.dp).padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.ui_anytime), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LazyRow(
+                        Modifier.weight(1f),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        items(anytime, key = { it.kind.name + it.id }) { block ->
+                            BlockChip(block, drag, onClick = { selected = block }, onDrop = { dropChip(controller, block, drag, ::dropOnDay) })
+                        }
+                    }
+                }
+            }
+            if (blocks.isEmpty()) {
+                Text(
+                    "Nothing planned. Tap a time to add something.",
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            DayGrid(
+                date = date,
+                isToday = date == controller.today,
+                blocks = blocks,
+                placed = placed,
+                drag = drag,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                onSelect = { selected = it },
+                onQuickAdd = { start, minutes -> quickAdd = start to minutes },
+                onMoveEnd = ::dropMove,
+                onResizeEnd = { block, minutes ->
+                    commitBlock(controller, block, null, block.startMinutes?.toInt(), minutes)
+                },
+                onNudge = { block, startDelta, minutesDelta ->
+                    val start = block.startMinutes?.toInt() ?: return@DayGrid
+                    val minutes = (block.minutes.toInt() + minutesDelta).coerceAtLeast(MIN_BLOCK_MINUTES)
+                    commitBlock(controller, block, null, clampStart(start + startDelta, minutes), minutes)
+                },
+            )
         }
-        Spacer(Modifier.height(72.dp))
+
+        // The copy of an Anytime chip that follows the finger.
+        val carried = drag.block
+        if (drag.mode == DragMode.CHIP && carried != null) {
+            val label = if (drag.overGrid() && drag.dayUnderPointer() == null) {
+                val s = drag.liveStart()
+                "  ${Reminders.formatMinutes(s)}"
+            } else ""
+            Surface(
+                Modifier.offset { IntOffset((drag.pointer.x - origin.x).roundToInt(), (drag.pointer.y - origin.y).roundToInt() - 60) },
+                shape = RoundedCornerShape(12.dp),
+                color = blockColor(carried.kind),
+                shadowElevation = 10.dp,
+            ) {
+                Text(
+                    (carried.icon?.let { "$it " } ?: "") + carried.title + label,
+                    Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 
     selected?.let { block ->
         BlockSheet(controller, block, onDismiss = { selected = null }, onEditEvent, onEditTask, onOpenGoal, onFocus)
     }
+    quickAdd?.let { (start, minutes) ->
+        QuickAddSheet(
+            controller, date, start, minutes, anytime,
+            onPlace = { block, s, m -> commitBlock(controller, block, null, s, m) },
+            onDismiss = { quickAdd = null },
+        )
+    }
 }
 
+/** Ends a chip drag: onto a day in the strip it changes the day, onto the grid it gets that time. */
+private fun dropChip(controller: AppController, block: CalendarBlock, drag: CalendarDragState, dayUnder: () -> String?) {
+    val otherDay = dayUnder()?.takeIf { it != controller.calendarDate }
+    val start = drag.liveStart()
+    val length = drag.carriedMinutes(block)
+    when {
+        otherDay != null -> commitBlock(controller, block, otherDay, null, block.minutes.toInt())
+        drag.overGrid() -> commitBlock(controller, block, null, start, length)
+    }
+}
+
+/** A thing waiting for a time. Tap to open it; press, hold and drag it onto the day to give it one. */
 @Composable
-private fun BlockChip(block: CalendarBlock, onClick: () -> Unit) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(12.dp), color = blockColor(block.kind)) {
+private fun BlockChip(block: CalendarBlock, drag: CalendarDragState, onClick: () -> Unit, onDrop: () -> Unit) {
+    val view = LocalView.current
+    var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = blockColor(block.kind),
+        modifier = Modifier
+            .onGloballyPositioned { coords = it }
+            .pointerInput(block.id, block.kind) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { o ->
+                        drag.block = block
+                        drag.mode = DragMode.CHIP
+                        drag.grabMinutes = drag.carriedMinutes(block) / 2f
+                        drag.pointer = (coords?.positionInRoot() ?: Offset.Zero) + o
+                        if (Feel.haptics) view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        drag.pointer = (coords?.positionInRoot() ?: Offset.Zero) + change.position
+                    },
+                    onDragEnd = {
+                        onDrop()
+                        drag.reset()
+                    },
+                    onDragCancel = { drag.reset() },
+                )
+            }
+            .label("${kindName(block.kind)} ${block.title}, anytime. Press and hold, then drag onto the day to give it a time."),
+    ) {
         Text(
             (block.icon?.let { "$it " } ?: "") + block.title,
             Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -295,49 +382,6 @@ private fun BlockChip(block: CalendarBlock, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-@Composable
-private fun TimedBlock(block: CalendarBlock, modifier: Modifier, onMove: (Int) -> Unit, onClick: () -> Unit) {
-    // Press and hold, then drag up or down to move the block. It snaps to 15 minutes.
-    var dragPx by remember { mutableStateOf(0f) }
-    val hourPx = with(LocalDensity.current) { HOUR_HEIGHT.toPx() }
-    Surface(
-        onClick = onClick,
-        modifier = modifier
-            .offset { IntOffset(0, dragPx.roundToInt()) }
-            .pointerInput(block.id, block.startMinutes) {
-                detectDragGesturesAfterLongPress(
-                    onDragStart = {},
-                    onDrag = { change, amount ->
-                        change.consume()
-                        dragPx += amount.y
-                    },
-                    onDragEnd = {
-                        val delta = (dragPx / hourPx * 4f).roundToInt() * 15
-                        dragPx = 0f
-                        if (delta != 0) onMove(delta)
-                    },
-                    onDragCancel = { dragPx = 0f },
-                )
-            }
-            .label("${kindName(block.kind)} ${block.title}, ${timeText(block)}. Press and hold, then drag to move."),
-        shape = RoundedCornerShape(10.dp),
-        color = blockColor(block.kind).copy(alpha = if (block.done) 0.6f else 1f),
-    ) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Text(
-                (block.icon?.let { "$it " } ?: "") + block.title,
-                style = MaterialTheme.typography.labelLarge,
-                textDecoration = if (block.done) TextDecoration.LineThrough else null,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (block.minutes >= 45u) {
-                Text(timeText(block), style = MaterialTheme.typography.labelSmall, maxLines = 1)
-            }
-        }
     }
 }
 
@@ -408,20 +452,59 @@ private fun BlockSheet(
     }
 }
 
-/** Moves a block by [delta] minutes (a multiple of 15) and keeps it inside the day. */
-private fun moveBlock(controller: AppController, block: CalendarBlock, delta: Int) {
-    val start = block.startMinutes?.toInt() ?: return
-    val minutes = block.minutes.toInt()
-    val moved = (start + delta).coerceIn(0, 24 * 60 - minutes)
-    if (moved == start) return
+/**
+ * Saves a new day and/or time for a block and offers Undo. [newDate] is null when the day stays.
+ * Goals and repeating things follow their own schedule, so they can't change day here.
+ */
+internal fun commitBlock(controller: AppController, block: CalendarBlock, newDate: String?, start: Int?, minutes: Int?) {
+    val oldStart = block.startMinutes?.toInt()
+    val oldMinutes = block.minutes.toInt()
+    if (newDate == null && start == oldStart && minutes == oldMinutes) return
+    val what = when {
+        newDate != null -> "Moved \"${block.title}\" to ${formatDate(newDate)}"
+        start == null -> "\"${block.title}\" has no set time now"
+        minutes != oldMinutes && start == oldStart -> "\"${block.title}\" is now ${minutes} min"
+        else -> "Moved \"${block.title}\" to ${Reminders.formatMinutes(start)}"
+    }
     when (block.kind) {
         CalendarKind.EVENT -> {
             val e = controller.read(null) { getEvent(block.id) } ?: return
-            controller.act {
-                updateEvent(e.id, NewEvent(e.title, e.date, moved.toUInt(), e.minutes, e.repeat, e.weekdays, e.untilDate, e.remindMinutes))
+            if (newDate != null && e.repeat != EventRepeat.NONE) {
+                controller.message = "A repeating event can't move to one day. Open it to change it."
+                return
+            }
+            fun write(date: String, s: Int, m: Int) = controller.act {
+                updateEvent(e.id, NewEvent(e.title, date, s.toUInt(), m.toUInt(), e.repeat, e.weekdays, e.untilDate, e.remindMinutes))
+            }
+            if (write(newDate ?: e.date, start ?: oldStart ?: (9 * 60), minutes ?: oldMinutes)) {
+                controller.undo = UndoOffer(what) { write(e.date, oldStart ?: (9 * 60), oldMinutes) }
             }
         }
-        else -> applyBlock(controller, block, moved, minutes)
+        CalendarKind.TASK -> {
+            val t = controller.read(null) { getTask(block.id, controller.today) } ?: return
+            if (newDate != null && (t.milestoneId != null || t.repeat != null)) {
+                controller.message = if (t.milestoneId != null) "A milestone task follows its goal. Change it on the goal's page."
+                else "A repeating task can't move to one day. Open it to change it."
+                return
+            }
+            // A task with no start time keeps its length when it only changes day, so the time is
+            // written only when it really changed.
+            val timeChanged = start != oldStart || (start != null && minutes != oldMinutes)
+            fun write(due: String?, s: Int?, m: Int?, changeDay: Boolean, changeTime: Boolean) = controller.act {
+                if (changeDay) updateTask(t.id, TaskEdit(t.title, t.notes, due, t.priority, t.tag, t.repeat, t.goalId))
+                if (changeTime) setTaskTime(t.id, s?.toUInt(), m?.toUInt())
+            }
+            val ok = write(newDate ?: t.due, start, minutes, newDate != null, timeChanged)
+            if (ok) controller.undo = UndoOffer(what) { write(t.due, oldStart, oldMinutes.takeIf { oldStart != null }, newDate != null, timeChanged) }
+        }
+        CalendarKind.GOAL -> {
+            if (newDate != null) {
+                controller.message = "A goal or habit follows its own schedule, so it can't move to another day."
+                return
+            }
+            fun write(s: Int?, m: Int?) = controller.act { setGoalBlock(block.id, s?.toUInt(), m?.toUInt()) }
+            if (write(start, minutes)) controller.undo = UndoOffer(what) { write(oldStart, oldMinutes.takeIf { oldStart != null }) }
+        }
     }
 }
 

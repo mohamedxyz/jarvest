@@ -334,7 +334,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentAlignment = Alignment.TopCenter) {
         Column(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
             switchers.firstOrNull { options -> options.any { it.first == route } }?.let { options ->
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                     options.forEachIndexed { index, (target, label) ->
                         SegmentedButton(
                             selected = route == target,
