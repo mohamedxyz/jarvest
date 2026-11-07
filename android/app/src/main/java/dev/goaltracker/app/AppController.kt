@@ -45,12 +45,10 @@ class AppController(private val app: GoalTrackerApp) {
 
     private val prefs = app.getSharedPreferences("ui", Context.MODE_PRIVATE)
 
-    // Theme and accent live in the database (the `meta` table), so a restored backup
-    // brings the look back too. Older versions kept them in SharedPreferences, so a value
+    // The theme lives in the database (the `meta` table), so a restored backup
+    // brings the look back too. An old "accent" or "black" value is ignored. Older versions kept them in SharedPreferences, so a value
     // found there is copied into the database once.
-    var themeMode by mutableStateOf(loadLook("theme", ThemeMode.SYSTEM))
-        private set
-    var accent by mutableStateOf(loadLook("accent", Accent.BLUE))
+    var themeMode by mutableStateOf(loadLook("theme", ThemeMode.DARK))
         private set
 
     private inline fun <reified E : Enum<E>> loadLook(key: String, default: E): E {
@@ -64,23 +62,13 @@ class AppController(private val app: GoalTrackerApp) {
 
     /** Re-reads the look after a restore replaced the database. */
     private fun reloadLook() {
-        themeMode = loadLook("theme", ThemeMode.SYSTEM)
-        accent = loadLook("accent", Accent.BLUE)
+        themeMode = loadLook("theme", ThemeMode.DARK)
     }
 
     fun chooseTheme(mode: ThemeMode) {
         themeMode = mode
         try {
             core.setPref("theme", mode.name)
-        } catch (e: CoreException) {
-            message = e.userMessage()
-        }
-    }
-
-    fun chooseAccent(choice: Accent) {
-        accent = choice
-        try {
-            core.setPref("accent", choice.name)
         } catch (e: CoreException) {
             message = e.userMessage()
         }

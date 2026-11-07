@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
         val shared = if (savedInstanceState == null) sharedTextFrom(intent) else null
         if (shared != null) controller.pendingQuickAdd = shared
         setContent {
-            GoalTrackerTheme(controller.themeMode, controller.accent) {
+            GoalTrackerTheme(controller.themeMode) {
                 // The quick-add widget opens the app straight on the new task screen.
                 AppEntry(
                     controller,

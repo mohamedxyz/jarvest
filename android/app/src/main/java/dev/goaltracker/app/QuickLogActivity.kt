@@ -28,7 +28,7 @@ class QuickLogActivity : ComponentActivity() {
             return
         }
         setContent {
-            GoalTrackerTheme(app.controller.themeMode, app.controller.accent) {
+            GoalTrackerTheme(app.controller.themeMode) {
                 var exact by remember { mutableStateOf(false) }
                 if (!exact) {
                     val controller = app.controller

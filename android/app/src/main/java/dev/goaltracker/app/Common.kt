@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, modifier = modifier, style = MaterialTheme.typography.titleMedium)
+    Text(text, modifier = modifier, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.secondary)
 }
 
 @Composable
