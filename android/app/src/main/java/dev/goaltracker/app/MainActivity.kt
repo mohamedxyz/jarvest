@@ -38,7 +38,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.CardGiftcard
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Flag
@@ -61,6 +61,10 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -90,7 +94,26 @@ private val tabs = listOf(
     Tab("calendar", "Calendar", Icons.Filled.CalendarMonth),
     Tab("goals", "Goals", Icons.Filled.Flag),
     Tab("habits", "Habits", Icons.Filled.Repeat),
-    Tab("more", "More", Icons.Filled.MoreHoriz),
+    Tab("more", "Hero", Icons.Filled.Shield),
+)
+
+/**
+ * The four bottom tabs. Plan and Quests each hold two screens, shown with a switcher at the top,
+ * so the old six tabs fit in four. `home` is where a tab opens the first time.
+ */
+private class BottomTab(val label: String, val icon: ImageVector, val home: String, val routes: Set<String>)
+
+private val bottomTabs = listOf(
+    BottomTab("Today", Icons.Filled.Today, "today", setOf("today")),
+    BottomTab("Plan", Icons.Filled.Checklist, "tasks", setOf("tasks", "calendar")),
+    BottomTab("Quests", Icons.Filled.Flag, "goals", setOf("goals", "habits")),
+    BottomTab("Hero", Icons.Filled.Shield, "more", setOf("more", "stats", "treats", "history", "routines", "holiday")),
+)
+
+/** The two-screen tabs: which routes they switch between, and what each is called. */
+private val switchers = listOf(
+    listOf("tasks" to "Tasks", "calendar" to "Calendar"),
+    listOf("goals" to "Goals", "habits" to "Habits"),
 )
 
 /** Screens opened from the More tab. They still show the bottom bar, with More selected. */
@@ -150,6 +173,9 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
         }
     }
     val route = stack.last()
+    // Where each two-screen tab was last, so coming back to Plan reopens Calendar if that was in use.
+    val lastIn = remember { mutableMapOf<String, String>() }
+    bottomTabs.firstOrNull { route in it.routes }?.let { lastIn[it.label] = route }
     // Hide the bottom bar while the keyboard is up, so it does not eat the screen.
     val imeVisible = WindowInsets.isImeVisible
     val isTab = tabs.any { it.route == route } || route in moreRoutes
@@ -195,40 +221,61 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background,
-                ),
-                title = { Text(titleFor(route, controller), style = MaterialTheme.typography.headlineSmall) },
-                navigationIcon = {
-                    if (!isTab) {
-                        IconButton(onClick = pop) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+            Column {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    ),
+                    title = { Text(titleFor(route, controller), style = MaterialTheme.typography.headlineSmall) },
+                    navigationIcon = {
+                        if (!isTab) {
+                            IconButton(onClick = pop) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            }
                         }
+                    },
+                    actions = {
+                        if (isTab) {
+                            val hero = remember(controller.version) { controller.read(null) { hero() } }
+                            if (hero != null) LevelBadge(hero.level.toInt(), Modifier.padding(end = 4.dp), size = 38.dp)
+                            IconButton(onClick = { push("settings") }) { Icon(Icons.Filled.Settings, "Settings") }
+                        }
+                    },
+                )
+                if (isTab) {
+                    // A thin strip of experience under the title, so progress is always in view.
+                    val hero = remember(controller.version) { controller.read(null) { hero() } }
+                    if (hero != null && hero.xpForNext > 0u) {
+                        XpBar(
+                            hero.xpIntoLevel.toFloat() / hero.xpForNext.toFloat(),
+                            "Level ${hero.level}, ${hero.xpIntoLevel} of ${hero.xpForNext} XP to the next level",
+                            Modifier.padding(horizontal = 16.dp),
+                            height = 5.dp,
+                        )
                     }
-                },
-                actions = {
-                    if (isTab) {
-                        IconButton(onClick = { push("settings") }) { Icon(Icons.Filled.Settings, "Settings") }
-                    }
-                },
-            )
+                }
+            }
         },
         bottomBar = {
             if (isTab && !imeVisible) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
-                    tabs.forEach { tab ->
-                        val selected = route == tab.route || (tab.route == "more" && route in moreRoutes)
+                    bottomTabs.forEach { tab ->
+                        val selected = route in tab.routes
                         // The selected icon grows a little, so the active tab is easy to spot.
                         val scale by animateFloatAsState(
                             if (selected) 1.15f else 1f, motionTween(LocalMotion.current, 200), label = "tab",
                         )
                         NavigationBarItem(
                             selected = selected,
-                            onClick = { selectTab(tab.route) },
+                            onClick = { if (!selected) selectTab(lastIn[tab.label]?.takeIf { it in tab.routes } ?: tab.home) },
                             icon = { Icon(tab.icon, null, Modifier.graphicsLayer { scaleX = scale; scaleY = scale }) },
                             label = { Text(tab.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                                selectedTextColor = MaterialTheme.colorScheme.secondary,
+                                indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
+                            ),
                         )
                     }
                 }
@@ -285,7 +332,19 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
         val motion = LocalMotion.current
         // On a tablet or in landscape the content stays a readable width, centered.
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentAlignment = Alignment.TopCenter) {
-        Box(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
+        Column(Modifier.widthIn(max = 720.dp).fillMaxSize()) {
+            switchers.firstOrNull { options -> options.any { it.first == route } }?.let { options ->
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    options.forEachIndexed { index, (target, label) ->
+                        SegmentedButton(
+                            selected = route == target,
+                            onClick = { if (route != target) selectTab(target) },
+                            shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                        ) { Text(label) }
+                    }
+                }
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             // Tabs cross-fade. Opening a screen slides it in from the right; going back slides it out.
             AnimatedContent(
                 targetState = route,
@@ -363,6 +422,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                     onEdit = { push("edit/$it") },
                     onClose = pop,
                 )
+            }
             }
             }
         }
