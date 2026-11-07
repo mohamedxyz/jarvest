@@ -145,7 +145,7 @@ class ToggleCheckInAction : ActionCallback {
         val app = context.applicationContext as GoalTrackerApp
         try {
             // A won treat stays unseen and is revealed the next time the app opens.
-            app.core.toggleCheckIn(goalId, todayString())
+            app.core.toggleCheckInAt(goalId, todayString(), nowMinute())
         } catch (_: CoreException) {
             // The goal was archived or deleted since the widget last drew. Redrawing fixes it.
         }

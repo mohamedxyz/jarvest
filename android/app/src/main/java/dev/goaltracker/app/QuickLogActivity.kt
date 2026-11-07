@@ -45,7 +45,7 @@ class QuickLogActivity : ComponentActivity() {
                     unit = goal.unit,
                     onLog = { amount ->
                         try {
-                            app.core.logAmount(goal.id, amount, todayString())
+                            app.core.logAmountAt(goal.id, amount, todayString(), nowMinute())
                             app.refreshWidgets()
                         } catch (e: CoreException) {
                             Toast.makeText(this, e.userMessage(), Toast.LENGTH_LONG).show()

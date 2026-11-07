@@ -220,6 +220,16 @@ pub struct Treat {
     pub title: String,
     /// One time only: it leaves the jar once won.
     pub once: bool,
+    /// Coins to buy it in the shop, or None when it is not for sale.
+    pub price: Option<u32>,
+}
+
+/// Coins come from XP (1 per 10) and are spent in the shop.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct Coins {
+    pub earned: u32,
+    pub spent: u32,
+    pub balance: i64,
 }
 
 /// Won treats not used yet, grouped by name.
@@ -242,6 +252,8 @@ pub struct RewardDraw {
     pub redeemed_date: Option<String>,
     /// True when the treat was won by beating a monster, so `goal_title` is the monster's name.
     pub from_monster: bool,
+    /// True when it was bought in the shop with coins.
+    pub from_shop: bool,
 }
 
 /// What a logging action caused. Won treats are read through `unseen_draws`, so
@@ -281,6 +293,51 @@ pub struct PeriodPoint {
     pub met: bool,
     /// Unmet, but skipped or paused, so it doesn't count against the goal.
     pub excused: bool,
+}
+
+/// A part of the day.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, uniffi::Enum)]
+pub enum TimeOfDay {
+    /// 05:00 to 11:59.
+    Morning,
+    /// 12:00 to 16:59.
+    Afternoon,
+    /// 17:00 to 21:59.
+    Evening,
+    /// 22:00 to 04:59.
+    Night,
+}
+
+/// How many timed logs fell in each part of the day, and the usual one once there
+/// are enough.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct TimeProfile {
+    pub morning: u32,
+    pub afternoon: u32,
+    pub evening: u32,
+    pub night: u32,
+    pub usual: Option<TimeOfDay>,
+}
+
+/// A year at a glance, for the Year in review card. Only reads data.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct YearReview {
+    pub year: i32,
+    /// Check-ins and amounts logged (slips on quit habits are left out).
+    pub logs: u32,
+    /// Days with at least one log or finished task.
+    pub active_days: u32,
+    /// The longest run of active days in a row within the year.
+    pub longest_run: u32,
+    pub targets_met: u32,
+    pub tasks_done: u32,
+    pub treats_won: u32,
+    pub treats_bought: u32,
+    pub xp: u32,
+    pub titan_days: u32,
+    /// The goal or habit logged most often, and how often.
+    pub top_title: Option<String>,
+    pub top_logs: u32,
 }
 
 /// How often daily goals were met on one weekday. `weekday` is 0 for Monday.

@@ -6102,3 +6102,211 @@ fn upgrading_from_schema_23_makes_every_treat_repeatable() {
     let treats = core.list_treats().unwrap();
     assert_eq!((treats[0].title.as_str(), treats[0].once), ("Old", false));
 }
+
+// 0.12.0: time of day, weekday stats per goal, year review, shop.
+
+/// `DAY` moved by `n` days (negative goes back).
+fn shift(n: i64) -> String {
+    let day = chrono::NaiveDate::parse_from_str(DAY, "%Y-%m-%d").unwrap();
+    (day + chrono::Duration::days(n)).to_string()
+}
+
+#[test]
+fn a_log_made_today_keeps_its_time_and_a_past_day_never_does() {
+    let (core, _dir) = core();
+    let id = habit(&core, "Read", Period::Day, 1.0, &shift(-10));
+    core.toggle_check_in_at(id.clone(), DAY.into(), 7 * 60)
+        .unwrap();
+    // A past day filled in later has no time, even through the same path.
+    core.toggle_check_in_on(id.clone(), shift(-1), DAY.into())
+        .unwrap();
+    let timed: i64 = core
+        .conn()
+        .query_row(
+            "SELECT COUNT(*) FROM entries WHERE minute IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(timed, 1);
+    assert!(core.toggle_check_in_at(id, DAY.into(), 1440).is_err());
+}
+
+#[test]
+fn the_usual_time_of_day_needs_five_timed_logs() {
+    let (core, _dir) = core();
+    let water = numeric(&core, None, None);
+    for minute in [8 * 60, 9 * 60, 10 * 60, 19 * 60] {
+        core.log_amount_at(water.clone(), 1.0, DAY.into(), minute)
+            .unwrap();
+    }
+    let profile = core.time_profile(water.clone()).unwrap();
+    assert_eq!((profile.morning, profile.evening), (3, 1));
+    assert_eq!(profile.usual, None, "four logs are not enough");
+    core.log_amount_at(water.clone(), 1.0, DAY.into(), 23 * 60)
+        .unwrap();
+    let profile = core.time_profile(water).unwrap();
+    assert_eq!(profile.night, 1);
+    assert_eq!(profile.usual, Some(TimeOfDay::Morning));
+}
+
+#[test]
+fn weekday_stats_for_one_goal_count_its_own_days() {
+    let (core, _dir) = core();
+    // DAY is a Thursday. Created 14 days earlier: two of every weekday before today.
+    let id = habit(&core, "Read", Period::Day, 1.0, &shift(-14));
+    for back in [-14, -7] {
+        tick(&core, &id, &shift(back)); // Both Thursdays.
+    }
+    let stats = core.goal_weekdays(id, DAY.into()).unwrap();
+    let thursday = &stats[3];
+    assert_eq!(
+        (thursday.met, thursday.eligible),
+        (2, 2),
+        "today is still open"
+    );
+    let friday = &stats[4];
+    assert_eq!((friday.met, friday.eligible), (0, 2));
+}
+
+#[test]
+fn the_year_review_counts_the_year_up_to_today() {
+    let (core, _dir) = core();
+    let read = habit(&core, "Read", Period::Day, 1.0, "2025-12-30");
+    let run = habit(&core, "Run", Period::Day, 1.0, "2025-12-30");
+    for day in [
+        "2025-12-31",
+        "2026-01-01",
+        "2026-01-02",
+        "2026-01-03",
+        "2026-02-01",
+    ] {
+        core.toggle_check_in_on(read.clone(), day.into(), DAY.into())
+            .unwrap();
+    }
+    core.toggle_check_in_on(run, "2026-01-02".into(), DAY.into())
+        .unwrap();
+    let task = add_task(&core, new_task("Taxes"));
+    core.toggle_task(task, DAY.into()).unwrap();
+
+    let review = core.year_review(2026, DAY.into()).unwrap();
+    assert_eq!(review.logs, 5, "the 2025 log is left out");
+    assert_eq!(review.active_days, 5, "four log days and the task day");
+    assert_eq!(review.longest_run, 3);
+    assert_eq!(review.tasks_done, 1);
+    assert_eq!(review.top_title.as_deref(), Some("Read"));
+    assert_eq!(review.top_logs, 4);
+    assert_eq!(review.targets_met, 5);
+    assert!(core.year_review(2027, DAY.into()).is_err());
+    assert_eq!(core.year_review(2025, DAY.into()).unwrap().logs, 1);
+}
+
+/// 10 days of one daily habit: 220 XP, so 22 coins.
+fn earn_22_coins(core: &GoalCore) {
+    let ids = habits(core, 1);
+    for n in 0..10 {
+        tick(core, &ids[0], &d(n));
+        core.progress_tick(d(n)).unwrap();
+    }
+}
+
+#[test]
+fn coins_come_from_xp_and_buy_shop_treats_into_the_stock() {
+    let (core, _dir) = core();
+    core.set_rewards_enabled(false).unwrap();
+    earn_22_coins(&core);
+    assert_eq!(core.coins().unwrap().earned, 22);
+    let id = core.add_treat_once("Headphones".into(), false).unwrap();
+    assert!(
+        core.buy_treat(id.clone(), d(10)).is_err(),
+        "not in the shop yet"
+    );
+    core.set_treat_price(id.clone(), Some(20)).unwrap();
+    assert_eq!(core.list_treats().unwrap()[0].price, Some(20));
+
+    let bought = core.buy_treat(id.clone(), d(10)).unwrap();
+    let coins = core.coins().unwrap();
+    assert_eq!((coins.spent, coins.balance), (20, 2));
+    let stock = core.treat_stock().unwrap();
+    assert_eq!(
+        (stock[0].treat_title.as_str(), stock[0].count),
+        ("Headphones", 1)
+    );
+    let draw = core
+        .list_draws()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.id == bought)
+        .unwrap();
+    assert!(draw.from_shop);
+    assert!(
+        core.unseen_draws().unwrap().is_empty(),
+        "a purchase needs no reveal"
+    );
+    let err = core.buy_treat(id.clone(), d(10)).unwrap_err();
+    assert!(err.to_string().contains("Not enough coins"), "{err}");
+
+    // An unused purchase can be refunded; a used one can't.
+    core.refund_purchase(bought.clone()).unwrap();
+    assert_eq!(core.coins().unwrap().balance, 22);
+    let bought = core.buy_treat(id, d(10)).unwrap();
+    core.toggle_redeemed(bought.clone(), d(10)).unwrap();
+    assert!(core.refund_purchase(bought).is_err());
+    assert!(core.treat_stock().unwrap().is_empty());
+}
+
+#[test]
+fn a_one_time_shop_treat_can_be_bought_once_and_prices_are_checked() {
+    let (core, _dir) = core();
+    core.set_rewards_enabled(false).unwrap();
+    earn_22_coins(&core);
+    let id = core.add_treat_once("Concert".into(), true).unwrap();
+    core.set_treat_price(id.clone(), Some(5)).unwrap();
+    core.buy_treat(id.clone(), d(10)).unwrap();
+    assert!(
+        core.list_treats().unwrap().is_empty(),
+        "it left the jar and the shop"
+    );
+    assert!(core.buy_treat(id.clone(), d(10)).is_err());
+    assert!(core.set_treat_price(id.clone(), Some(0)).is_err());
+    assert!(core.set_treat_price(id, Some(100_001)).is_err());
+}
+
+#[test]
+fn upgrading_from_schema_24_adds_times_prices_and_the_shop() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("v24.db").to_str().unwrap().to_string();
+    {
+        let mut conn = rusqlite::Connection::open(&path).unwrap();
+        db::migrate_to(&mut conn, 24).unwrap();
+        conn.execute_batch(
+            "INSERT INTO treats (id, title, seq) VALUES ('t1', 'Old', 1);
+             INSERT INTO goals (id, title, kind, created_date) VALUES ('g1', 'Old', 'yes_no', '2026-01-01');
+             INSERT INTO entries (id, goal_id, local_date, amount, single_per_day, seq)
+             VALUES ('e1', 'g1', '2026-01-02', 1, 1, 1);",
+        )
+        .unwrap();
+    }
+    let core = GoalCore::open(path).unwrap();
+    assert_eq!(core.list_treats().unwrap()[0].price, None);
+    assert_eq!(core.time_profile("g1".into()).unwrap().usual, None);
+    assert_eq!(core.coins().unwrap().spent, 0);
+}
+
+#[test]
+fn a_backup_with_a_bad_shop_date_is_rejected() {
+    let fixture = Fixture::new();
+    fixture.core.set_rewards_enabled(false).unwrap();
+    earn_22_coins(&fixture.core);
+    let id = fixture.core.add_treat_once("Book".into(), false).unwrap();
+    fixture.core.set_treat_price(id.clone(), Some(1)).unwrap();
+    fixture.core.buy_treat(id, d(10)).unwrap();
+    let path = fixture.path("shop.sqlite");
+    fixture.core.export_backup(path.clone()).unwrap();
+    fixture.core.restore_backup(path.clone()).unwrap();
+    let conn = Connection::open(&path).unwrap();
+    conn.execute("UPDATE shop_purchases SET local_date = 'soon'", [])
+        .unwrap();
+    drop(conn);
+    assert!(fixture.core.restore_backup(path).is_err());
+}

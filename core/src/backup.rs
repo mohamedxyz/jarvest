@@ -322,6 +322,21 @@ pub fn validate(path: &str) -> Result<(), CoreError> {
             return Err(bad("it contains invalid dates"));
         }
     }
+    // The shop arrived in schema version 25.
+    if version >= 25 {
+        let bad_shop_dates: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM shop_purchases
+                 WHERE date(local_date) IS NOT local_date
+                    OR (redeemed_date IS NOT NULL AND date(redeemed_date) IS NOT redeemed_date)",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|_| bad("the file is damaged"))?;
+        if bad_shop_dates > 0 {
+            return Err(bad("it contains invalid dates"));
+        }
+    }
     Ok(())
 }
 

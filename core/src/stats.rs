@@ -266,6 +266,85 @@ pub fn weekday_stats(conn: &Connection, today: &str) -> Result<Vec<WeekdayStat>,
     Ok(stats)
 }
 
+/// How one goal does on each weekday (0 = Monday), from its creation to today.
+/// A daily goal counts a day as met when it reaches its daily target (a clean day for a
+/// quit habit). Any other goal counts a day as met when something was logged on it.
+/// Days off, skipped days and an unfinished today only count once met.
+pub fn goal_weekdays(
+    conn: &Connection,
+    goal_id: &str,
+    today: &str,
+) -> Result<Vec<WeekdayStat>, CoreError> {
+    let today = parse_date(today)?;
+    let goal = get_goal(conn, goal_id)?;
+    let mut stats: Vec<WeekdayStat> = (0..7)
+        .map(|weekday| WeekdayStat {
+            weekday,
+            met: 0,
+            eligible: 0,
+        })
+        .collect();
+    let target = match (goal.period, goal.period_target) {
+        (Some(Period::Day), Some(target)) => target,
+        _ => EPSILON,
+    };
+    let totals = streak_totals(conn, &goal, Period::Day, today)?;
+    let excused = excused_periods(conn, &goal.id, Period::Day)?;
+    let daily = goal.period == Some(Period::Day);
+    let mut day = parse_date(&goal.created_date)?;
+    while day <= today {
+        let met = totals.get(&day).is_some_and(|t| t + EPSILON >= target);
+        let due = (!daily || is_scheduled(goal.weekdays, day)) && !excused.contains(&day);
+        if met || (due && day < today) {
+            let entry = &mut stats[day.weekday().num_days_from_monday() as usize];
+            entry.eligible += 1;
+            entry.met += u32::from(met);
+        }
+        day = next_start(day, Period::Day);
+    }
+    Ok(stats)
+}
+
+/// Fewer timed logs than this give no "usually" time of day.
+pub const MIN_TIMED_LOGS: u32 = 5;
+
+/// When a goal is usually logged, from logs that saved a time of day (0.12.0 onward).
+/// For a quit habit this is when slips happen.
+pub fn time_profile(conn: &Connection, goal_id: &str) -> Result<TimeProfile, CoreError> {
+    let mut profile = TimeProfile {
+        morning: 0,
+        afternoon: 0,
+        evening: 0,
+        night: 0,
+        usual: None,
+    };
+    let mut stmt =
+        conn.prepare("SELECT minute FROM entries WHERE goal_id = ?1 AND minute IS NOT NULL")?;
+    for minute in stmt.query_map([goal_id], |r| r.get::<_, u32>(0))? {
+        match minute? / 60 {
+            5..=11 => profile.morning += 1,
+            12..=16 => profile.afternoon += 1,
+            17..=21 => profile.evening += 1,
+            _ => profile.night += 1,
+        }
+    }
+    let counts = [
+        (TimeOfDay::Morning, profile.morning),
+        (TimeOfDay::Afternoon, profile.afternoon),
+        (TimeOfDay::Evening, profile.evening),
+        (TimeOfDay::Night, profile.night),
+    ];
+    let total: u32 = counts.iter().map(|c| c.1).sum();
+    if total >= MIN_TIMED_LOGS {
+        // The first of the largest wins a tie, so the answer never flips between reads.
+        let best = counts
+            .iter()
+            .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0)));
+        profile.usual = best.map(|c| c.0);
+    }
+    Ok(profile)
+}
+
 /// How many missed tasks a report lists by name.
 const MISSED_LIST_LIMIT: usize = 20;
 

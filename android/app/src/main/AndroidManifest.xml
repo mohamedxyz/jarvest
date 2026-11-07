@@ -46,6 +46,18 @@
             android:windowSoftInputMode="adjustResize" />
 
         <receiver
+            android:name=".HabitGridWidgetReceiver"
+            android:exported="true"
+            android:label="Habit grid">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/habit_grid_widget_info" />
+        </receiver>
+
+        <receiver
             android:name=".TodayWidgetReceiver"
             android:exported="true">
             <intent-filter>

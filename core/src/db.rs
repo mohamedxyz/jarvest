@@ -33,6 +33,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("sql/022_week_review.sql"),
     include_str!("sql/023_routines.sql"),
     include_str!("sql/024_treat_stock.sql"),
+    include_str!("sql/025_stats_and_shop.sql"),
 ];
 
 pub const SCHEMA_VERSION: i32 = MIGRATIONS.len() as i32;

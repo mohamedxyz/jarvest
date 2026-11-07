@@ -380,6 +380,15 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.12.0",
+        listOf(
+            "Save-up shop: you get 1 coin per 10 XP. Give a treat a price, buy it when you can, and it waits in your stock.",
+            "Goal pages: charts by days, weeks or months over 12, 26 or 52 of them, your best and hardest weekday, and when you usually log it.",
+            "Year in review on the Stats screen, shareable as an image.",
+            "A Habit grid widget: your habits for the last 5 days. Tap a day to tick it.",
+        ),
+    ),
+    Release(
         "0.11.2",
         listOf(
             "A goal page lists only its milestones. Tasks are no longer linked to goals from the app; ones you linked before stay in your Tasks tab.",

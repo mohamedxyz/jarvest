@@ -28,6 +28,7 @@ mod search;
 mod stats;
 mod tasks;
 mod templates;
+mod year;
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -374,7 +375,7 @@ impl GoalCore {
     // Logging
 
     pub fn toggle_check_in(&self, goal_id: String, today: String) -> Result<LogResult, CoreError> {
-        goals::toggle_check_in(&mut self.conn(), &goal_id, &today, &today)
+        goals::toggle_check_in(&mut self.conn(), &goal_id, &today, &today, None)
     }
 
     /// Like `toggle_check_in`, for an earlier `day` that was missed.
@@ -384,7 +385,36 @@ impl GoalCore {
         day: String,
         today: String,
     ) -> Result<LogResult, CoreError> {
-        goals::toggle_check_in(&mut self.conn(), &goal_id, &day, &today)
+        goals::toggle_check_in(&mut self.conn(), &goal_id, &day, &today, None)
+    }
+
+    /// Like `toggle_check_in`, also saving the minute of the day (0 to 1439) from the
+    /// phone's clock, so the app can learn when a habit is usually done.
+    pub fn toggle_check_in_at(
+        &self,
+        goal_id: String,
+        today: String,
+        minute: u32,
+    ) -> Result<LogResult, CoreError> {
+        goals::toggle_check_in(&mut self.conn(), &goal_id, &today, &today, Some(minute))
+    }
+
+    /// Like `log_amount`, also saving the minute of the day the amount was logged.
+    pub fn log_amount_at(
+        &self,
+        goal_id: String,
+        amount: f64,
+        today: String,
+        minute: u32,
+    ) -> Result<LogResult, CoreError> {
+        goals::log_amount(
+            &mut self.conn(),
+            &goal_id,
+            amount,
+            &today,
+            &today,
+            Some(minute),
+        )
     }
 
     pub fn log_amount(
@@ -393,7 +423,7 @@ impl GoalCore {
         amount: f64,
         today: String,
     ) -> Result<LogResult, CoreError> {
-        goals::log_amount(&mut self.conn(), &goal_id, amount, &today, &today)
+        goals::log_amount(&mut self.conn(), &goal_id, amount, &today, &today, None)
     }
 
     /// Like `log_amount`, for an earlier `day` that was missed.
@@ -404,7 +434,7 @@ impl GoalCore {
         day: String,
         today: String,
     ) -> Result<LogResult, CoreError> {
-        goals::log_amount(&mut self.conn(), &goal_id, amount, &day, &today)
+        goals::log_amount(&mut self.conn(), &goal_id, amount, &day, &today, None)
     }
 
     pub fn delete_entry(&self, entry_id: String, today: String) -> Result<(), CoreError> {
@@ -842,6 +872,46 @@ impl GoalCore {
     /// Won treats not used yet, with counts, for the Stock list.
     pub fn treat_stock(&self) -> Result<Vec<StockItem>, CoreError> {
         rewards::treat_stock(&self.conn())
+    }
+
+    /// Coins earned from XP, spent in the shop, and left.
+    pub fn coins(&self) -> Result<Coins, CoreError> {
+        rewards::coins(&self.conn())
+    }
+
+    /// Puts a treat in the shop for a price in coins, or takes it out with None.
+    pub fn set_treat_price(&self, treat_id: String, price: Option<u32>) -> Result<(), CoreError> {
+        rewards::set_treat_price(&self.conn(), &treat_id, price)
+    }
+
+    /// Buys a treat with coins; it goes into the stock. Returns the purchase id.
+    pub fn buy_treat(&self, treat_id: String, today: String) -> Result<String, CoreError> {
+        let conn = self.conn();
+        rewards::buy_treat(&conn, &treat_id, &today)
+    }
+
+    /// Undoes an unused purchase and gives the coins back.
+    pub fn refund_purchase(&self, purchase_id: String) -> Result<(), CoreError> {
+        rewards::refund_purchase(&self.conn(), &purchase_id)
+    }
+
+    /// How one goal does on each weekday (0 = Monday).
+    pub fn goal_weekdays(
+        &self,
+        goal_id: String,
+        today: String,
+    ) -> Result<Vec<WeekdayStat>, CoreError> {
+        stats::goal_weekdays(&self.conn(), &goal_id, &today)
+    }
+
+    /// When a goal is usually logged, from logs that saved a time of day.
+    pub fn time_profile(&self, goal_id: String) -> Result<TimeProfile, CoreError> {
+        stats::time_profile(&self.conn(), &goal_id)
+    }
+
+    /// One year at a glance, up to today.
+    pub fn year_review(&self, year: i32, today: String) -> Result<YearReview, CoreError> {
+        year::year_review(&self.conn(), year, &today)
     }
 
     pub fn list_treats(&self) -> Result<Vec<Treat>, CoreError> {

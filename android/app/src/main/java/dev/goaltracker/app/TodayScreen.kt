@@ -190,7 +190,7 @@ fun TodayScreen(
                         item,
                         modifier = softItem(),
                         onOpen = { openedGoal = item },
-                        onCheck = { controller.log { toggleCheckIn(item.goalId, controller.today) } },
+                        onCheck = { controller.log { toggleCheckInAt(item.goalId, controller.today, nowMinute()) } },
                         onLog = { logging = item },
                         count = controller.counters[item.goalId] ?: 0,
                         onCount = { controller.counters[item.goalId] = it },
@@ -205,7 +205,7 @@ fun TodayScreen(
             title = item.title,
             unit = item.unit,
             onLog = { amount ->
-                if (controller.log { logAmount(item.goalId, amount, controller.today) }) logging = null
+                if (controller.log { logAmountAt(item.goalId, amount, controller.today, nowMinute()) }) logging = null
             },
             onDismiss = { logging = null },
         )

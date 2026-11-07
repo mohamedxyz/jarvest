@@ -749,3 +749,24 @@ Not built, and moved to a later release:
 - All draws pick from `rewards::jar_treats`. With only won one-time treats left, the jar counts as empty.
 - Stock: wins with no `redeemed_date`, grouped by treat name with a count. "Use one" marks the oldest one
   enjoyed (`toggle_redeemed`), with Undo. The full list stays under History.
+
+# V0.12.0: stats and insights, habit grid widget, save-up shop
+
+Migration 025. Nothing here changes streaks, rewards odds or the day score.
+
+- **Log times:** `entries.minute` (0 to 1439) comes from the phone through `toggle_check_in_at` and
+  `log_amount_at`, and is kept only when the log is for today. Older logs and filled-in past days have
+  none. `time_profile(goal)` buckets them: morning 5-12, afternoon 12-17, evening 17-22, night. The usual
+  part shows once there are 5 timed logs; ties go to the earlier part.
+- **Goal page:** chart by days, weeks or months over 12, 26 or 52 periods; best and hardest weekday from
+  `goal_weekdays` (a daily goal counts met days, others count days with a log; shown once a weekday has
+  2 eligible days); the usual time of day (for a quit habit: when slips happen).
+- **Year in review** (`year.rs`): logs (no slips), active days, longest run of active days, targets met
+  (a period target counts in its own period), tasks done (no milestone tasks), treats won and bought,
+  XP, Titan days and the most logged goal. Trashed goals are left out. The share image never includes
+  notes or moods.
+- **Habit grid widget:** habits for the last 5 days; tap toggles the day like the Habits tab.
+- **Shop:** 1 coin per 10 XP (`XP_PER_COIN`). A treat with a `price` is for sale; buying needs enough
+  coins, adds a row to `shop_purchases`, and the treat lands in the stock. XP can fall when a day is
+  undone, so the balance can dip below zero; nothing bought is taken back, and buying waits until it is
+  positive. Unused purchases can be refunded. A one-time treat can be bought once.

@@ -9,6 +9,7 @@
     <string name="agenda_widget_description">Today\'s calendar.</string>
     <string name="streak_widget_description">Your longest running streaks.</string>
     <string name="tasks_widget_description">Tasks that are due, with a tick box.</string>
+    <string name="habit_grid_widget_description">Your habits for the last 5 days. Tap a day to tick it.</string>
     <string name="quick_add_widget_description">One tap to add a task.</string>
     <!-- Texts moved out of the Kotlin screens. -->
     <string name="ui_back_up_every_day">Back up every day</string>

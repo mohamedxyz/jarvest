@@ -1,5 +1,7 @@
 package dev.goaltracker.app
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.FilterChip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -51,10 +53,16 @@ fun GoalDetailScreen(
     val entries = remember(controller.version, goalId) { controller.read(emptyList()) { listEntries(goalId, 20u) } }
     var milestoneToDelete by remember { mutableStateOf<dev.goaltracker.core.Milestone?>(null) }
 
-    val chartPeriod = goal.period ?: Period.WEEK
-    val series = remember(controller.version, controller.today, goalId) {
-        controller.read(emptyList()) { periodSeries(goalId, chartPeriod, 12u, controller.today) }
+    // The chart can show days, weeks or months, over 12, 26 or 52 of them.
+    var chartPeriod by remember(goalId) { mutableStateOf(goal.period ?: Period.WEEK) }
+    var chartSpan by remember(goalId) { mutableStateOf(12) }
+    val series = remember(controller.version, controller.today, goalId, chartPeriod, chartSpan) {
+        controller.read(emptyList()) { periodSeries(goalId, chartPeriod, chartSpan.toUInt(), controller.today) }
     }
+    val weekdays = remember(controller.version, controller.today, goalId) {
+        controller.read(emptyList()) { goalWeekdays(goalId, controller.today) }
+    }
+    val timeProfile = remember(controller.version, goalId) { controller.read(null) { timeProfile(goalId) } }
     val runs = remember(controller.version, controller.today, goalId) {
         controller.read(emptyList()) { streakRuns(goalId, controller.today) }
     }
@@ -100,13 +108,13 @@ fun GoalDetailScreen(
                     TextButton(onClick = { logging = true }) { Text(stringResource(R.string.ui_exact_amount)) }
                 }
                 GoalKind.YES_NO -> Button(
-                    onClick = { controller.log { toggleCheckIn(goalId, controller.today) } },
+                    onClick = { controller.log { toggleCheckInAt(goalId, controller.today, nowMinute()) } },
                     Modifier.fillMaxWidth(),
                 ) { Text(if (goal.done) "Mark as not done" else "Mark as done") }
                 GoalKind.HABIT -> {
                     val checked = entries.any { it.localDate == controller.today }
                     Button(
-                        onClick = { controller.log { toggleCheckIn(goalId, controller.today) } },
+                        onClick = { controller.log { toggleCheckInAt(goalId, controller.today, nowMinute()) } },
                         Modifier.fillMaxWidth(),
                     ) { Text(if (goal.avoid) (if (checked) "Undo today's slip" else "I slipped today") else if (checked) "Undo today's check-in" else "Check in today") }
                 }
@@ -165,15 +173,27 @@ fun GoalDetailScreen(
         if (goal.kind != GoalKind.YES_NO && !goal.avoid) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SectionTitle("Progress")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(Period.DAY to "Days", Period.WEEK to "Weeks", Period.MONTH to "Months").forEach { (p, label) ->
+                        FilterChip(chartPeriod == p, { chartPeriod = p }, label = { Text(label) })
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(12, 26, 52).forEach { n ->
+                        FilterChip(chartSpan == n, { chartSpan = n }, label = { Text("Last $n") })
+                    }
+                }
                 PeriodChart(series, chartPeriod, goal.unit)
             }
         }
+
+        WeekdayInsight(weekdays, timeProfile, goal.avoid)
 
         if (runs.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 SectionTitle("Streak history")
                 runs.reversed().forEach { run ->
-                    val noun = chartPeriod.noun()
+                    val noun = (goal.period ?: Period.WEEK).noun()
                     Text(
                         "${countOf(run.length.toInt(), noun)} · ${formatDate(run.start)} to ${formatDate(run.end)}",
                         style = MaterialTheme.typography.bodyMedium,
@@ -306,7 +326,7 @@ fun GoalDetailScreen(
             title = goal.title,
             unit = goal.unit,
             onLog = { amount ->
-                if (controller.log { logAmount(goalId, amount, controller.today) }) logging = false
+                if (controller.log { logAmountAt(goalId, amount, controller.today, nowMinute()) }) logging = false
             },
             onDismiss = { logging = false },
         )
@@ -352,5 +372,65 @@ fun GoalDetailScreen(
             },
             onDismiss = { entryToDelete = null },
         )
+    }
+}
+
+private val weekdayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+/**
+ * Best and weakest weekday as bars, and the usual time of day. Shown once there are at
+ * least two weeks of history, so one lucky day doesn't read as a pattern.
+ */
+@Composable
+private fun WeekdayInsight(
+    weekdays: List<dev.goaltracker.core.WeekdayStat>,
+    profile: dev.goaltracker.core.TimeProfile?,
+    quit: Boolean,
+) {
+    val rated = weekdays.filter { it.eligible >= 2u }
+    val usual = profile?.usual
+    if (rated.size < 2 && usual == null) return
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SectionTitle("Patterns")
+        if (rated.size >= 2) {
+            val rate = { w: dev.goaltracker.core.WeekdayStat -> w.met.toFloat() / w.eligible.toFloat() }
+            val best = rated.maxBy(rate)
+            val worst = rated.minBy(rate)
+            val word = if (quit) "clean" else "done"
+            Text(
+                "Best day: ${weekdayNames[best.weekday.toInt()]} (${(rate(best) * 100).toInt()}% $word). " +
+                    "Hardest: ${weekdayNames[worst.weekday.toInt()]} (${(rate(worst) * 100).toInt()}%).",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            val bar = MaterialTheme.colorScheme.primary
+            val track = MaterialTheme.colorScheme.surfaceVariant
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                weekdays.forEach { w ->
+                    val value = if (w.eligible > 0u) rate(w) else 0f
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.foundation.Canvas(
+                            Modifier.fillMaxWidth().height(48.dp).label("${weekdayNames[w.weekday.toInt()]}: ${(value * 100).toInt()}%"),
+                        ) {
+                            drawRect(track)
+                            val h = size.height * value
+                            drawRect(bar, topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h), size = androidx.compose.ui.geometry.Size(size.width, h))
+                        }
+                        Text(weekdayNames[w.weekday.toInt()].take(1), style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+        usual?.let {
+            val part = when (it) {
+                dev.goaltracker.core.TimeOfDay.MORNING -> "in the morning"
+                dev.goaltracker.core.TimeOfDay.AFTERNOON -> "in the afternoon"
+                dev.goaltracker.core.TimeOfDay.EVENING -> "in the evening"
+                dev.goaltracker.core.TimeOfDay.NIGHT -> "at night"
+            }
+            Text(
+                if (quit) "Slips usually happen $part." else "You usually log this $part.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
     }
 }

@@ -1,5 +1,7 @@
 package dev.goaltracker.app
 
+import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.ui.res.stringResource
@@ -49,6 +51,8 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
     val badges = remember(controller.version, controller.today) { controller.read(emptyList()) { badges(controller.today) } }
     val progress = remember(controller.version) { controller.read(null) { rewardProgress() } }
     val stock = remember(controller.version) { controller.read(emptyList()) { treatStock() } }
+    val coins = remember(controller.version) { controller.read(null) { coins() } }
+    var pricing by remember { mutableStateOf<dev.goaltracker.core.Treat?>(null) }
     var newTreat by rememberSaveable { mutableStateOf("") }
     var newOnce by rememberSaveable { mutableStateOf(false) }
     var treatToRemove by remember { mutableStateOf<dev.goaltracker.core.Treat?>(null) }
@@ -101,6 +105,42 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
             }
         }
 
+        // The save-up shop: coins come from XP, and a bought treat goes into the stock.
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            val balance = (coins?.balance ?: 0L).coerceAtLeast(0L)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SectionTitle("Shop", Modifier.weight(1f))
+                Text("🪙 $balance", style = MaterialTheme.typography.titleMedium)
+            }
+            Text(
+                "You get 1 coin for every 10 XP. Give a treat a price below to save up for it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            treats.filter { it.price != null }.sortedBy { it.price }.forEach { treat ->
+                val price = treat.price!!
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(treat.title, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            if (balance >= price.toLong()) "🪙 $price" else "🪙 $price · ${price.toLong() - balance} to go",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Button(enabled = balance >= price.toLong(), onClick = {
+                        val id = controller.change { buyTreat(treat.id, controller.today) }
+                        if (id != null) {
+                            Feel.celebrate(null)
+                            controller.undo = UndoOffer("Bought ${treat.title}. It's in your stock.") {
+                                controller.act { refundPurchase(id) }
+                            }
+                        }
+                    }) { Text("Buy") }
+                }
+            }
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SectionTitle("Your jar")
             if (treats.isEmpty()) Text(stringResource(R.string.ui_your_jar_is_empty), style = MaterialTheme.typography.bodyMedium)
@@ -114,6 +154,11 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
                         label = { Text(if (treat.once) "1× only" else "Repeat") },
                         modifier = Modifier.label(if (treat.once) "${treat.title}: one time only. Tap to make it repeatable" else "${treat.title}: repeatable. Tap to make it one time only"),
                     )
+                    TextButton(onClick = { pricing = treat }) {
+                        Text(treat.price?.let { "🪙 $it" } ?: "Price", modifier = Modifier.label(
+                            treat.price?.let { "${treat.title} costs $it coins in the shop. Change price" } ?: "Put ${treat.title} in the shop",
+                        ))
+                    }
                     IconButton(onClick = { treatToRemove = treat }) {
                         Icon(Icons.Filled.Close, "Remove ${treat.title}")
                     }
@@ -180,6 +225,42 @@ fun TreatsScreen(controller: AppController, onOpenMonsters: () -> Unit = {}) {
                 }
             }
         }
+    }
+    pricing?.let { treat ->
+        var text by remember(treat.id) { mutableStateOf(treat.price?.toString() ?: "") }
+        AlertDialog(
+            onDismissRequest = { pricing = null },
+            title = { Text("Price for ${treat.title}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "In coins. You get 1 coin per 10 XP, so a good day is a few coins.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    // Quick picks, so nothing has to be typed.
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(20, 50, 100, 250).forEach { n ->
+                            FilterChip(text == n.toString(), { text = n.toString() }, label = { Text("$n") })
+                        }
+                    }
+                    OutlinedTextField(
+                        text, { value -> text = value.filter { it.isDigit() }.take(6) },
+                        label = { Text("Coins") }, singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = text.toUIntOrNull()?.let { it > 0u } == true, onClick = {
+                    if (controller.act { setTreatPrice(treat.id, text.toUInt()) }) pricing = null
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    if (treat.price == null || controller.act { setTreatPrice(treat.id, null) }) pricing = null
+                }) { Text(if (treat.price != null) "Not for sale" else "Cancel") }
+            },
+        )
     }
     treatToRemove?.let { treat ->
         ConfirmDialog(

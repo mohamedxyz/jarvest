@@ -45,6 +45,7 @@ class GoalTrackerApp : Application() {
             TasksWidget().updateAll(this@GoalTrackerApp)
             ScoreWidget().updateAll(this@GoalTrackerApp)
             AgendaWidget().updateAll(this@GoalTrackerApp)
+            HabitGridWidget().updateAll(this@GoalTrackerApp)
         }
     }
 }

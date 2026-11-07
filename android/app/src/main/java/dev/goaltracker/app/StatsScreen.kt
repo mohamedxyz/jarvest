@@ -82,6 +82,7 @@ fun StatsScreen(controller: AppController, onOpenGoal: (String) -> Unit) {
             Heatmap(controller, goalId = null)
         }
         RecapCard(controller)
+        YearReviewCard(controller)
         WeekdayCard(controller)
         if (goals.map { it.category }.distinct().size > 1) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

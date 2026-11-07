@@ -100,7 +100,8 @@ pub(crate) const JAR_SQL: &str = "SELECT t.id FROM treats t WHERE t.removed = 0
     AND NOT (t.once = 1 AND (
         EXISTS (SELECT 1 FROM reward_draws d WHERE d.treat_id = t.id)
         OR EXISTS (SELECT 1 FROM monster_prizes m WHERE m.treat_id = t.id)
-        OR EXISTS (SELECT 1 FROM boss_prizes b WHERE b.treat_id = t.id)))
+        OR EXISTS (SELECT 1 FROM boss_prizes b WHERE b.treat_id = t.id)
+        OR EXISTS (SELECT 1 FROM shop_purchases p WHERE p.treat_id = t.id)))
     ORDER BY t.seq";
 
 pub(crate) fn jar_treats(conn: &Connection) -> Result<Vec<String>, CoreError> {
@@ -253,13 +254,14 @@ pub fn remove_treat(conn: &Connection, treat_id: &str) -> Result<(), CoreError> 
 pub fn list_treats(conn: &Connection) -> Result<Vec<Treat>, CoreError> {
     let in_jar = jar_treats(conn)?;
     let mut stmt =
-        conn.prepare("SELECT id, title, once FROM treats WHERE removed = 0 ORDER BY seq")?;
+        conn.prepare("SELECT id, title, once, price FROM treats WHERE removed = 0 ORDER BY seq")?;
     let treats = stmt
         .query_map([], |r| {
             Ok(Treat {
                 id: r.get(0)?,
                 title: r.get(1)?,
                 once: r.get(2)?,
+                price: r.get(3)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?
@@ -290,6 +292,7 @@ fn draws_where(conn: &Connection, condition: &str) -> Result<Vec<RewardDraw>, Co
                 seen: r.get(5)?,
                 redeemed_date: r.get(6)?,
                 from_monster: false,
+                from_shop: false,
             })
         })?
         .collect::<Result<_, _>>()?;
@@ -313,6 +316,7 @@ fn draws_where(conn: &Connection, condition: &str) -> Result<Vec<RewardDraw>, Co
                 seen: r.get(4)?,
                 redeemed_date: r.get(5)?,
                 from_monster: true,
+                from_shop: false,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -337,10 +341,35 @@ fn draws_where(conn: &Connection, condition: &str) -> Result<Vec<RewardDraw>, Co
                 seen: r.get(4)?,
                 redeemed_date: r.get(5)?,
                 from_monster: false,
+                from_shop: false,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
     draws.extend(boss_prizes);
+    // Treats bought in the shop. They need no reveal, so they only show in the full list.
+    if condition == "1" {
+        let mut stmt = conn.prepare(
+            "SELECT d.id, t.title, d.local_date, d.redeemed_date
+             FROM shop_purchases d JOIN treats t ON t.id = d.treat_id
+             ORDER BY d.local_date DESC, d.rowid DESC",
+        )?;
+        let bought = stmt
+            .query_map([], |r| {
+                Ok(RewardDraw {
+                    id: r.get(0)?,
+                    treat_title: r.get(1)?,
+                    goal_title: "Shop".into(),
+                    local_date: r.get(2)?,
+                    comeback: false,
+                    seen: true,
+                    redeemed_date: r.get(3)?,
+                    from_monster: false,
+                    from_shop: true,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        draws.extend(bought);
+    }
     // Newest first. The sort is stable, so each source keeps its own order within a day.
     draws.sort_by(|a, b| b.local_date.cmp(&a.local_date));
     Ok(draws)
@@ -417,6 +446,109 @@ pub fn toggle_redeemed(conn: &Connection, draw_id: &str, today: &str) -> Result<
             "UPDATE boss_prizes SET redeemed_date = ?2 WHERE id = ?1",
             params![draw_id, next],
         )?;
+        return Ok(());
+    }
+    // Or a treat bought in the shop.
+    let current: Option<Option<String>> = conn
+        .query_row(
+            "SELECT redeemed_date FROM shop_purchases WHERE id = ?1",
+            params![draw_id],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(current) = current {
+        let next = if current.is_some() { None } else { Some(today) };
+        conn.execute(
+            "UPDATE shop_purchases SET redeemed_date = ?2 WHERE id = ?1",
+            params![draw_id, next],
+        )?;
+    }
+    Ok(())
+}
+
+// The save-up shop
+
+/// XP needed for one coin.
+pub const XP_PER_COIN: u32 = 10;
+
+/// Coins earned (from XP), spent in the shop, and left. XP can go down when a day is
+/// undone, so `balance` can briefly be below zero; nothing can be bought until it is
+/// positive again, and nothing already bought is taken back.
+pub fn coins(conn: &Connection) -> Result<Coins, CoreError> {
+    let earned = crate::progress::hero(conn)?.xp / XP_PER_COIN;
+    let spent: u32 = conn.query_row(
+        "SELECT COALESCE(SUM(price), 0) FROM shop_purchases",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok(Coins {
+        earned,
+        spent,
+        balance: i64::from(earned) - i64::from(spent),
+    })
+}
+
+/// Puts a treat in the shop for `price` coins, or takes it out of the shop with None.
+/// It stays in the jar for random draws either way.
+pub fn set_treat_price(
+    conn: &Connection,
+    treat_id: &str,
+    price: Option<u32>,
+) -> Result<(), CoreError> {
+    if price.is_some_and(|p| !(1..=100_000).contains(&p)) {
+        return Err(invalid("A price must be between 1 and 100,000 coins"));
+    }
+    let n = conn.execute(
+        "UPDATE treats SET price = ?2 WHERE id = ?1 AND removed = 0",
+        params![treat_id, price],
+    )?;
+    if n == 0 {
+        return Err(invalid("That treat is not in the jar"));
+    }
+    Ok(())
+}
+
+/// Buys a treat from the shop. It goes into the stock. A one-time treat then leaves
+/// the jar and the shop.
+pub fn buy_treat(conn: &Connection, treat_id: &str, today: &str) -> Result<String, CoreError> {
+    crate::dates::parse_date(today)?;
+    let price: Option<u32> = conn
+        .query_row(
+            "SELECT price FROM treats WHERE id = ?1 AND removed = 0",
+            params![treat_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    let Some(price) = price else {
+        return Err(invalid("That treat is not in the shop"));
+    };
+    if !jar_treats(conn)?.iter().any(|t| t == treat_id) {
+        return Err(invalid("You already have this one-time treat"));
+    }
+    let balance = coins(conn)?.balance;
+    if balance < i64::from(price) {
+        return Err(invalid(format!(
+            "Not enough coins yet: you have {}, it costs {price}",
+            balance.max(0)
+        )));
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO shop_purchases (id, treat_id, price, local_date) VALUES (?1, ?2, ?3, ?4)",
+        params![id, treat_id, price, today],
+    )?;
+    Ok(id)
+}
+
+/// Undoes a purchase that hasn't been used yet, giving the coins back.
+pub fn refund_purchase(conn: &Connection, purchase_id: &str) -> Result<(), CoreError> {
+    let n = conn.execute(
+        "DELETE FROM shop_purchases WHERE id = ?1 AND redeemed_date IS NULL",
+        params![purchase_id],
+    )?;
+    if n == 0 {
+        return Err(invalid("Only a treat you haven't used yet can be refunded"));
     }
     Ok(())
 }

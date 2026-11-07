@@ -443,18 +443,31 @@ fn loggable_goal(conn: &Connection, goal_id: &str) -> Result<Goal, CoreError> {
     Ok(goal)
 }
 
+/// `minute` is the minute of the day the log was made (0 to 1439), kept only for a log
+/// made on the day itself, so a past day filled in later never claims a time.
+#[allow(clippy::too_many_arguments)]
 fn insert_entry(
     conn: &Connection,
     goal: &Goal,
     date: &str,
     amount: f64,
     single_per_day: bool,
+    minute: Option<u32>,
+    today: &str,
 ) -> Result<(), CoreError> {
+    let minute = minute.filter(|_| date == today);
     conn.execute(
-        "INSERT INTO entries (id, goal_id, local_date, amount, single_per_day, seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, (SELECT COALESCE(MAX(seq), 0) + 1 FROM entries))",
-        params![new_id(), goal.id, date, amount, single_per_day],
+        "INSERT INTO entries (id, goal_id, local_date, amount, single_per_day, seq, minute)
+         VALUES (?1, ?2, ?3, ?4, ?5, (SELECT COALESCE(MAX(seq), 0) + 1 FROM entries), ?6)",
+        params![new_id(), goal.id, date, amount, single_per_day, minute],
     )?;
+    Ok(())
+}
+
+fn check_minute(minute: Option<u32>) -> Result<(), CoreError> {
+    if minute.is_some_and(|m| m > 1439) {
+        return Err(invalid("A time of day must be between 00:00 and 23:59"));
+    }
     Ok(())
 }
 
@@ -476,9 +489,11 @@ pub fn toggle_check_in(
     goal_id: &str,
     day: &str,
     today: &str,
+    minute: Option<u32>,
 ) -> Result<LogResult, CoreError> {
     let date = parse_date(day)?;
     let today_date = parse_date(today)?;
+    check_minute(minute)?;
     let tx = conn.transaction()?;
     let goal = loggable_goal(&tx, goal_id)?;
     check_log_day(&goal, date, today_date)?;
@@ -509,7 +524,7 @@ pub fn toggle_check_in(
             sync_targets(&tx, &goal, parse_date(&logged)?, today)?
         }
         None => {
-            insert_entry(&tx, &goal, day, 1.0, true)?;
+            insert_entry(&tx, &goal, day, 1.0, true, minute, today)?;
             sync_targets(&tx, &goal, date, today)?
         }
     };
@@ -523,9 +538,11 @@ pub fn log_amount(
     amount: f64,
     day: &str,
     today: &str,
+    minute: Option<u32>,
 ) -> Result<LogResult, CoreError> {
     let date = parse_date(day)?;
     let today_date = parse_date(today)?;
+    check_minute(minute)?;
     if !amount.is_finite() || amount <= 0.0 {
         return Err(invalid("Enter an amount greater than zero"));
     }
@@ -535,7 +552,7 @@ pub fn log_amount(
         return Err(invalid("Only numeric goals log an amount"));
     }
     check_log_day(&goal, date, today_date)?;
-    insert_entry(&tx, &goal, day, amount, false)?;
+    insert_entry(&tx, &goal, day, amount, false, minute, today)?;
     let result = sync_targets(&tx, &goal, date, today)?;
     tx.commit()?;
     Ok(result)

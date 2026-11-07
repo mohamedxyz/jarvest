@@ -82,3 +82,6 @@ fun Task.shownTitle(): String {
     val goal = goalTitle
     return if (milestoneId != null && goal != null) "$goal: $title" else title
 }
+
+/** The phone's current minute of the day (0 to 1439), saved with a log so the app can learn when it is usually done. */
+fun nowMinute(): UInt = java.time.LocalTime.now().let { (it.hour * 60 + it.minute).toUInt() }

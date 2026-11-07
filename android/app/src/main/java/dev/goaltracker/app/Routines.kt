@@ -103,7 +103,7 @@ fun RoutineSheet(controller: AppController, routineId: String, onDismiss: () -> 
                         TickBox(
                             checked = item.loggedToday || (item.kind == GoalKind.YES_NO && item.complete),
                             cue = Cue.HABIT,
-                            onCheckedChange = { controller.log { toggleCheckIn(item.goalId, controller.today) } },
+                            onCheckedChange = { controller.log { toggleCheckInAt(item.goalId, controller.today, nowMinute()) } },
                             modifier = Modifier.label("Log ${item.title} for today"),
                         )
                     }

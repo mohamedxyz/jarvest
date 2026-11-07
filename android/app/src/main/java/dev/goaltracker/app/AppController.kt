@@ -282,7 +282,7 @@ class AppController(private val app: GoalTrackerApp) {
     fun submitCounter(goalId: String): Boolean {
         val count = counters[goalId] ?: 0
         if (count <= 0) return false
-        val ok = log { logAmount(goalId, count.toDouble(), todayString()) }
+        val ok = log { logAmountAt(goalId, count.toDouble(), todayString(), nowMinute()) }
         if (ok) counters[goalId] = 0
         return ok
     }
