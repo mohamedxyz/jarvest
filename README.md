@@ -36,8 +36,8 @@ See [PLAN.md](PLAN.md) for the design and the exact rules.
 - **Levels and bosses:** a day score, XP and hero levels, a weekly boss, custom monsters, and a daily quest
 - **Insights:** a history calendar, records, and a look back at each week or month
 - **Planning aids:** holiday mode pauses every goal for chosen days, private day notes with a mood, a weekly review that picks up to three focus items, and routines such as a morning routine
-- **Also:** search and filter, reorder goals, quick-start templates, light, dark, and
-  accent themes, a streaks widget, and CSV export
+- **Also:** search and filter, reorder goals, quick-start templates, a dark-fantasy look
+  (or parchment), a streaks widget, and CSV export
 - **Backup:** everything saves to a single SQLite file that you can restore later. Settings shows
   when you last saved one, and Today nudges you when it has been a week
 
@@ -153,7 +153,7 @@ the tests, builds the signed APK, and attaches it to a GitHub release.
 The Rust tests cannot see the screens, so run this on a real phone (or an emulator) before every release. Install the release APK over the previous version, never on a clean phone only, so the database upgrade is tested too.
 
 1. Open the app. Nothing crashes, and the "What's new" entry for this version is there.
-2. Visit every tab: Today, Tasks, Calendar, Goals, Habits, More (Stats, Rewards, Settings).
+2. Visit every tab: Today, Plan (Tasks and Calendar), Quests (Goals and Habits), Hero (Stats, Rewards, History, Routines, Holiday, Settings).
 3. Create a goal, a habit, a task with a due day and a start time, an event, and a monster. Finish the task and the habit. The day score, the level card and the weekly boss move.
 4. Calendar: the task and the event show at the right hour. Move a block, open its sheet, change its time.
 5. Delete a goal and a task, open Trash, restore one, empty the trash. A message says what happened.

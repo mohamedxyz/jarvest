@@ -85,7 +85,7 @@ class HabitGridWidget : GlanceAppWidget() {
                     emptyList()
                 }
             }
-            GlanceTheme { GridContent(rows, days) }
+            GlanceTheme(colors = WidgetColors) { GridContent(rows, days) }
         }
     }
 }

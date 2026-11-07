@@ -399,7 +399,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                     )
                 }
                 route == "history" -> HistoryScreen(controller)
-                route == "more" -> MoreScreen(onOpen = { push(it) })
+                route == "more" -> MoreScreen(controller, onOpen = { push(it) })
                 route == "calendar" -> CalendarScreen(
                     controller,
                     onEditEvent = { push("event/$it") },

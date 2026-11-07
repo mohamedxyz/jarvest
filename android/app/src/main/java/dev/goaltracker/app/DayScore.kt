@@ -55,11 +55,16 @@ private fun DayLevel.icon() = when (this) {
     DayLevel.TITAN -> "⚔️"
 }
 
-private fun DayLevel.color() = when (this) {
-    DayLevel.NONE -> Color(0xFF78909C)
-    DayLevel.SPARK -> Color(0xFFF9A825)
-    DayLevel.BLAZE -> Color(0xFFEF6C00)
-    DayLevel.TITAN -> Color(0xFF2E7D32)
+/** Level colors, brighter on the dark look so the words stay readable. */
+@Composable
+private fun DayLevel.color(): Color {
+    val dark = LocalDarkTheme.current
+    return when (this) {
+        DayLevel.NONE -> if (dark) Color(0xFF9AA3B5) else Color(0xFF5E6B78)
+        DayLevel.SPARK -> if (dark) Color(0xFFF9C846) else Color(0xFF8A5A00)
+        DayLevel.BLAZE -> if (dark) Color(0xFFFF8A3D) else Color(0xFFB34700)
+        DayLevel.TITAN -> if (dark) Color(0xFF5FD38D) else Color(0xFF1B6B2E)
+    }
 }
 
 /** What to say under the level: the next step, or a note that the day is done. */

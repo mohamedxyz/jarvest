@@ -61,7 +61,7 @@ class StreakWidget : GlanceAppWidget() {
                     null
                 }
             }
-            GlanceTheme { StreakContent(streaks, momentum?.let { momentumShort(it) }) }
+            GlanceTheme(colors = WidgetColors) { StreakContent(streaks, momentum?.let { momentumShort(it) }) }
         }
     }
 }

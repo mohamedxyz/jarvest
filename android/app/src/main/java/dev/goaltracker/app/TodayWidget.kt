@@ -76,7 +76,7 @@ class TodayWidget : GlanceAppWidget() {
                     null
                 }
             }
-            GlanceTheme { WidgetContent(items, tasksDue, percent) }
+            GlanceTheme(colors = WidgetColors) { WidgetContent(items, tasksDue, percent) }
         }
     }
 }

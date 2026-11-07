@@ -380,6 +380,15 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.13.0",
+        listOf(
+            "A new dark-fantasy look, with a parchment version for light mode. The accent colors and the OLED black theme are gone.",
+            "Four tabs instead of six: Today, Plan (Tasks and Calendar), Quests (Goals and Habits) and Hero (level, shop, stats and more).",
+            "Your level and XP show at the top of every tab. Shields, bosses, scrolls and coins are drawn in the app.",
+            "Widgets use the same colors as the app.",
+        ),
+    ),
+    Release(
         "0.12.0",
         listOf(
             "Save-up shop: you get 1 coin per 10 XP. Give a treat a price, buy it when you can, and it waits in your stock.",
