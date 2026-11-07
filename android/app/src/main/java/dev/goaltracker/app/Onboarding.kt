@@ -380,11 +380,29 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
-        "0.12.1",
+        "0.13.2",
         listOf(
             "A deleted goal's milestones no longer linger in search, the task archive or tags. Leftover milestones from older versions are cleaned up.",
             "A milestone can be deleted from its task in the Tasks tab.",
             "Number goals show their result on the goal page and in the Goals list, such as 3 of 8 glasses today.",
+        ),
+    ),
+    Release(
+        "0.13.1",
+        listOf(
+            "The calendar has more room: a slim header, a shorter week strip, and one scrolling row for things waiting for a time.",
+            "Tap an empty spot on the day to add an event or task there, or give an existing item that time.",
+            "Press and hold a block to move it, drag its bottom edge to change its length, or drop it on a day above to change the day. Undo is one tap away.",
+            "Press and hold an Anytime chip and drag it onto the day. Pinch to zoom the hours.",
+        ),
+    ),
+    Release(
+        "0.13.0",
+        listOf(
+            "A new dark-fantasy look, with a parchment version for light mode. The accent colors and the OLED black theme are gone.",
+            "Four tabs instead of six: Today, Plan (Tasks and Calendar), Quests (Goals and Habits) and Hero (level, shop, stats and more).",
+            "Your level and XP show at the top of every tab. Shields, bosses, scrolls and coins are drawn in the app.",
+            "Widgets use the same colors as the app.",
         ),
     ),
     Release(

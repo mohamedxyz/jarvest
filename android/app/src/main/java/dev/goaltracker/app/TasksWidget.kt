@@ -64,7 +64,7 @@ class TasksWidget : GlanceAppWidget() {
                     emptyList()
                 }
             }
-            GlanceTheme { TasksContent(tasks) }
+            GlanceTheme(colors = WidgetColors) { TasksContent(tasks) }
         }
     }
 }
@@ -121,7 +121,7 @@ class QuickAddWidgetReceiver : GlanceAppWidgetReceiver() {
 class QuickAddWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         provideContent {
-            GlanceTheme {
+            GlanceTheme(colors = WidgetColors) {
                 Box(
                     GlanceModifier.fillMaxSize().background(GlanceTheme.colors.primaryContainer).cornerRadius(16.dp)
                         .padding(8.dp).clickable(actionStartActivity<MainActivity>(actionParametersOf(quickAddKey to true))),

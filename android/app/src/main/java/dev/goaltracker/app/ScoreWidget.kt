@@ -55,7 +55,7 @@ class ScoreWidget : GlanceAppWidget() {
                     null
                 }
             }
-            GlanceTheme { ScoreContent(data?.first, data?.second, data?.third) }
+            GlanceTheme(colors = WidgetColors) { ScoreContent(data?.first, data?.second, data?.third) }
         }
     }
 }
@@ -109,7 +109,7 @@ class AgendaWidget : GlanceAppWidget() {
                     emptyList()
                 }
             }
-            GlanceTheme { AgendaContent(blocks) }
+            GlanceTheme(colors = WidgetColors) { AgendaContent(blocks) }
         }
     }
 }

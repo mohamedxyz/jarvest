@@ -10,6 +10,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -24,201 +27,86 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark"), BLACK("Black (OLED)") }
-
-enum class Accent(val label: String) {
-    BLUE("Blue"), GREEN("Green"), PURPLE("Purple"),
-    ROSE("Rose"), TEAL("Teal"), AMBER("Amber"), GRAPHITE("Graphite"),
-}
+/**
+ * The look of the app. Dark is the signature dark-fantasy look. Light is the same look on parchment.
+ * `LIGHT` and `BLACK` keep their stored names so a restored backup still loads: an older "black"
+ * choice now falls back to the default look.
+ */
+enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Parchment"), DARK("Dark fantasy") }
 
 /** Whether the app is currently drawn dark, which can differ from the phone's setting. */
 val LocalDarkTheme = compositionLocalOf { false }
 
-internal val LightColors = lightColorScheme(
-    primary = Color(0xFF256ABF),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFCDE2FB),
-    onPrimaryContainer = Color(0xFF0D366B),
-    secondary = Color(0xFF184F95),
-    secondaryContainer = Color(0xFFCDE2FB),
-    onSecondaryContainer = Color(0xFF0D366B),
-    background = Color(0xFFFBFBFA),
-    surface = Color(0xFFFBFBFA),
-    onSurface = Color(0xFF1B1B1A),
-    surfaceVariant = Color(0xFFECECEA),
-    onSurfaceVariant = Color(0xFF52524F),
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF5F5F3),
-    surfaceContainer = Color(0xFFF1F1EF),
-    surfaceContainerHigh = Color(0xFFECECEA),
-    surfaceContainerHighest = Color(0xFFE7E7E4),
-    outline = Color(0xFF7A7A76),
-    outlineVariant = Color(0xFFCBCBC7),
-)
-
+/** Dark fantasy: ink-violet surfaces, a violet main color, gold for rewards and ember for danger. */
 internal val DarkColors = darkColorScheme(
-    primary = Color(0xFF9EC5F4),
-    onPrimary = Color(0xFF0D366B),
-    primaryContainer = Color(0xFF184F95),
-    onPrimaryContainer = Color(0xFFCDE2FB),
-    secondary = Color(0xFF86B6EF),
-    secondaryContainer = Color(0xFF184F95),
-    onSecondaryContainer = Color(0xFFCDE2FB),
-    background = Color(0xFF191918),
-    surface = Color(0xFF191918),
-    onSurface = Color(0xFFE6E6E3),
-    surfaceVariant = Color(0xFF383835),
-    onSurfaceVariant = Color(0xFFBDBDB8),
-    surfaceContainerLowest = Color(0xFF131312),
-    surfaceContainerLow = Color(0xFF1F1F1E),
-    surfaceContainer = Color(0xFF242423),
-    surfaceContainerHigh = Color(0xFF2B2B29),
-    surfaceContainerHighest = Color(0xFF32322F),
-    outline = Color(0xFF8D8D88),
-    outlineVariant = Color(0xFF4A4A47),
+    primary = Color(0xFFB69CFF),
+    onPrimary = Color(0xFF2A0F66),
+    primaryContainer = Color(0xFF47299E),
+    onPrimaryContainer = Color(0xFFE6DCFF),
+    secondary = Color(0xFFF2C14E),
+    onSecondary = Color(0xFF3A2A00),
+    secondaryContainer = Color(0xFF5C4300),
+    onSecondaryContainer = Color(0xFFFFE9B0),
+    tertiary = Color(0xFFFF8A6B),
+    onTertiary = Color(0xFF4A1000),
+    tertiaryContainer = Color(0xFF7A2410),
+    onTertiaryContainer = Color(0xFFFFDBD0),
+    background = Color(0xFF0E0B1A),
+    surface = Color(0xFF0E0B1A),
+    onSurface = Color(0xFFEAE4FA),
+    surfaceVariant = Color(0xFF2D2650),
+    onSurfaceVariant = Color(0xFFC0B8D8),
+    surfaceContainerLowest = Color(0xFF0A0813),
+    surfaceContainerLow = Color(0xFF161227),
+    surfaceContainer = Color(0xFF1C1733),
+    surfaceContainerHigh = Color(0xFF241E3F),
+    surfaceContainerHighest = Color(0xFF2D2650),
+    outline = Color(0xFF8E86AD),
+    outlineVariant = Color(0xFF3F3766),
 )
 
-private fun lightFor(accent: Accent) = when (accent) {
-    Accent.BLUE -> LightColors
-    Accent.GREEN -> LightColors.copy(
-        primary = Color(0xFF2B6E43),
-        primaryContainer = Color(0xFFCFEBD8),
-        onPrimaryContainer = Color(0xFF0F3A20),
-        secondary = Color(0xFF1F5233),
-        secondaryContainer = Color(0xFFCFEBD8),
-        onSecondaryContainer = Color(0xFF0F3A20),
-    )
-    Accent.PURPLE -> LightColors.copy(
-        primary = Color(0xFF6046B0),
-        primaryContainer = Color(0xFFE2DAF7),
-        onPrimaryContainer = Color(0xFF2D1A66),
-        secondary = Color(0xFF47318A),
-        secondaryContainer = Color(0xFFE2DAF7),
-        onSecondaryContainer = Color(0xFF2D1A66),
-    )
-    Accent.ROSE -> LightColors.copy(
-        primary = Color(0xFFB3264F),
-        primaryContainer = Color(0xFFFAD4DD),
-        onPrimaryContainer = Color(0xFF5E0F27),
-        secondary = Color(0xFF8A1D3E),
-        secondaryContainer = Color(0xFFFAD4DD),
-        onSecondaryContainer = Color(0xFF5E0F27),
-    )
-    Accent.TEAL -> LightColors.copy(
-        primary = Color(0xFF0F6B6B),
-        primaryContainer = Color(0xFFC4EBEA),
-        onPrimaryContainer = Color(0xFF053B3B),
-        secondary = Color(0xFF0B5050),
-        secondaryContainer = Color(0xFFC4EBEA),
-        onSecondaryContainer = Color(0xFF053B3B),
-    )
-    Accent.AMBER -> LightColors.copy(
-        primary = Color(0xFF8A5100),
-        primaryContainer = Color(0xFFFFDDB0),
-        onPrimaryContainer = Color(0xFF4A2A00),
-        secondary = Color(0xFF6B3F00),
-        secondaryContainer = Color(0xFFFFDDB0),
-        onSecondaryContainer = Color(0xFF4A2A00),
-    )
-    Accent.GRAPHITE -> LightColors.copy(
-        primary = Color(0xFF45494F),
-        primaryContainer = Color(0xFFDFE2E8),
-        onPrimaryContainer = Color(0xFF1C1F24),
-        secondary = Color(0xFF33373C),
-        secondaryContainer = Color(0xFFDFE2E8),
-        onSecondaryContainer = Color(0xFF1C1F24),
-    )
-}
-
-private fun darkFor(accent: Accent) = when (accent) {
-    Accent.BLUE -> DarkColors
-    Accent.GREEN -> DarkColors.copy(
-        primary = Color(0xFF9AD3AF),
-        onPrimary = Color(0xFF0F3A20),
-        primaryContainer = Color(0xFF1F5233),
-        onPrimaryContainer = Color(0xFFCFEBD8),
-        secondary = Color(0xFF84C29B),
-        secondaryContainer = Color(0xFF1F5233),
-        onSecondaryContainer = Color(0xFFCFEBD8),
-    )
-    Accent.PURPLE -> DarkColors.copy(
-        primary = Color(0xFFC3B3F0),
-        onPrimary = Color(0xFF2D1A66),
-        primaryContainer = Color(0xFF47318A),
-        onPrimaryContainer = Color(0xFFE2DAF7),
-        secondary = Color(0xFFB0A0E4),
-        secondaryContainer = Color(0xFF47318A),
-        onSecondaryContainer = Color(0xFFE2DAF7),
-    )
-    Accent.ROSE -> DarkColors.copy(
-        primary = Color(0xFFF2A3B8),
-        onPrimary = Color(0xFF5E0F27),
-        primaryContainer = Color(0xFF8A1D3E),
-        onPrimaryContainer = Color(0xFFFAD4DD),
-        secondary = Color(0xFFE88DA5),
-        secondaryContainer = Color(0xFF8A1D3E),
-        onSecondaryContainer = Color(0xFFFAD4DD),
-    )
-    Accent.TEAL -> DarkColors.copy(
-        primary = Color(0xFF86D3D1),
-        onPrimary = Color(0xFF053B3B),
-        primaryContainer = Color(0xFF0B5050),
-        onPrimaryContainer = Color(0xFFC4EBEA),
-        secondary = Color(0xFF6FC0BE),
-        secondaryContainer = Color(0xFF0B5050),
-        onSecondaryContainer = Color(0xFFC4EBEA),
-    )
-    Accent.AMBER -> DarkColors.copy(
-        primary = Color(0xFFFFB955),
-        onPrimary = Color(0xFF4A2A00),
-        primaryContainer = Color(0xFF6B3F00),
-        onPrimaryContainer = Color(0xFFFFDDB0),
-        secondary = Color(0xFFF0B060),
-        secondaryContainer = Color(0xFF6B3F00),
-        onSecondaryContainer = Color(0xFFFFDDB0),
-    )
-    Accent.GRAPHITE -> DarkColors.copy(
-        primary = Color(0xFFC4C8CF),
-        onPrimary = Color(0xFF1C1F24),
-        primaryContainer = Color(0xFF3A3E44),
-        onPrimaryContainer = Color(0xFFDFE2E8),
-        secondary = Color(0xFFB0B5BC),
-        secondaryContainer = Color(0xFF3A3E44),
-        onSecondaryContainer = Color(0xFFDFE2E8),
-    )
-}
-
-/** True black surfaces for OLED screens: dark colors with the backgrounds pushed to black. */
-private fun blackFor(accent: Accent) = darkFor(accent).copy(
-    background = Color.Black,
-    surface = Color.Black,
-    surfaceVariant = Color(0xFF2A2A28),
-    surfaceContainerLowest = Color.Black,
-    surfaceContainerLow = Color(0xFF0B0B0B),
-    surfaceContainer = Color(0xFF121211),
-    surfaceContainerHigh = Color(0xFF1A1A19),
-    surfaceContainerHighest = Color(0xFF222221),
-    outlineVariant = Color(0xFF3A3A38),
+/** The same look on parchment. */
+internal val LightColors = lightColorScheme(
+    primary = Color(0xFF5B3FC4),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFE3DAFF),
+    onPrimaryContainer = Color(0xFF25106B),
+    secondary = Color(0xFF7A5200),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFFFE2A0),
+    onSecondaryContainer = Color(0xFF3D2900),
+    tertiary = Color(0xFFA83A1C),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFFFDBD0),
+    onTertiaryContainer = Color(0xFF4A1000),
+    error = Color(0xFF9C1C14),
+    background = Color(0xFFF7F0E1),
+    surface = Color(0xFFF7F0E1),
+    onSurface = Color(0xFF2A2236),
+    surfaceVariant = Color(0xFFE6DAC0),
+    onSurfaceVariant = Color(0xFF5A5068),
+    surfaceContainerLowest = Color(0xFFFFFAF0),
+    surfaceContainerLow = Color(0xFFF2E9D6),
+    surfaceContainer = Color(0xFFEDE2CB),
+    surfaceContainerHigh = Color(0xFFE6DAC0),
+    surfaceContainerHighest = Color(0xFFDFD1B5),
+    outline = Color(0xFF7C7288),
+    outlineVariant = Color(0xFFCFC2A6),
 )
 
-/** The scheme for a mode and accent. Internal so the contrast test can check every pair. */
-internal fun colorSchemeFor(mode: ThemeMode, dark: Boolean, accent: Accent) = when {
-    mode == ThemeMode.BLACK -> blackFor(accent)
-    dark -> darkFor(accent)
-    else -> lightFor(accent)
-}
+/** The scheme for a mode. Internal so the contrast test can check every one. */
+internal fun colorSchemeFor(dark: Boolean) = if (dark) DarkColors else LightColors
 
 /** Fixed palettes, because the heatmap's steps were chosen against these surfaces. */
 @Composable
 fun GoalTrackerTheme(
-    mode: ThemeMode = ThemeMode.SYSTEM,
-    accent: Accent = Accent.BLUE,
+    mode: ThemeMode = ThemeMode.DARK,
     content: @Composable () -> Unit,
 ) {
     val dark = when (mode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
-        ThemeMode.DARK, ThemeMode.BLACK -> true
+        ThemeMode.DARK -> true
     }
     // Status bar icons must contrast with the chosen theme, not the phone's.
     val view = LocalView.current
@@ -235,7 +123,7 @@ fun GoalTrackerTheme(
     val motion = Feel.motion && !Feel.reducedMotion(context)
     CompositionLocalProvider(LocalDarkTheme provides dark, LocalMotion provides motion) {
         MaterialTheme(
-            colorScheme = colorSchemeFor(mode, dark, accent),
+            colorScheme = colorSchemeFor(dark),
             shapes = SoftShapes,
             typography = SoftTypography,
             content = content,
@@ -243,58 +131,82 @@ fun GoalTrackerTheme(
     }
 }
 
-/** Default type with bolder headings, so titles stand out from body text. */
+/** Display face for titles and big numbers. Body text stays in the system font so it reads well small. */
+internal val DisplayFont = FontFamily(
+    Font(R.font.cinzel, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
+    Font(R.font.cinzel, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
+    Font(R.font.cinzel, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700))),
+    Font(R.font.cinzel, FontWeight.ExtraBold, variationSettings = FontVariation.Settings(FontVariation.weight(800))),
+)
+
+/** Cinzel for the big levels of text, the system font for everything people read in bulk. */
 internal val SoftTypography = Typography().let {
     it.copy(
-        headlineSmall = it.headlineSmall.copy(fontWeight = FontWeight.Bold),
-        titleLarge = it.titleLarge.copy(fontWeight = FontWeight.Bold),
+        displayLarge = it.displayLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+        displayMedium = it.displayMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+        displaySmall = it.displaySmall.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+        headlineLarge = it.headlineLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+        headlineMedium = it.headlineMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+        headlineSmall = it.headlineSmall.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
+        titleLarge = it.titleLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
         titleMedium = it.titleMedium.copy(fontWeight = FontWeight.SemiBold),
         labelLarge = it.labelLarge.copy(fontWeight = FontWeight.SemiBold),
     )
 }
 
-/** Rounder corners everywhere: cards, sheets, dialogs, chips and buttons pick these up. */
+/** Rounded corners for chips, buttons, sheets and dialogs. Cards use the stone-tablet shape below. */
 internal val SoftShapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
-    small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(36.dp),
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(26.dp),
+    extraLarge = RoundedCornerShape(32.dp),
 )
 
-/** Card colors: a soft tinted surface with no shadow, so lists look calm. */
+/** A tablet: small corners on two sides and big ones on the others, so cards feel carved, not generic. */
+internal val TabletShape = RoundedCornerShape(topStart = 6.dp, topEnd = 22.dp, bottomEnd = 6.dp, bottomStart = 22.dp)
+
+/** Card colors: a deep surface with no shadow. */
 @Composable
 fun softCardColors(): CardColors = CardDefaults.cardColors(
     containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
 )
 
+/** Card colors for the cards that matter most (today's hero card, the boss): a lifted surface. */
+@Composable
+fun heroCardColors(): CardColors = CardDefaults.cardColors(
+    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+)
+
 /**
- * The app's card. It has big rounded corners, a faint outline instead of a shadow, and works
- * like `Card` whether or not it is clickable.
+ * The app's card. It has the tablet shape and a faint outline instead of a shadow. `glow` swaps the
+ * outline for a gold one, for cards that hold something worth noticing.
  */
 @Composable
 fun SoftCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     colors: CardColors = softCardColors(),
+    glow: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = MaterialTheme.shapes.medium
-    val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    val scheme = MaterialTheme.colorScheme
+    val border = if (glow) BorderStroke(1.5.dp, scheme.secondary.copy(alpha = 0.7f))
+    else BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.7f))
     if (onClick != null) {
-        Card(onClick = onClick, modifier = modifier, shape = shape, colors = colors, border = border, content = content)
+        Card(onClick = onClick, modifier = modifier, shape = TabletShape, colors = colors, border = border, content = content)
     } else {
-        Card(modifier = modifier, shape = shape, colors = colors, border = border, content = content)
+        Card(modifier = modifier, shape = TabletShape, colors = colors, border = border, content = content)
     }
 }
 
-/** One-hue steps for 1, 2, 3, and 4+ logs. Each mode uses its own validated steps. */
-private val HeatLight = listOf(Color(0xFF86B6EF), Color(0xFF3987E5), Color(0xFF1C5CAB), Color(0xFF0D366B))
-private val HeatDark = listOf(Color(0xFF1C5CAB), Color(0xFF2A78D6), Color(0xFF5598E7), Color(0xFF9EC5F4))
+/** One-hue steps for 1, 2, 3, and 4+ logs: violet that brightens on dark and deepens on parchment. */
+private val HeatLight = listOf(Color(0xFFB9A4F5), Color(0xFF8466E0), Color(0xFF5B3FC4), Color(0xFF2F1A80))
+private val HeatDark = listOf(Color(0xFF47299E), Color(0xFF7152D6), Color(0xFFA98BFF), Color(0xFFE6DCFF))
 
 @Composable
 fun heatColor(count: Int): Color {
     val dark = LocalDarkTheme.current
-    if (count <= 0) return if (dark) Color(0xFF383835) else Color(0xFFECECEA)
+    if (count <= 0) return if (dark) Color(0xFF2D2650) else Color(0xFFE6DAC0)
     return (if (dark) HeatDark else HeatLight)[minOf(count, 4) - 1]
 }

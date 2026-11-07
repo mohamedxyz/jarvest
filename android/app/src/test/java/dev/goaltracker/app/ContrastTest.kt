@@ -28,13 +28,12 @@ class ContrastTest {
     fun everyTextPairIsReadable() {
         val failures = mutableListOf<String>()
         val setups = listOf(
-            Triple(ThemeMode.LIGHT, false, "light"),
-            Triple(ThemeMode.DARK, true, "dark"),
-            Triple(ThemeMode.BLACK, true, "black"),
+            Pair(false, "parchment"),
+            Pair(true, "dark"),
         )
-        for ((mode, dark, name) in setups) {
-            for (accent in Accent.entries) {
-                val s = colorSchemeFor(mode, dark, accent)
+        for ((dark, name) in setups) {
+            run {
+                val s = colorSchemeFor(dark)
                 val surfaces = listOf(
                     "background" to s.background,
                     "surface" to s.surface,
@@ -47,16 +46,21 @@ class ContrastTest {
                     "onPrimaryContainer/primaryContainer" to (s.onPrimaryContainer to s.primaryContainer),
                     "onSecondaryContainer/secondaryContainer" to (s.onSecondaryContainer to s.secondaryContainer),
                     "onSurfaceVariant/surfaceVariant" to (s.onSurfaceVariant to s.surfaceVariant),
+                    "onSecondary/secondary" to (s.onSecondary to s.secondary),
+                    "onTertiaryContainer/tertiaryContainer" to (s.onTertiaryContainer to s.tertiaryContainer),
+                    "onTertiary/tertiary" to (s.onTertiary to s.tertiary),
                 )
                 for ((surfaceName, surface) in surfaces) {
                     pairs += "onSurface/$surfaceName" to (s.onSurface to surface)
                     pairs += "onSurfaceVariant/$surfaceName" to (s.onSurfaceVariant to surface)
                     pairs += "primary/$surfaceName" to (s.primary to surface)
                     pairs += "error/$surfaceName" to (s.error to surface)
+                    pairs += "secondary/$surfaceName" to (s.secondary to surface)
+                    pairs += "tertiary/$surfaceName" to (s.tertiary to surface)
                 }
                 for ((label, colors) in pairs) {
                     val r = ratio(colors.first, colors.second)
-                    if (r < 4.5) failures += "$name ${accent.name} $label = ${"%.2f".format(r)}"
+                    if (r < 4.5) failures += "$name $label = ${"%.2f".format(r)}"
                 }
             }
         }

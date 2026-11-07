@@ -137,11 +137,6 @@ fun SettingsScreen(controller: AppController) {
                     FilterChip(controller.themeMode == mode, { controller.chooseTheme(mode) }, label = { Text(mode.label) })
                 }
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Accent.entries.forEach { choice ->
-                    FilterChip(controller.accent == choice, { controller.chooseAccent(choice) }, label = { Text(choice.label) })
-                }
-            }
             TextButton(onClick = {
                 controller.resetTips()
                 controller.message = "Tips will show again."
