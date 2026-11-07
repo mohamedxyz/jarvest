@@ -27,13 +27,11 @@ class ContrastTest {
     @Test
     fun everyTextPairIsReadable() {
         val failures = mutableListOf<String>()
-        val setups = listOf(
-            Pair(false, "parchment"),
-            Pair(true, "dark"),
-        )
-        for ((dark, name) in setups) {
+        val setups = ThemeMode.entries.filter { it != ThemeMode.SYSTEM }
+        for (mode in setups) {
+            val name = mode.label
             run {
-                val s = colorSchemeFor(dark)
+                val s = mode.scheme(systemDark = false)
                 val surfaces = listOf(
                     "background" to s.background,
                     "surface" to s.surface,

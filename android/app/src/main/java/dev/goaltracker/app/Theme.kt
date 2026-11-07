@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -24,6 +25,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
@@ -32,7 +34,10 @@ import androidx.core.view.WindowCompat
  * `LIGHT` and `BLACK` keep their stored names so a restored backup still loads: an older "black"
  * choice now falls back to the default look.
  */
-enum class ThemeMode(val label: String) { SYSTEM("System"), LIGHT("Parchment"), DARK("Dark fantasy") }
+enum class ThemeMode(val label: String) {
+    SYSTEM("System"), LIGHT("Parchment"), DARK("Dark fantasy"),
+    GROVE("Emerald grove"), BLOOD("Blood moon"), FROST("Frost"), ABYSS("Abyss"), DAWN("Dawn"),
+}
 
 /** Whether the app is currently drawn dark, which can differ from the phone's setting. */
 val LocalDarkTheme = compositionLocalOf { false }
@@ -94,8 +99,94 @@ internal val LightColors = lightColorScheme(
     outlineVariant = Color(0xFFCFC2A6),
 )
 
-/** The scheme for a mode. Internal so the contrast test can check every one. */
-internal fun colorSchemeFor(dark: Boolean) = if (dark) DarkColors else LightColors
+/** A dark look built on the dark-fantasy one: its own main color and surfaces, the same gold and ember. */
+private fun darkLook(
+    primary: Long, onPrimary: Long, primaryContainer: Long, onPrimaryContainer: Long,
+    surfaces: List<Long>, onSurface: Long, onSurfaceVariant: Long, outline: Long, outlineVariant: Long,
+): ColorScheme {
+    val (lowest, base, low, mid, high, highest) = surfaces.map { Color(it) }
+    return DarkColors.copy(
+        primary = Color(primary), onPrimary = Color(onPrimary),
+        primaryContainer = Color(primaryContainer), onPrimaryContainer = Color(onPrimaryContainer),
+        background = base, surface = base, surfaceVariant = highest,
+        surfaceContainerLowest = lowest, surfaceContainerLow = low, surfaceContainer = mid,
+        surfaceContainerHigh = high, surfaceContainerHighest = highest,
+        onSurface = Color(onSurface), onSurfaceVariant = Color(onSurfaceVariant),
+        outline = Color(outline), outlineVariant = Color(outlineVariant),
+    )
+}
+
+private operator fun <T> List<T>.component6() = this[5]
+
+/** Moss and emerald. */
+internal val GroveColors = darkLook(
+    0xFF7EDCA6, 0xFF003920, 0xFF1E5A3C, 0xFFC8F5DA,
+    listOf(0xFF060C09, 0xFF0A120E, 0xFF111C16, 0xFF16241C, 0xFF1D2D24, 0xFF25382D),
+    0xFFE2F2E8, 0xFFB3C9BB, 0xFF809A8A, 0xFF34483C,
+)
+
+/** Deep crimson. */
+internal val BloodColors = darkLook(
+    0xFFFF99A4, 0xFF5C0016, 0xFF7E1A2C, 0xFFFFD9DD,
+    listOf(0xFF0D0507, 0xFF14090C, 0xFF1E0F13, 0xFF26141A, 0xFF301A21, 0xFF3B222A),
+    0xFFF6E3E6, 0xFFD4B8BE, 0xFFA3858C, 0xFF4E3038,
+)
+
+/** Ice blue and steel. */
+internal val FrostColors = darkLook(
+    0xFF8FD0FF, 0xFF00344F, 0xFF1B4E73, 0xFFCFE8FF,
+    listOf(0xFF05090D, 0xFF091017, 0xFF0F1A24, 0xFF14212D, 0xFF1B2A38, 0xFF233444),
+    0xFFE3EEF7, 0xFFB3C3D1, 0xFF7F92A3, 0xFF314253,
+)
+
+/** Dark fantasy on pure black, which saves battery on OLED screens. */
+internal val AbyssColors = darkLook(
+    0xFFB69CFF, 0xFF2A0F66, 0xFF47299E, 0xFFE6DCFF,
+    listOf(0xFF000000, 0xFF000000, 0xFF0B0914, 0xFF120F20, 0xFF1A162C, 0xFF241E3B),
+    0xFFEAE4FA, 0xFFC0B8D8, 0xFF8E86AD, 0xFF3A3360,
+)
+
+/** Rose on warm sand: a light look. */
+internal val DawnColors = LightColors.copy(
+    primary = Color(0xFF9C2F5A),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFD9E3),
+    onPrimaryContainer = Color(0xFF3E0019),
+    background = Color(0xFFFFF4EE),
+    surface = Color(0xFFFFF4EE),
+    onSurface = Color(0xFF2E1F24),
+    surfaceVariant = Color(0xFFF0D8CD),
+    onSurfaceVariant = Color(0xFF5E4A50),
+    surfaceContainerLowest = Color(0xFFFFFBF8),
+    surfaceContainerLow = Color(0xFFFBEBE3),
+    surfaceContainer = Color(0xFFF6E2D8),
+    surfaceContainerHigh = Color(0xFFF0D8CD),
+    surfaceContainerHighest = Color(0xFFE9CEC2),
+    outline = Color(0xFF85707A),
+    outlineVariant = Color(0xFFD8BFB6),
+)
+
+/** Whether a look is dark. System follows the phone. */
+internal fun ThemeMode.isDark(systemDark: Boolean) = when (this) {
+    ThemeMode.SYSTEM -> systemDark
+    ThemeMode.LIGHT, ThemeMode.DAWN -> false
+    else -> true
+}
+
+/** The colors of a look. Internal so the contrast test can check every one. */
+internal fun ThemeMode.scheme(systemDark: Boolean): ColorScheme = when (this) {
+    ThemeMode.SYSTEM -> if (systemDark) DarkColors else LightColors
+    ThemeMode.LIGHT -> LightColors
+    ThemeMode.DARK -> DarkColors
+    ThemeMode.GROVE -> GroveColors
+    ThemeMode.BLOOD -> BloodColors
+    ThemeMode.FROST -> FrostColors
+    ThemeMode.ABYSS -> AbyssColors
+    ThemeMode.DAWN -> DawnColors
+}
+
+/** The colors of the look in use, for the heatmap. */
+val LocalScheme = compositionLocalOf { DarkColors }
 
 /** Fixed palettes, because the heatmap's steps were chosen against these surfaces. */
 @Composable
@@ -103,11 +194,9 @@ fun GoalTrackerTheme(
     mode: ThemeMode = ThemeMode.DARK,
     content: @Composable () -> Unit,
 ) {
-    val dark = when (mode) {
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
+    val systemDark = isSystemInDarkTheme()
+    val dark = mode.isDark(systemDark)
+    val scheme = mode.scheme(systemDark)
     // Status bar icons must contrast with the chosen theme, not the phone's.
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -121,9 +210,9 @@ fun GoalTrackerTheme(
     }
     val context = LocalContext.current
     val motion = Feel.motion && !Feel.reducedMotion(context)
-    CompositionLocalProvider(LocalDarkTheme provides dark, LocalMotion provides motion) {
+    CompositionLocalProvider(LocalDarkTheme provides dark, LocalScheme provides scheme, LocalMotion provides motion) {
         MaterialTheme(
-            colorScheme = colorSchemeFor(dark),
+            colorScheme = scheme,
             shapes = SoftShapes,
             typography = SoftTypography,
             content = content,
@@ -207,6 +296,17 @@ private val HeatDark = listOf(Color(0xFF47299E), Color(0xFF7152D6), Color(0xFFA9
 @Composable
 fun heatColor(count: Int): Color {
     val dark = LocalDarkTheme.current
-    if (count <= 0) return if (dark) Color(0xFF2D2650) else Color(0xFFE6DAC0)
-    return (if (dark) HeatDark else HeatLight)[minOf(count, 4) - 1]
+    val s = LocalScheme.current
+    if (s === DarkColors || s === LightColors) {
+        if (count <= 0) return if (dark) Color(0xFF2D2650) else Color(0xFFE6DAC0)
+        return (if (dark) HeatDark else HeatLight)[minOf(count, 4) - 1]
+    }
+    // Other looks: steps from the look's own main color, brightening on dark and deepening on light.
+    if (count <= 0) return s.surfaceContainerHighest
+    val steps = if (dark) {
+        listOf(s.primaryContainer, lerp(s.primaryContainer, s.primary, 0.5f), s.primary, s.onPrimaryContainer)
+    } else {
+        listOf(lerp(s.primaryContainer, s.primary, 0.3f), lerp(s.primaryContainer, s.primary, 0.65f), s.primary, s.onPrimaryContainer)
+    }
+    return steps[minOf(count, 4) - 1]
 }

@@ -380,6 +380,13 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.14.0",
+        listOf(
+            "Five new looks in Settings: Emerald grove, Blood moon, Frost, Abyss (pure black) and Dawn.",
+            "Each look has its own heatmap colors.",
+        ),
+    ),
+    Release(
         "0.13.2",
         listOf(
             "A deleted goal's milestones no longer linger in search, the task archive or tags. Leftover milestones from older versions are cleaned up.",

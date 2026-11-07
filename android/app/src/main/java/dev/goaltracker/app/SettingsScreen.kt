@@ -5,7 +5,14 @@ import android.content.Context
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
@@ -134,7 +141,12 @@ fun SettingsScreen(controller: AppController) {
             SectionTitle("Appearance")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ThemeMode.entries.forEach { mode ->
-                    FilterChip(controller.themeMode == mode, { controller.chooseTheme(mode) }, label = { Text(mode.label) })
+                    FilterChip(
+                        controller.themeMode == mode,
+                        { controller.chooseTheme(mode) },
+                        label = { Text(mode.label) },
+                        leadingIcon = { ThemeSwatch(mode) },
+                    )
                 }
             }
             TextButton(onClick = {
@@ -529,5 +541,18 @@ private fun shareBackup(context: Context, core: GoalCore, today: String): String
         e.userMessage()
     } catch (_: IOException) {
         "The backup couldn't be prepared."
+    }
+}
+
+/** A small two-tone dot: the look's background with its main color inside. */
+@Composable
+private fun ThemeSwatch(mode: ThemeMode) {
+    val s = mode.scheme(isSystemInDarkTheme())
+    Box(
+        Modifier.size(18.dp).clip(CircleShape).background(s.background)
+            .border(1.dp, s.outline, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(9.dp).clip(CircleShape).background(s.primary))
     }
 }
