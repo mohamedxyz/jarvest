@@ -1,11 +1,17 @@
 name: Release
 
 # Push a tag such as v0.2.0 to build a signed APK and publish it as a GitHub release.
-# Run it by hand from the Actions tab to build an APK without publishing.
+# Run it by hand from the Actions tab: with "publish" on, it tags the commit with the versionName
+# from android/app/build.gradle.kts and publishes the release; with it off, it only builds the APK.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Tag this commit with the app version and publish a release"
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -94,10 +100,17 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon -Parm64Only=true
 
+      - name: Work out the release tag
+        id: tag
+        run: |
+          version="$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' android/app/build.gradle.kts)"
+          echo "name=v$version" >> "$GITHUB_OUTPUT"
+
       - name: Name the APK
         id: apk
         run: |
-          name="jarvest-${GITHUB_REF_NAME//\//-}.apk"
+          if [ "${{ inputs.publish }}" = "true" ]; then ref="${{ steps.tag.outputs.name }}"; else ref="$GITHUB_REF_NAME"; fi
+          name="jarvest-${ref//\//-}.apk"
           cp android/app/build/outputs/apk/release/app-release.apk "$name"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
@@ -107,8 +120,10 @@ jobs:
           path: ${{ steps.apk.outputs.name }}
 
       - name: Publish the release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
           files: ${{ steps.apk.outputs.name }}
           generate_release_notes: true
