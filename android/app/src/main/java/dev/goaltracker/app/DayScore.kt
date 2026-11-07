@@ -182,17 +182,14 @@ fun HeroCard(controller: AppController) {
     LaunchedEffect(Unit) { started = true }
     val fraction = if (hero.xpForNext == 0u) 0f else hero.xpIntoLevel.toFloat() / hero.xpForNext.toFloat()
     val filled by animateFloatAsState(if (started) fraction else 0f, motionTween(motion, 800), label = "xp")
-    SoftCard(Modifier.fillMaxWidth().label("Level ${hero.level} ${hero.title}, ${hero.xp} XP")) {
+    SoftCard(Modifier.fillMaxWidth().label("Level ${hero.level} ${hero.title}, ${hero.xp} XP"), colors = heroCardColors()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("🛡️ Level ${hero.level} · ${hero.title}", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                Text("${hero.xp} XP", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ShieldArt(hero.level.toInt(), 36.dp)
+                Text("  Level ${hero.level} · ${hero.title}", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                Text("${hero.xp} XP", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
             }
-            LinearProgressIndicator(
-                progress = { filled },
-                modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)),
-                strokeCap = StrokeCap.Round,
-            )
+            XpBar(filled, "${hero.xpIntoLevel} of ${hero.xpForNext} XP toward level ${hero.level + 1u}", height = 12.dp)
             Text(
                 "${hero.xpForNext - hero.xpIntoLevel} XP to level ${hero.level + 1u}. Day-score points become XP and are never lost.",
                 style = MaterialTheme.typography.bodySmall,
@@ -206,15 +203,16 @@ fun HeroCard(controller: AppController) {
 @Composable
 fun DailyQuestCard(controller: AppController) {
     val quest = remember(controller.version, controller.today) { controller.read(null) { dailyQuest(controller.today) } } ?: return
-    SoftCard(Modifier.fillMaxWidth().label("Daily quest: ${quest.text}, ${quest.progress} of ${quest.target}")) {
+    SoftCard(Modifier.fillMaxWidth().label("Daily quest: ${quest.text}, ${quest.progress} of ${quest.target}"), glow = quest.done) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                QuestArt(quest.done, 32.dp)
                 Text(
-                    if (quest.done) "✅ Daily quest done" else "🎯 Daily quest",
+                    if (quest.done) "  Daily quest done" else "  Daily quest",
                     Modifier.weight(1f),
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Text("+${quest.bonus} XP", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("+${quest.bonus} XP", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
             }
             Text(
                 "${quest.text} (${quest.progress}/${quest.target})",
@@ -234,15 +232,13 @@ fun WeeklyBossCard(controller: AppController) {
     val left = if (boss.health == 0u) 0f else 1f - boss.damage.toFloat() / boss.health.toFloat()
     val shown by animateFloatAsState(if (started) left else 1f, motionTween(motion, 800), label = "boss")
     val down = boss.defeatedDate != null
-    SoftCard(Modifier.fillMaxWidth().label("Weekly boss ${boss.name}, ${boss.damage} of ${boss.health} damage")) {
+    SoftCard(Modifier.fillMaxWidth().label("Weekly boss ${boss.name}, ${boss.damage} of ${boss.health} damage"), colors = heroCardColors()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("👹 Weekly boss: ${boss.name}", style = MaterialTheme.typography.titleMedium)
-            LinearProgressIndicator(
-                progress = { shown },
-                modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)),
-                color = MaterialTheme.colorScheme.error,
-                strokeCap = StrokeCap.Round,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BossArt(36.dp, defeated = down)
+                Text("  Weekly boss: ${boss.name}", style = MaterialTheme.typography.titleMedium)
+            }
+            BossHealthBar(shown, "${boss.health - boss.damage} of ${boss.health} boss health left", height = 14.dp)
             Text(
                 if (down) "Beaten on ${formatDate(boss.defeatedDate!!)}. A new boss comes on Monday."
                 else "${boss.health - boss.damage} health left · ${boss.daysLeft} ${if (boss.daysLeft == 1u) "day" else "days"} to go. Your points hurt it.",
