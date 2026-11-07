@@ -36,7 +36,8 @@ fun MoreScreen(controller: AppController, onOpen: (String) -> Unit) {
             Triple("routines", "🔁 Routines", "Goals you do together, such as a morning routine."),
             Triple("holiday", "🏖️ Holiday mode", "Pause every goal for a few days without losing your streaks."),
             Triple("stats", "📊 Stats", "Streaks, trends, the heatmap and your weekly recap."),
-            Triple("treats", "🎁 Rewards", "Your treat jar, treats you've won, badges and monsters."),
+            Triple("monsters", "👾 Monsters", "Name a struggle and wear it down with the habits that fight it."),
+            Triple("treats", "🎁 Rewards", "Your treat jar, treats you've won, the shop and badges."),
             Triple("settings", "⚙️ Settings", "Look, sounds, reminders, backups and more."),
         ).forEach { (route, title, body) ->
             SoftCard(Modifier.fillMaxWidth(), onClick = { onOpen(route) }) {

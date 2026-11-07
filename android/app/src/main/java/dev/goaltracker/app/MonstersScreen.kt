@@ -50,8 +50,6 @@ import dev.goaltracker.core.TaskSort
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 
-private val monsterRed = Color(0xFFC62828)
-
 private fun powerLabel(power: UInt) = when (power) {
     5u -> "Light"
     20u -> "Heavy"
@@ -72,12 +70,7 @@ private fun HealthBar(monster: Monster) {
     var started by remember { mutableStateOf(!motion) }
     LaunchedEffect(Unit) { started = true }
     val shown by animateFloatAsState(if (started) target else 1f, motionTween(motion, 700), label = "health")
-    LinearProgressIndicator(
-        progress = { shown },
-        modifier = Modifier.fillMaxWidth().height(12.dp).clip(RoundedCornerShape(6.dp)),
-        color = if (monster.finalBoss) monsterRed else MaterialTheme.colorScheme.primary,
-        strokeCap = StrokeCap.Round,
-    )
+    BossHealthBar(shown, "${monster.health} of ${monster.maxHealth} health left", height = if (monster.finalBoss) 16.dp else 12.dp)
 }
 
 /** What to show for a monster's name outside the Monsters screens, if the person wants it private. */
@@ -105,10 +98,10 @@ fun MonstersScreen(controller: AppController, onOpen: (String) -> Unit) {
         monsters.forEach { monster ->
             SoftCard(Modifier.fillMaxWidth(), onClick = { onOpen(monster.id) }) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        (if (monster.finalBoss && monster.status != MonsterStatus.RETIRED) "👹 " else "👾 ") + monster.name,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        MonsterArt(monster.id, monster.finalBoss, monster.status == MonsterStatus.RESTING, monster.status == MonsterStatus.RETIRED, 44.dp)
+                        Text(monster.name, style = MaterialTheme.typography.titleMedium)
+                    }
                     if (monster.status == MonsterStatus.FIGHTING) HealthBar(monster)
                     Text(monster.subtitle(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -212,10 +205,10 @@ fun MonsterDetailScreen(controller: AppController, monsterId: String, onClose: (
     ) {
         SoftCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    (if (gone) "☠️ " else if (monster.finalBoss) "👹 " else "👾 ") + monster.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MonsterArt(monster.id, monster.finalBoss, monster.status == MonsterStatus.RESTING, gone, 64.dp)
+                    Text(monster.name, style = MaterialTheme.typography.headlineSmall)
+                }
                 if (monster.status == MonsterStatus.FIGHTING) HealthBar(monster)
                 Text(monster.subtitle(), style = MaterialTheme.typography.bodyMedium)
                 if (monster.defeats > 0u) {
@@ -287,7 +280,10 @@ fun MonsterDetailScreen(controller: AppController, monsterId: String, onClose: (
             if (!monster.finalBoss) {
                 Button(
                     onClick = { confirmFinal = true },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = monsterRed),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.tertiary,
+                        contentColor = MaterialTheme.colorScheme.onTertiary,
+                    ),
                 ) { Text(stringResource(R.string.ui_permanent_kill_final_boss)) }
             }
         }

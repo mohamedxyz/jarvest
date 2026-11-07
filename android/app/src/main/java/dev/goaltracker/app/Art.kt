@@ -186,3 +186,87 @@ fun ChestArt(size: Dp = 28.dp, modifier: Modifier = Modifier) {
         drawCircle(keyhole, 0.9f, Offset(12f, 11.8f))
     }
 }
+
+/** Which of the monster shapes a name gets. The same name always gets the same shape. */
+private fun monsterShape(seed: String): Int = (seed.hashCode() and 0x7fffffff) % 4
+
+/**
+ * A monster picture. The shape comes from its name, so each monster keeps its own face.
+ * A final boss uses the horned boss face. Awake monsters have open eyes, a resting one has closed
+ * eyes, and a monster slain for good is a skull.
+ */
+@Composable
+fun MonsterArt(
+    seed: String,
+    finalBoss: Boolean,
+    resting: Boolean,
+    slain: Boolean,
+    size: Dp = 40.dp,
+    modifier: Modifier = Modifier,
+) {
+    if (finalBoss && !slain) {
+        BossArt(size, modifier)
+        return
+    }
+    val scheme = MaterialTheme.colorScheme
+    val body = when {
+        slain -> scheme.outline
+        resting -> scheme.primary.copy(alpha = 0.6f)
+        else -> scheme.primary
+    }
+    val eye = scheme.surface
+    val shape = monsterShape(seed)
+    Art(size, modifier) {
+        if (slain) {
+            // A skull with two dark sockets and a row of teeth.
+            drawPath(
+                path {
+                    moveTo(12f, 2.5f); cubicTo(6.5f, 2.5f, 3.5f, 6.5f, 3.5f, 11f)
+                    cubicTo(3.5f, 14f, 5f, 15.8f, 7f, 16.8f); lineTo(7f, 21f); lineTo(17f, 21f); lineTo(17f, 16.8f)
+                    cubicTo(19f, 15.8f, 20.5f, 14f, 20.5f, 11f); cubicTo(20.5f, 6.5f, 17.5f, 2.5f, 12f, 2.5f); close()
+                },
+                body,
+            )
+            drawCircle(eye, 2.3f, Offset(8.6f, 11f)); drawCircle(eye, 2.3f, Offset(15.4f, 11f))
+            for (x in listOf(9.5f, 12f, 14.5f)) drawLine(eye, Offset(x, 17.6f), Offset(x, 20.6f), strokeWidth = 1.1f)
+            return@Art
+        }
+        when (shape) {
+            0 -> drawPath( // Slime: a soft blob.
+                path {
+                    moveTo(3f, 19f); cubicTo(2f, 11f, 6f, 4.5f, 12f, 4.5f)
+                    cubicTo(18f, 4.5f, 22f, 11f, 21f, 19f); cubicTo(18f, 21f, 6f, 21f, 3f, 19f); close()
+                },
+                body,
+            )
+            1 -> { // Imp: round head, two small horns.
+                drawPath(path { moveTo(5f, 9f); lineTo(4f, 2.5f); lineTo(9.5f, 6.5f); close() }, body)
+                drawPath(path { moveTo(19f, 9f); lineTo(20f, 2.5f); lineTo(14.5f, 6.5f); close() }, body)
+                drawCircle(body, 9f, Offset(12f, 13.5f))
+            }
+            2 -> { // Cyclops: a big round body with feet.
+                drawCircle(body, 9.5f, Offset(12f, 11.5f))
+                drawRoundRect(body, Offset(6f, 18f), Size(4f, 4f), CornerRadius(1.5f, 1.5f))
+                drawRoundRect(body, Offset(14f, 18f), Size(4f, 4f), CornerRadius(1.5f, 1.5f))
+            }
+            else -> drawPath( // Ghost: a dome with a wavy hem.
+                path {
+                    moveTo(3.5f, 21f); lineTo(3.5f, 11f); cubicTo(3.5f, 5.5f, 7.5f, 2.5f, 12f, 2.5f)
+                    cubicTo(16.5f, 2.5f, 20.5f, 5.5f, 20.5f, 11f); lineTo(20.5f, 21f)
+                    lineTo(17f, 18.5f); lineTo(14f, 21f); lineTo(12f, 18.5f); lineTo(10f, 21f); lineTo(7f, 18.5f); close()
+                },
+                body,
+            )
+        }
+        // Eyes.
+        if (resting) {
+            drawLine(eye, Offset(6.5f, 12f), Offset(10f, 12f), strokeWidth = 1.5f)
+            drawLine(eye, Offset(14f, 12f), Offset(17.5f, 12f), strokeWidth = 1.5f)
+        } else if (shape == 2) {
+            drawCircle(eye, 3.6f, Offset(12f, 11f)); drawCircle(body, 1.6f, Offset(12f, 11f))
+        } else {
+            drawCircle(eye, 2.2f, Offset(8.6f, 12f)); drawCircle(eye, 2.2f, Offset(15.4f, 12f))
+            drawCircle(body, 0.9f, Offset(8.9f, 12.2f)); drawCircle(body, 0.9f, Offset(15.7f, 12.2f))
+        }
+    }
+}
