@@ -58,6 +58,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
@@ -327,7 +329,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                 )
             }
         },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = { SnackbarHost(snackbar) { SwipeableSnackbar(it) } },
     ) { padding ->
         val motion = LocalMotion.current
         // On a tablet or in landscape the content stays a readable width, centered.
@@ -500,3 +502,23 @@ private fun RewardReveal(controller: AppController, draw: RewardDraw, onDismiss:
 /** "habit" or "goal" for the item with this id, so a habit's page never calls itself a goal. */
 private fun goalNoun(controller: AppController, id: String): String =
     controller.read("goal") { getGoal(id).noun() }
+
+/** A snackbar that can be swiped left or right to close it. */
+@Composable
+private fun SwipeableSnackbar(data: androidx.compose.material3.SnackbarData) {
+    var offset by remember(data) { mutableStateOf(0f) }
+    val width = with(androidx.compose.ui.platform.LocalDensity.current) { 120.dp.toPx() }
+    androidx.compose.material3.Snackbar(
+        data,
+        Modifier
+            .graphicsLayer {
+                translationX = offset
+                alpha = 1f - minOf(kotlin.math.abs(offset) / (width * 2), 0.8f)
+            }
+            .draggable(
+                rememberDraggableState { offset += it },
+                androidx.compose.foundation.gestures.Orientation.Horizontal,
+                onDragStopped = { if (kotlin.math.abs(offset) > width) data.dismiss() else offset = 0f },
+            ),
+    )
+}
