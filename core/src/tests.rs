@@ -3684,13 +3684,26 @@ fn an_archived_goals_milestone_tasks_are_hidden_until_it_is_restored() {
     let (core, _dir) = core();
     let goal = goal_with_milestones(&core, &["Outline", "Draft"]);
     add_task(&core, new_task("Unrelated"));
+    let cal_tasks = |core: &GoalCore| {
+        core.calendar_day(DAY.into())
+            .unwrap()
+            .iter()
+            .filter(|b| b.kind == CalendarKind::Task)
+            .count()
+    };
     let all = |core: &GoalCore| task_titles(core, TaskFilter::All, TaskSort::Alphabetical);
     assert_eq!(all(&core).len(), 3);
+    core.conn()
+        .execute("UPDATE tasks SET due = ?1", [DAY])
+        .unwrap();
+    assert_eq!(cal_tasks(&core), 3);
     core.set_archived(goal.clone(), true).unwrap();
     assert_eq!(all(&core), vec!["Unrelated"]);
+    assert_eq!(cal_tasks(&core), 1);
     assert!(task_titles(&core, TaskFilter::Done, TaskSort::Alphabetical).is_empty());
     core.set_archived(goal.clone(), false).unwrap();
     assert_eq!(all(&core).len(), 3);
+    assert_eq!(cal_tasks(&core), 3);
 }
 
 #[test]

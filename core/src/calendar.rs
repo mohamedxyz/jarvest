@@ -339,7 +339,7 @@ pub fn day(conn: &Connection, date: &str) -> Result<Vec<CalendarBlock>, CoreErro
         });
     }
 
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare(&format!(
         // A milestone's task is named with its goal ("Read: 100"), so two "100"s can be told apart.
         "SELECT t.id,
                 CASE WHEN t.milestone_id IS NOT NULL AND gm.title IS NOT NULL
@@ -347,10 +347,10 @@ pub fn day(conn: &Connection, date: &str) -> Result<Vec<CalendarBlock>, CoreErro
                 t.due_time, t.duration, t.done_date IS NOT NULL, t.icon, t.repeat IS NOT NULL
          FROM tasks t LEFT JOIN goals gm ON gm.id = t.goal_id
          WHERE t.due = ?1 AND t.deleted_date IS NULL AND t.archived_date IS NULL
-           AND NOT (t.milestone_id IS NOT NULL AND EXISTS
-                (SELECT 1 FROM goals g WHERE g.id = t.goal_id AND g.deleted_date IS NOT NULL))
+           AND {}
          ORDER BY t.due_time IS NULL, t.due_time, t.rowid",
-    )?;
+        crate::tasks::VISIBLE
+    ))?;
     let rows = stmt.query_map([date], |r| {
         Ok(CalendarBlock {
             kind: CalendarKind::Task,
