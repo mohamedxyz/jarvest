@@ -34,10 +34,10 @@ type ToggleRow = (
 );
 
 /// A milestone's task belongs to its goal, so it is hidden while the goal is in the
-/// trash. An ordinary task linked to a trashed goal stays visible but shows as
+/// trash or archived. An ordinary task linked to a trashed goal stays visible but shows as
 /// unlinked (see `TASK_COLUMNS`); the link comes back when the goal is restored.
 pub(crate) const VISIBLE: &str = "NOT (t.milestone_id IS NOT NULL AND EXISTS
-    (SELECT 1 FROM goals g WHERE g.id = t.goal_id AND g.deleted_date IS NOT NULL))";
+    (SELECT 1 FROM goals g WHERE g.id = t.goal_id AND (g.deleted_date IS NOT NULL OR g.archived = 1)))";
 
 fn task_from_row(row: &Row, today: &str) -> rusqlite::Result<Task> {
     let due: Option<String> = row.get(3)?;

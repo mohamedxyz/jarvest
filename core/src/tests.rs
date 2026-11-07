@@ -3680,6 +3680,20 @@ fn a_trashed_goals_milestones_and_tasks_are_hidden_and_come_back_on_restore() {
 }
 
 #[test]
+fn an_archived_goals_milestone_tasks_are_hidden_until_it_is_restored() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline", "Draft"]);
+    add_task(&core, new_task("Unrelated"));
+    let all = |core: &GoalCore| task_titles(core, TaskFilter::All, TaskSort::Alphabetical);
+    assert_eq!(all(&core).len(), 3);
+    core.set_archived(goal.clone(), true).unwrap();
+    assert_eq!(all(&core), vec!["Unrelated"]);
+    assert!(task_titles(&core, TaskFilter::Done, TaskSort::Alphabetical).is_empty());
+    core.set_archived(goal.clone(), false).unwrap();
+    assert_eq!(all(&core).len(), 3);
+}
+
+#[test]
 fn trash_lists_days_left_and_purges_after_thirty_days() {
     let (core, _dir) = core();
     let old = yes_no(&core, "Old");

@@ -379,6 +379,7 @@ private class Release(val version: String, val notes: List<String>)
 
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
+    Release("0.14.2", listOf("An archived goal's milestones no longer show in Tasks. They come back when the goal is restored.")),
     Release("0.14.1", listOf("Swipe a message at the bottom left or right to close it.")),
     Release(
         "0.14.0",
