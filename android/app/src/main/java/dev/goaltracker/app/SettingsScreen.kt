@@ -191,6 +191,30 @@ fun SettingsScreen(controller: AppController, onOpenGuide: () -> Unit = {}) {
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SectionTitle("Filters")
+            Text(
+                "Hide what's done so lists show what's left. Each screen also has its own switch, and your last choice is remembered.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            @Composable
+            fun filterRow(label: String, on: Boolean, change: (Boolean) -> Unit) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Switch(on, change)
+                }
+            }
+            val all = controller.hideDoneToday && controller.hideDoneTasks && controller.hideDoneGoals &&
+                controller.hideDoneHabits && controller.hideDoneCalendar
+            filterRow("Hide done everywhere", all) { controller.chooseHideDoneEverywhere(it) }
+            filterRow("Today: hide done", controller.hideDoneToday) { controller.chooseHideDoneToday(it) }
+            filterRow("Tasks: hide done", controller.hideDoneTasks) { controller.chooseHideDoneTasks(it) }
+            filterRow("Goals: hide finished", controller.hideDoneGoals) { controller.chooseHideDoneGoals(it) }
+            filterRow("Habits: hide done today", controller.hideDoneHabits) { controller.chooseHideDoneHabits(it) }
+            filterRow("Calendar: hide done", controller.hideDoneCalendar) { controller.chooseHideDoneCalendar(it) }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Task list")
             @Composable
             fun toggle(label: String, on: Boolean, change: (Boolean) -> Unit) {
@@ -210,7 +234,7 @@ fun SettingsScreen(controller: AppController, onOpenGuide: () -> Unit = {}) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(-1 to "Never", 1 to "After 1 day", 7 to "After 7 days", 30 to "After 30 days").forEach { (days, label) ->
+                listOf(-1 to "Never", 0 to "Right away", 1 to "After 1 day", 7 to "After 7 days", 30 to "After 30 days").forEach { (days, label) ->
                     FilterChip(controller.archiveAfterDays == days, { controller.chooseArchiveAfterDays(days) }, label = { Text(label) })
                 }
             }

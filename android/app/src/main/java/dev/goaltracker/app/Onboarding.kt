@@ -380,6 +380,14 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.16.2",
+        listOf(
+            "Hide done is now on by default on Today, Tasks, Goals, Habits and the Calendar, and each screen remembers your choice. Settings > Filters changes them all at once.",
+            "Archive done on the Tasks tab archives every finished task in one tap, with Undo.",
+            "Archive finished tasks can now be set to Right away.",
+        ),
+    ),
+    Release(
         "0.16.1",
         listOf(
             "Milestones in Tasks now work like any task: change dates and priority, archive and trash them, one at a time or several at once, and move them on the calendar.",

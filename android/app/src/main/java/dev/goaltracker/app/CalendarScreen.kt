@@ -150,7 +150,10 @@ fun CalendarScreen(
     val date = controller.calendarDate
     val day = LocalDate.parse(date)
     val weekStart = day.minusDays((day.dayOfWeek.value - 1).toLong())
-    val blocks = remember(controller.version, date) { controller.read(emptyList()) { calendarDay(date) } }
+    val hideDone = controller.hideDoneCalendar
+    val blocks = remember(controller.version, date, hideDone) {
+        controller.read(emptyList()) { calendarDay(date) }.filter { !(hideDone && it.done && it.kind != CalendarKind.EVENT) }
+    }
     val counts = remember(controller.version, weekStart) {
         (0..6).map { i -> controller.read(0) { calendarDay(weekStart.plusDays(i.toLong()).toString()).size } }
     }
@@ -206,6 +209,10 @@ fun CalendarScreen(
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.ui_suggest_times)) },
                             onClick = { menuOpen = false; showSuggest = true },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (hideDone) "Show done" else "Hide done") },
+                            onClick = { menuOpen = false; controller.chooseHideDoneCalendar(!hideDone) },
                         )
                     }
                 }

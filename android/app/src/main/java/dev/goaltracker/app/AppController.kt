@@ -169,10 +169,18 @@ class AppController(private val app: GoalTrackerApp) {
         if (hero.level.toInt() != seen) prefs.edit().putInt("hero_level_seen", hero.level.toInt()).apply()
     }
     // "Hide finished" switches, one per screen. They only hide things in the list, never delete.
-    var hideDoneTasks by mutableStateOf(prefs.getBoolean("hide_done_tasks", false))
-    var hideDoneGoals by mutableStateOf(prefs.getBoolean("hide_done_goals", false))
-    var hideDoneHabits by mutableStateOf(prefs.getBoolean("hide_done_habits", false))
-    var hideDoneToday by mutableStateOf(prefs.getBoolean("hide_done_today", false))
+    // "Hide done" filters: on until you turn one off, and each choice is remembered on this phone.
+    var hideDoneTasks by mutableStateOf(prefs.getBoolean("hide_done_tasks", true))
+    var hideDoneGoals by mutableStateOf(prefs.getBoolean("hide_done_goals", true))
+    var hideDoneHabits by mutableStateOf(prefs.getBoolean("hide_done_habits", true))
+    var hideDoneToday by mutableStateOf(prefs.getBoolean("hide_done_today", true))
+    var hideDoneCalendar by mutableStateOf(prefs.getBoolean("hide_done_calendar", true))
+    fun chooseHideDoneCalendar(on: Boolean) { hideDoneCalendar = on; prefs.edit().putBoolean("hide_done_calendar", on).apply() }
+
+    /** Turns every "hide done" filter on or off at once. */
+    fun chooseHideDoneEverywhere(on: Boolean) {
+        chooseHideDoneToday(on); chooseHideDoneTasks(on); chooseHideDoneGoals(on); chooseHideDoneHabits(on); chooseHideDoneCalendar(on)
+    }
     fun chooseHideDoneTasks(on: Boolean) { hideDoneTasks = on; prefs.edit().putBoolean("hide_done_tasks", on).apply() }
     fun chooseHideDoneGoals(on: Boolean) { hideDoneGoals = on; prefs.edit().putBoolean("hide_done_goals", on).apply() }
     fun chooseHideDoneHabits(on: Boolean) { hideDoneHabits = on; prefs.edit().putBoolean("hide_done_habits", on).apply() }
@@ -322,7 +330,25 @@ class AppController(private val app: GoalTrackerApp) {
             result.nextDue != null -> "\"$title\" done. Next one is due ${formatDate(result.nextDue!!)}."
             else -> "\"$title\" done."
         }
-        undo = UndoOffer(text) { change { toggleTask(taskId, today) } }
+        // With "Archive finished tasks: right away", a finished task leaves the list at once. Undo brings it back.
+        val archived = result.done && archiveAfterDays == 0 && read(false) { archiveTask(taskId, today); true }
+        if (archived) version++
+        undo = UndoOffer(if (archived) "$text Archived." else text) {
+            change {
+                if (archived) unarchiveTask(taskId)
+                toggleTask(taskId, today)
+            }
+        }
+    }
+
+    /** Archives every finished task now, with one Undo. */
+    fun archiveDoneTasks() {
+        val done = read(emptyList()) { listTasks(TaskFilter.DONE, TaskSort.DUE, today) }
+        if (done.isEmpty()) {
+            message = "No finished tasks to archive."
+            return
+        }
+        bulkTasks(done, bulk(archive = true), "Archived {n}")
     }
 
     /**

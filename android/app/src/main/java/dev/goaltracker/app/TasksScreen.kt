@@ -328,6 +328,11 @@ fun TasksScreen(controller: AppController, onEdit: (String) -> Unit, onFocus: (S
                         onClick = { controller.chooseHideDoneTasks(!controller.hideDoneTasks) },
                         label = { Text(stringResource(R.string.ui_hide_done)) },
                     )
+                    // One tap moves every finished task to the archive, with Undo.
+                    AssistChip(
+                        onClick = { controller.archiveDoneTasks() },
+                        label = { Text("Archive done") },
+                    )
                     FilterChip(
                         selected = controller.groupTasksByTag,
                         onClick = { controller.chooseGroupTasksByTag(!controller.groupTasksByTag) },
