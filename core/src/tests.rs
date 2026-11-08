@@ -2379,13 +2379,12 @@ fn deleting_a_goal_removes_the_tasks_of_its_milestones_but_keeps_other_tasks() {
 }
 
 #[test]
-fn a_milestone_task_cannot_be_trashed_moved_to_another_goal_or_made_to_repeat() {
+fn a_milestone_task_cannot_move_to_another_goal_or_repeat() {
     let (core, _dir) = core();
     let goal = goal_with_milestones(&core, &["Outline"]);
     let other = yes_no(&core, "Other");
     let task = milestone_task(&core, &goal, "Outline");
 
-    assert!(core.delete_task(task.id.clone(), DAY.into()).is_err());
     assert!(
         core.update_task(
             task.id.clone(),
@@ -2666,25 +2665,88 @@ fn archived_tasks_do_not_count_in_the_daily_summary() {
 }
 
 #[test]
-fn milestone_tasks_cannot_be_archived_trashed_moved_or_repeated() {
+fn milestone_tasks_can_be_dated_archived_and_trashed_like_tasks() {
+    let (core, _dir) = core();
+    let goal = goal_with_milestones(&core, &["Outline", "Draft"]);
+    let task = milestone_task(&core, &goal, "Outline");
+    assert!(core.set_task_repeat_rule(task.id.clone(), 2, None).is_err());
+
+    // Archive and unarchive: the milestone stays on the goal.
+    core.archive_task(task.id.clone(), DAY.into()).unwrap();
+    assert_eq!(core.list_archived_tasks(DAY.into()).unwrap().len(), 1);
+    assert_eq!(core.list_milestones(goal.clone()).unwrap().len(), 2);
+    core.unarchive_task(task.id.clone()).unwrap();
+
+    // Trash hides the milestone from its goal; restore brings it back.
+    core.delete_task(task.id.clone(), DAY.into()).unwrap();
+    assert_eq!(core.list_milestones(goal.clone()).unwrap().len(), 1);
+    assert_eq!(core.get_goal(goal.clone()).unwrap().milestones_total, 1);
+    assert_eq!(core.list_trash(DAY.into()).unwrap().len(), 1);
+    core.restore_task(task.id.clone()).unwrap();
+    assert_eq!(core.list_milestones(goal.clone()).unwrap().len(), 2);
+
+    // Erasing it from the trash erases the milestone.
+    core.delete_task(task.id.clone(), DAY.into()).unwrap();
+    core.delete_task_forever(task.id.clone()).unwrap();
+    let left: Vec<String> = core
+        .list_milestones(goal.clone())
+        .unwrap()
+        .into_iter()
+        .map(|m| m.title)
+        .collect();
+    assert_eq!(left, vec!["Draft"]);
+
+    // Emptying the trash does the same.
+    let draft = milestone_task(&core, &goal, "Draft");
+    core.delete_task(draft.id, DAY.into()).unwrap();
+    core.empty_task_trash().unwrap();
+    assert!(core.list_milestones(goal.clone()).unwrap().is_empty());
+    assert_eq!(core.get_goal(goal).unwrap().milestones_total, 0);
+}
+
+#[test]
+fn bulk_edits_change_milestone_tasks_but_never_move_them_to_another_goal() {
     let (core, _dir) = core();
     let goal = goal_with_milestones(&core, &["Outline"]);
+    let other = yes_no(&core, "Other");
     let task = milestone_task(&core, &goal, "Outline");
-    assert!(core.archive_task(task.id.clone(), DAY.into()).is_err());
-    assert!(core.delete_task(task.id.clone(), DAY.into()).is_err());
-    assert!(core.set_task_repeat_rule(task.id.clone(), 2, None).is_err());
-    // Bulk edits skip it and say so, but still change the ordinary task.
     let plain = add_task(&core, new_task("Plain"));
-    let edit = BulkEdit {
+    let ids = vec![task.id.clone(), plain.clone()];
+
+    let archive = BulkEdit {
         archive: true,
         ..BulkEdit::default()
     };
     let result = core
-        .bulk_update_tasks(vec![task.id.clone(), plain], edit, DAY.into())
+        .bulk_update_tasks(ids.clone(), archive, DAY.into())
+        .unwrap();
+    assert_eq!((result.changed, result.skipped_milestones), (2, 0));
+    assert_eq!(core.list_archived_tasks(DAY.into()).unwrap().len(), 2);
+
+    let move_goal = BulkEdit {
+        change_goal: true,
+        goal_id: Some(other),
+        ..BulkEdit::default()
+    };
+    let result = core
+        .bulk_update_tasks(ids.clone(), move_goal, DAY.into())
         .unwrap();
     assert_eq!((result.changed, result.skipped_milestones), (1, 1));
-    assert_eq!(core.list_archived_tasks(DAY.into()).unwrap().len(), 1);
-    assert_eq!(milestone_task(&core, &goal, "Outline").archived_date, None);
+    assert_eq!(
+        core.get_task(task.id.clone(), DAY.into())
+            .unwrap()
+            .goal_id
+            .as_deref(),
+        Some(goal.as_str())
+    );
+
+    let trash = BulkEdit {
+        trash: true,
+        ..BulkEdit::default()
+    };
+    let result = core.bulk_update_tasks(ids, trash, DAY.into()).unwrap();
+    assert_eq!(result.changed, 2);
+    assert!(core.list_milestones(goal).unwrap().is_empty());
 }
 
 #[test]
@@ -2699,12 +2761,17 @@ fn auto_archive_takes_old_finished_tasks_only() {
     core.toggle_task(fresh, DAY.into()).unwrap();
     core.toggle_task(step.id.clone(), "2026-10-01".into())
         .unwrap();
-    assert_eq!(core.auto_archive_tasks(7, DAY.into()).unwrap(), 1);
-    let archived = core.list_archived_tasks(DAY.into()).unwrap();
-    assert_eq!(archived[0].id, old);
-    // 0 days means every finished task, but a milestone's task is never archived.
+    // Milestone tasks are archived like any other finished task.
+    assert_eq!(core.auto_archive_tasks(7, DAY.into()).unwrap(), 2);
+    let archived: Vec<String> = core
+        .list_archived_tasks(DAY.into())
+        .unwrap()
+        .into_iter()
+        .map(|t| t.id)
+        .collect();
+    assert!(archived.contains(&old) && archived.contains(&step.id));
+    // 0 days means every finished task.
     assert_eq!(core.auto_archive_tasks(0, DAY.into()).unwrap(), 1);
-    assert_eq!(milestone_task(&core, &goal, "Step").archived_date, None);
 }
 
 #[test]
@@ -2864,7 +2931,7 @@ fn bulk_due_date_moves_clears_and_counts_only_later_moves() {
 }
 
 #[test]
-fn bulk_priority_and_due_skip_milestone_tasks_and_trashed_ones() {
+fn bulk_priority_and_due_change_milestone_tasks_and_skip_trashed_ones() {
     let (core, _dir) = core();
     let goal = goal_with_milestones(&core, &["Outline"]);
     let milestone = milestone_task(&core, &goal, "Outline");
@@ -2884,11 +2951,11 @@ fn bulk_priority_and_due_skip_milestone_tasks_and_trashed_ones() {
             DAY.into(),
         )
         .unwrap();
-    assert_eq!((result.changed, result.skipped_milestones), (1, 1));
+    assert_eq!((result.changed, result.skipped_milestones), (2, 0));
     let after = milestone_task(&core, &goal, "Outline");
     assert_eq!(
-        (after.due, after.priority),
-        (milestone.due, milestone.priority)
+        (after.due.as_deref(), after.priority),
+        (Some("2026-11-20"), Priority::Low)
     );
     assert_eq!(
         core.get_task(plain, DAY.into()).unwrap().priority,

@@ -482,9 +482,8 @@ internal fun commitBlock(controller: AppController, block: CalendarBlock, newDat
         }
         CalendarKind.TASK -> {
             val t = controller.read(null) { getTask(block.id, controller.today) } ?: return
-            if (newDate != null && (t.milestoneId != null || t.repeat != null)) {
-                controller.message = if (t.milestoneId != null) "A milestone task follows its goal. Change it on the goal's page."
-                else "A repeating task can't move to one day. Open it to change it."
+            if (newDate != null && t.repeat != null) {
+                controller.message = "A repeating task can't move to one day. Open it to change it."
                 return
             }
             // A task with no start time keeps its length when it only changes day, so the time is

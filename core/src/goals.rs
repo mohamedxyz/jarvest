@@ -273,8 +273,10 @@ const GOAL_COLUMNS: &str = "id, title, notes, kind, category, period, period_tar
     unit, deadline, created_date, archived,
     (SELECT COALESCE(SUM(amount), 0) FROM entries e WHERE e.goal_id = goals.id),
     weekdays,
-    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id AND m.done_date IS NOT NULL),
-    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id),
+    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id AND m.done_date IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM tasks mt WHERE mt.milestone_id = m.id AND mt.deleted_date IS NOT NULL)),
+    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = goals.id
+        AND NOT EXISTS (SELECT 1 FROM tasks mt WHERE mt.milestone_id = m.id AND mt.deleted_date IS NOT NULL)),
     avoid, icon, sample";
 
 fn goal_from_row(row: &Row<'_>) -> rusqlite::Result<Goal> {
@@ -785,7 +787,9 @@ fn sync_target(
 
 pub fn list_milestones(conn: &Connection, goal_id: &str) -> Result<Vec<Milestone>, CoreError> {
     let mut stmt = conn.prepare(
-        "SELECT id, goal_id, title, done_date FROM milestones WHERE goal_id = ?1 ORDER BY position",
+        "SELECT id, goal_id, title, done_date FROM milestones m WHERE goal_id = ?1
+           AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.milestone_id = m.id AND t.deleted_date IS NOT NULL)
+         ORDER BY position",
     )?;
     let milestones = stmt
         .query_map(params![goal_id], |r| {
@@ -1016,7 +1020,9 @@ fn today_item(
 
     let next_milestone = conn
         .query_row(
-            "SELECT title FROM milestones WHERE goal_id = ?1 AND done_date IS NULL ORDER BY position LIMIT 1",
+            "SELECT title FROM milestones m WHERE goal_id = ?1 AND done_date IS NULL
+               AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.milestone_id = m.id AND t.deleted_date IS NOT NULL)
+             ORDER BY position LIMIT 1",
             params![goal.id],
             |r| r.get(0),
         )

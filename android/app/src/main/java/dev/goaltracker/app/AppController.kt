@@ -332,15 +332,15 @@ class AppController(private val app: GoalTrackerApp) {
     fun bulkTasks(before: List<Task>, edit: BulkEdit, verb: String) {
         val result = change { bulkUpdateTasks(before.map { it.id }, edit, today) } ?: return
         reportReward(result.reward)
-        // Milestone tasks are skipped by everything except Done, and the user is told.
+        // Milestone tasks take every change except moving to another goal; the user is told.
         val skipped = if (result.skippedMilestones > 0u) {
-            " ${countOf(result.skippedMilestones.toInt(), "milestone task")} skipped: change those on the goal's page."
+            " ${countOf(result.skippedMilestones.toInt(), "milestone")} kept with its goal."
         } else ""
         if (result.changed == 0u) {
             message = "Nothing changed.$skipped".trim()
             return
         }
-        val changed = before.filter { it.milestoneId == null || edit.done }
+        val changed = before.filter { it.milestoneId == null || !edit.changeGoal }
         // "{n}" in the verb marks where the count goes: "Moved {n} to today" reads "Moved 3 tasks to today."
         val count = countOf(result.changed.toInt(), "task")
         val sentence = if ("{n}" in verb) verb.replace("{n}", count) else "$verb $count"

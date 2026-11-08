@@ -380,6 +380,13 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.16.1",
+        listOf(
+            "Milestones in Tasks now work like any task: change dates and priority, archive and trash them, one at a time or several at once, and move them on the calendar.",
+            "Trashing a milestone hides it from its goal too; restore it within 30 days, or empty the trash to delete it.",
+        ),
+    ),
+    Release(
         "0.16.0",
         listOf(
             "A Guide in Settings: searchable articles on every part of Jarvest, with tips on using each one well.",

@@ -410,19 +410,8 @@ pub fn toggle_task(
 /// Moves a task to the trash. `restore_task` brings it back.
 pub fn delete_task(conn: &Connection, task_id: &str, today: &str) -> Result<(), CoreError> {
     parse_date(today)?;
-    let mirrored: bool = conn
-        .query_row(
-            "SELECT milestone_id IS NOT NULL FROM tasks WHERE id = ?1",
-            [task_id],
-            |r| r.get(0),
-        )
-        .optional()?
-        .unwrap_or(false);
-    if mirrored {
-        return Err(invalid(
-            "This task is a milestone. Remove it from its goal's page instead.",
-        ));
-    }
+    // A milestone's task can be trashed too: its milestone is hidden from the goal until the task
+    // is restored, and erased with it when the trash is emptied.
     let changed = conn.execute(
         "UPDATE tasks SET deleted_date = ?2 WHERE id = ?1 AND deleted_date IS NULL",
         params![task_id, today],
@@ -444,14 +433,42 @@ pub fn restore_task(conn: &Connection, task_id: &str) -> Result<(), CoreError> {
     Ok(())
 }
 
+/// Before trashed milestone tasks are erased for good, their milestones go too, with the
+/// milestone's reward target, the same as `goals::delete_milestone`. `filter` picks the tasks.
+/// Their tasks go with them (the cascade), so this returns how many tasks it removed.
+fn erase_milestones_of(
+    conn: &Connection,
+    filter: &str,
+    params: &[&dyn rusqlite::ToSql],
+) -> Result<u32, CoreError> {
+    let picked = format!(
+        "SELECT milestone_id FROM tasks WHERE milestone_id IS NOT NULL AND deleted_date IS NOT NULL AND {filter}"
+    );
+    conn.execute(
+        &format!(
+            "DELETE FROM target_completions
+             WHERE target_key IN (SELECT 'm:' || milestone_id FROM tasks
+                                  WHERE milestone_id IS NOT NULL AND deleted_date IS NOT NULL AND {filter})"
+        ),
+        params,
+    )?;
+    let erased = conn.execute(
+        &format!("DELETE FROM milestones WHERE id IN ({picked})"),
+        params,
+    )?;
+    Ok(erased as u32)
+}
+
 /// Removes tasks that have been in the trash for `TRASH_DAYS` or more. Returns how many.
 pub fn purge_trash(conn: &Connection, today: &str) -> Result<u32, CoreError> {
     let cutoff = parse_date(today)? - Days::new(TRASH_DAYS);
+    let cutoff_text = cutoff.to_string();
+    let erased = erase_milestones_of(conn, "deleted_date <= ?1", &[&cutoff_text])?;
     let removed = conn.execute(
         "DELETE FROM tasks WHERE deleted_date IS NOT NULL AND deleted_date <= ?1",
-        [cutoff.to_string()],
+        [cutoff_text],
     )?;
-    Ok(removed as u32)
+    Ok(erased + removed as u32)
 }
 
 pub fn list_trash(conn: &Connection, today: &str) -> Result<Vec<Task>, CoreError> {
@@ -535,7 +552,7 @@ pub fn due_tasks(conn: &Connection, today: &str) -> Result<Vec<Task>, CoreError>
 
 // Archive, bulk edit, tags, custom repeat
 
-/// A milestone's task can't be archived, trashed, moved or repeated by itself.
+/// A milestone's task can't move to another goal or repeat. It can be dated, archived and trashed.
 fn is_milestone_task(conn: &Connection, task_id: &str) -> Result<bool, CoreError> {
     Ok(conn
         .query_row(
@@ -550,11 +567,6 @@ fn is_milestone_task(conn: &Connection, task_id: &str) -> Result<bool, CoreError
 /// Hides a task in the archive. `unarchive_task` brings it back.
 pub fn archive_task(conn: &Connection, task_id: &str, today: &str) -> Result<(), CoreError> {
     parse_date(today)?;
-    if is_milestone_task(conn, task_id)? {
-        return Err(invalid(
-            "This task is a milestone. It stays with its goal's page.",
-        ));
-    }
     let changed = conn.execute(
         "UPDATE tasks SET archived_date = ?2
          WHERE id = ?1 AND archived_date IS NULL AND deleted_date IS NULL",
@@ -602,13 +614,13 @@ pub fn trash_archived_done(conn: &Connection, today: &str) -> Result<u32, CoreEr
 }
 
 /// Archives finished tasks that were done `after_days` or more days ago (0 means any
-/// finished task). Milestone tasks are never archived. Returns how many.
+/// finished task). Returns how many.
 pub fn auto_archive(conn: &Connection, after_days: u32, today: &str) -> Result<u32, CoreError> {
     let cutoff = parse_date(today)? - Days::new(u64::from(after_days));
     let changed = conn.execute(
         "UPDATE tasks SET archived_date = ?2
          WHERE done_date IS NOT NULL AND done_date <= ?1
-           AND archived_date IS NULL AND deleted_date IS NULL AND milestone_id IS NULL",
+           AND archived_date IS NULL AND deleted_date IS NULL",
         params![cutoff.to_string(), today],
     )?;
     Ok(changed as u32)
@@ -616,11 +628,12 @@ pub fn auto_archive(conn: &Connection, after_days: u32, today: &str) -> Result<u
 
 /// Removes one task from the trash for good.
 pub fn delete_task_forever(conn: &Connection, task_id: &str) -> Result<(), CoreError> {
+    let erased = erase_milestones_of(conn, "id = ?1", &[&task_id])?;
     let removed = conn.execute(
         "DELETE FROM tasks WHERE id = ?1 AND deleted_date IS NOT NULL",
         [task_id],
     )?;
-    if removed == 0 {
+    if erased == 0 && removed == 0 {
         return Err(invalid("Task not found in the trash"));
     }
     Ok(())
@@ -628,14 +641,16 @@ pub fn delete_task_forever(conn: &Connection, task_id: &str) -> Result<(), CoreE
 
 /// Removes everything in the trash for good. Returns how many tasks.
 pub fn empty_trash(conn: &Connection) -> Result<u32, CoreError> {
+    let erased = erase_milestones_of(conn, "1", &[])?;
     let removed = conn.execute("DELETE FROM tasks WHERE deleted_date IS NOT NULL", [])?;
-    Ok(removed as u32)
+    Ok(erased + removed as u32)
 }
 
 /// Applies one change to many tasks. Everything except "done" runs in a single
 /// transaction, so it happens for all of them or none. "Done" finishes each task
 /// through `toggle_task`, which has its own transaction because repeating tasks and
-/// milestones need extra steps. Milestone tasks are skipped by every change except done.
+/// milestones need extra steps. Milestone tasks take every change except moving to another
+/// goal; for that one they are skipped and counted.
 pub fn bulk_update(
     conn: &mut Connection,
     ids: &[String],
@@ -682,7 +697,7 @@ pub fn bulk_update(
         let Some((mirrored, old_due)) = row else {
             continue;
         };
-        if mirrored {
+        if mirrored && edit.change_goal {
             result.skipped_milestones += 1;
             continue;
         }
