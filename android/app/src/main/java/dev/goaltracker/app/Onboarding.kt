@@ -380,6 +380,13 @@ private class Release(val version: String, val notes: List<String>)
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
     Release(
+        "0.16.0",
+        listOf(
+            "A Guide in Settings: searchable articles on every part of Jarvest, with tips on using each one well.",
+            "A ? at the top of most screens opens that screen's article.",
+        ),
+    ),
+    Release(
         "0.15.0",
         listOf(
             "Three new looks that change more than colors. Retro pixel: pixel font, square windows with hard shadows, pixel art, block bars and falling pixel confetti.",

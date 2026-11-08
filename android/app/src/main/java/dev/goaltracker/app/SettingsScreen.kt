@@ -50,7 +50,7 @@ import java.io.IOException
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(controller: AppController) {
+fun SettingsScreen(controller: AppController, onOpenGuide: () -> Unit = {}) {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
     val enabled = remember(controller.version) { controller.read(true) { rewardsEnabled() } }
@@ -136,6 +136,17 @@ fun SettingsScreen(controller: AppController) {
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        SoftCard(Modifier.fillMaxWidth(), onClick = onOpenGuide, glow = true) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("📖 Guide", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "How every part of Jarvest works and how to use it well. The ? at the top of a screen opens its page.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
         SettingsGroup("Look and feel", "look") {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             SectionTitle("Appearance")

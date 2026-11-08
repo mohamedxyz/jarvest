@@ -238,6 +238,10 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                         }
                     },
                     actions = {
+                        // "?" opens the guide at this screen's article.
+                        guideArticleFor(route)?.let { id ->
+                            GuideButton(id) { push(if (it.isEmpty()) "guide" else "guide/$it") }
+                        }
                         if (isTab) {
                             val hero = remember(controller.version) { controller.read(null) { hero() } }
                             if (hero != null) LevelBadge(hero.level.toInt(), Modifier.padding(end = 4.dp), size = 38.dp)
@@ -415,7 +419,9 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                 route == "treats" -> TreatsScreen(controller, onOpenMonsters = { push("monsters") })
                 route == "monsters" -> MonstersScreen(controller, onOpen = { push("monster/$it") })
                 route.startsWith("monster/") -> MonsterDetailScreen(controller, route.removePrefix("monster/"), onClose = pop)
-                route == "settings" -> SettingsScreen(controller)
+                route == "settings" -> SettingsScreen(controller, onOpenGuide = { push("guide") })
+                route == "guide" -> GuideScreen(onOpen = { push("guide/$it") })
+                route.startsWith("guide/") -> GuideArticleScreen(route.removePrefix("guide/"), onOpen = { push("guide/$it") })
                 route.startsWith("edit/") ->
                     GoalEditorScreen(controller, goalId = route.removePrefix("edit/"), onDone = pop)
                 route.startsWith("goal/") -> GoalDetailScreen(
@@ -439,6 +445,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
 
 private fun titleFor(route: String, controller: AppController): String = when {
     route == "settings" -> "Settings"
+    route == "guide" || route.startsWith("guide/") -> "Guide"
     route == "stats" -> "Stats"
     route == "history" -> "History"
     route == "routines" -> "Routines"
