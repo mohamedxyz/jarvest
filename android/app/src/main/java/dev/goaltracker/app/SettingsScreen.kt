@@ -144,7 +144,7 @@ fun SettingsScreen(controller: AppController) {
                     FilterChip(
                         controller.themeMode == mode,
                         { controller.chooseTheme(mode) },
-                        label = { Text(mode.label) },
+                        label = { Text(mode.label, fontFamily = displayFont(mode.style())) },
                         leadingIcon = { ThemeSwatch(mode) },
                     )
                 }

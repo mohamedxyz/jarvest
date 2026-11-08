@@ -271,7 +271,7 @@ internal fun AppRoot(controller: AppController, startOnNewTask: Boolean = false,
                         NavigationBarItem(
                             selected = selected,
                             onClick = { if (!selected) selectTab(lastIn[tab.label]?.takeIf { it in tab.routes } ?: tab.home) },
-                            icon = { Icon(tab.icon, null, Modifier.graphicsLayer { scaleX = scale; scaleY = scale }) },
+                            icon = { StyledIcon(tabIcon(LocalStyle.current, tab.label, tab.icon), Modifier.graphicsLayer { scaleX = scale; scaleY = scale }) },
                             label = { Text(tab.label) },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,

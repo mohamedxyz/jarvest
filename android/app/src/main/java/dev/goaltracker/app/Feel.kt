@@ -63,6 +63,9 @@ object Feel {
     /** Set to true (for example by "Show intro again") to open the intro. */
     var introRequested by mutableStateOf(false)
 
+    /** The look's style, set by the theme. It picks the buzz and the pop. */
+    var style by mutableStateOf(Style.FANTASY)
+
     /** Bumped whenever a goal's target is met, so the big celebration plays once per event. */
     var celebration by mutableIntStateOf(0)
         private set
@@ -113,10 +116,27 @@ object Feel {
     /** Plays the buzz and the tone for [cue], each only if its Settings switch is on. */
     fun cue(view: View?, cue: Cue, force: Boolean = false) {
         if (haptics && view != null) {
-            val kind = when (cue) {
-                Cue.UNDO -> HapticFeedbackConstants.CLOCK_TICK
-                Cue.GOAL -> HapticFeedbackConstants.CONFIRM
-                else -> HapticFeedbackConstants.VIRTUAL_KEY
+            // Each look has its own touch: chunky keys (pixel), crisp clicks (neon), light ticks (clean).
+            val kind = when (style) {
+                Style.PIXEL -> when (cue) {
+                    Cue.UNDO -> HapticFeedbackConstants.CLOCK_TICK
+                    Cue.GOAL, Cue.TREAT -> HapticFeedbackConstants.LONG_PRESS
+                    else -> HapticFeedbackConstants.KEYBOARD_TAP
+                }
+                Style.NEON -> when (cue) {
+                    Cue.UNDO -> HapticFeedbackConstants.CLOCK_TICK
+                    Cue.GOAL, Cue.TREAT -> HapticFeedbackConstants.CONFIRM
+                    else -> HapticFeedbackConstants.CONTEXT_CLICK
+                }
+                Style.CLEAN -> when (cue) {
+                    Cue.GOAL, Cue.TREAT -> HapticFeedbackConstants.CONFIRM
+                    else -> HapticFeedbackConstants.CLOCK_TICK
+                }
+                Style.FANTASY -> when (cue) {
+                    Cue.UNDO -> HapticFeedbackConstants.CLOCK_TICK
+                    Cue.GOAL -> HapticFeedbackConstants.CONFIRM
+                    else -> HapticFeedbackConstants.VIRTUAL_KEY
+                }
             }
             view.performHapticFeedback(kind)
         }
@@ -286,8 +306,25 @@ fun Modifier.popWhen(on: Boolean): Modifier {
             return@LaunchedEffect
         }
         if (on && !Feel.reducedMotion(context)) {
-            scale.animateTo(1.35f, tween(80))
-            scale.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
+            when (Feel.style) {
+                // Jumps in steps, like a sprite.
+                Style.PIXEL -> for (step in listOf(1.3f, 1.15f, 1f)) {
+                    scale.snapTo(step)
+                    kotlinx.coroutines.delay(70)
+                }
+                Style.NEON -> {
+                    scale.animateTo(1.22f, tween(60))
+                    scale.animateTo(1f, tween(140))
+                }
+                Style.CLEAN -> {
+                    scale.animateTo(1.1f, tween(90))
+                    scale.animateTo(1f, tween(160))
+                }
+                Style.FANTASY -> {
+                    scale.animateTo(1.35f, tween(80))
+                    scale.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
+                }
+            }
         }
     }
     return scale(scale.value)
@@ -301,6 +338,11 @@ fun Modifier.popWhen(on: Boolean): Modifier {
 fun CelebrationBurst() {
     val context = LocalContext.current
     val trigger = Feel.celebration
+    val style = LocalStyle.current
+    if (style != Style.FANTASY) {
+        StyledCelebration(style, trigger)
+        return
+    }
     val scale = remember { Animatable(0.3f) }
     val alpha = remember { Animatable(0f) }
     LaunchedEffect(trigger) {

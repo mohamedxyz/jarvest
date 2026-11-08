@@ -12,7 +12,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -24,9 +23,12 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 private fun Art(size: Dp, modifier: Modifier, draw: DrawScope.() -> Unit) {
+    // Each look draws the same picture its own way: painted, pixelated, neon outlines or flat.
+    val style = LocalStyle.current
+    val light = MaterialTheme.colorScheme.primary
+    val tint = MaterialTheme.colorScheme.primary
     Canvas(modifier.size(size).clearAndSetSemantics {}) {
-        val unit = this.size.minDimension / 24f
-        withTransform({ scale(unit, unit, Offset.Zero) }) { draw() }
+        drawStyled(style, light, tint, draw)
     }
 }
 

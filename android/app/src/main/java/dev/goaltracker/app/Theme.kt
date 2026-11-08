@@ -16,6 +16,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.darkColorScheme
@@ -36,7 +39,7 @@ import androidx.core.view.WindowCompat
  */
 enum class ThemeMode(val label: String) {
     SYSTEM("System"), LIGHT("Parchment"), DARK("Dark fantasy"),
-    GROVE("Emerald grove"), BLOOD("Blood moon"), FROST("Frost"), ABYSS("Abyss"), DAWN("Dawn"),
+    PIXEL("Retro pixel"), NEON("Neon"), CLEAN("Clean"),
 }
 
 /** Whether the app is currently drawn dark, which can differ from the phone's setting. */
@@ -99,77 +102,126 @@ internal val LightColors = lightColorScheme(
     outlineVariant = Color(0xFFCFC2A6),
 )
 
-/** A dark look built on the dark-fantasy one: its own main color and surfaces, the same gold and ember. */
-private fun darkLook(
-    primary: Long, onPrimary: Long, primaryContainer: Long, onPrimaryContainer: Long,
-    surfaces: List<Long>, onSurface: Long, onSurfaceVariant: Long, outline: Long, outlineVariant: Long,
-): ColorScheme {
-    val (lowest, base, low, mid, high, highest) = surfaces.map { Color(it) }
-    return DarkColors.copy(
-        primary = Color(primary), onPrimary = Color(onPrimary),
-        primaryContainer = Color(primaryContainer), onPrimaryContainer = Color(onPrimaryContainer),
-        background = base, surface = base, surfaceVariant = highest,
-        surfaceContainerLowest = lowest, surfaceContainerLow = low, surfaceContainer = mid,
-        surfaceContainerHigh = high, surfaceContainerHighest = highest,
-        onSurface = Color(onSurface), onSurfaceVariant = Color(onSurfaceVariant),
-        outline = Color(outline), outlineVariant = Color(outlineVariant),
-    )
-}
-
-private operator fun <T> List<T>.component6() = this[5]
-
-/** Moss and emerald. */
-internal val GroveColors = darkLook(
-    0xFF7EDCA6, 0xFF003920, 0xFF1E5A3C, 0xFFC8F5DA,
-    listOf(0xFF060C09, 0xFF0A120E, 0xFF111C16, 0xFF16241C, 0xFF1D2D24, 0xFF25382D),
-    0xFFE2F2E8, 0xFFB3C9BB, 0xFF809A8A, 0xFF34483C,
+/** Retro pixel: a night-blue console with bright green, coin yellow and red. */
+internal val PixelColors = darkColorScheme(
+    primary = Color(0xFF5BE38A),
+    onPrimary = Color(0xFF00391A),
+    primaryContainer = Color(0xFF1F6B3F),
+    onPrimaryContainer = Color(0xFFC9FFD9),
+    secondary = Color(0xFFFFCD75),
+    onSecondary = Color(0xFF3A2600),
+    secondaryContainer = Color(0xFF6A4A00),
+    onSecondaryContainer = Color(0xFFFFE9C2),
+    tertiary = Color(0xFFFF8A65),
+    onTertiary = Color(0xFF4A1000),
+    tertiaryContainer = Color(0xFF8A2E14),
+    onTertiaryContainer = Color(0xFFFFDBD0),
+    error = Color(0xFFFF8A80),
+    background = Color(0xFF1A1C2C),
+    surface = Color(0xFF1A1C2C),
+    onSurface = Color(0xFFF4F4F4),
+    surfaceVariant = Color(0xFF333C57),
+    onSurfaceVariant = Color(0xFFB4C8D6),
+    surfaceContainerLowest = Color(0xFF12131F),
+    surfaceContainerLow = Color(0xFF22243A),
+    surfaceContainer = Color(0xFF292C45),
+    surfaceContainerHigh = Color(0xFF2F3550),
+    surfaceContainerHighest = Color(0xFF333C57),
+    outline = Color(0xFF8DA2B8),
+    outlineVariant = Color(0xFF566C86),
 )
 
-/** Deep crimson. */
-internal val BloodColors = darkLook(
-    0xFFFF99A4, 0xFF5C0016, 0xFF7E1A2C, 0xFFFFD9DD,
-    listOf(0xFF0D0507, 0xFF14090C, 0xFF1E0F13, 0xFF26141A, 0xFF301A21, 0xFF3B222A),
-    0xFFF6E3E6, 0xFFD4B8BE, 0xFFA3858C, 0xFF4E3038,
+/** Neon: near-black glass with cyan light, magenta rewards and amber danger. */
+internal val NeonColors = darkColorScheme(
+    primary = Color(0xFF00E5FF),
+    onPrimary = Color(0xFF00363D),
+    primaryContainer = Color(0xFF004F58),
+    onPrimaryContainer = Color(0xFFB3F7FF),
+    secondary = Color(0xFFFF6AD5),
+    onSecondary = Color(0xFF3D0033),
+    secondaryContainer = Color(0xFF5E0B50),
+    onSecondaryContainer = Color(0xFFFFD6F5),
+    tertiary = Color(0xFFFFB020),
+    onTertiary = Color(0xFF3D2600),
+    tertiaryContainer = Color(0xFF5C3A00),
+    onTertiaryContainer = Color(0xFFFFE2B0),
+    error = Color(0xFFFF6B81),
+    background = Color(0xFF05060B),
+    surface = Color(0xFF05060B),
+    onSurface = Color(0xFFE0F7FA),
+    surfaceVariant = Color(0xFF1B2338),
+    onSurfaceVariant = Color(0xFF9CC0CC),
+    surfaceContainerLowest = Color(0xFF020306),
+    surfaceContainerLow = Color(0xFF0B0E18),
+    surfaceContainer = Color(0xFF0F1320),
+    surfaceContainerHigh = Color(0xFF141A2B),
+    surfaceContainerHighest = Color(0xFF1B2338),
+    outline = Color(0xFF5E8794),
+    outlineVariant = Color(0xFF1F3540),
 )
 
-/** Ice blue and steel. */
-internal val FrostColors = darkLook(
-    0xFF8FD0FF, 0xFF00344F, 0xFF1B4E73, 0xFFCFE8FF,
-    listOf(0xFF05090D, 0xFF091017, 0xFF0F1A24, 0xFF14212D, 0xFF1B2A38, 0xFF233444),
-    0xFFE3EEF7, 0xFFB3C3D1, 0xFF7F92A3, 0xFF314253,
-)
-
-/** Dark fantasy on pure black, which saves battery on OLED screens. */
-internal val AbyssColors = darkLook(
-    0xFFB69CFF, 0xFF2A0F66, 0xFF47299E, 0xFFE6DCFF,
-    listOf(0xFF000000, 0xFF000000, 0xFF0B0914, 0xFF120F20, 0xFF1A162C, 0xFF241E3B),
-    0xFFEAE4FA, 0xFFC0B8D8, 0xFF8E86AD, 0xFF3A3360,
-)
-
-/** Rose on warm sand: a light look. */
-internal val DawnColors = LightColors.copy(
-    primary = Color(0xFF9C2F5A),
+/** Clean, light: plain greys and one calm blue. */
+internal val CleanLightColors = lightColorScheme(
+    primary = Color(0xFF2F5BD3),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFD9E3),
-    onPrimaryContainer = Color(0xFF3E0019),
-    background = Color(0xFFFFF4EE),
-    surface = Color(0xFFFFF4EE),
-    onSurface = Color(0xFF2E1F24),
-    surfaceVariant = Color(0xFFF0D8CD),
-    onSurfaceVariant = Color(0xFF5E4A50),
-    surfaceContainerLowest = Color(0xFFFFFBF8),
-    surfaceContainerLow = Color(0xFFFBEBE3),
-    surfaceContainer = Color(0xFFF6E2D8),
-    surfaceContainerHigh = Color(0xFFF0D8CD),
-    surfaceContainerHighest = Color(0xFFE9CEC2),
-    outline = Color(0xFF85707A),
-    outlineVariant = Color(0xFFD8BFB6),
+    primaryContainer = Color(0xFFDCE5FF),
+    onPrimaryContainer = Color(0xFF0A2366),
+    secondary = Color(0xFF7A5000),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFFFE6B8),
+    onSecondaryContainer = Color(0xFF2E1E00),
+    tertiary = Color(0xFFB3261E),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFFFDAD6),
+    onTertiaryContainer = Color(0xFF410002),
+    error = Color(0xFFB3261E),
+    background = Color(0xFFFAFAFB),
+    surface = Color(0xFFFAFAFB),
+    onSurface = Color(0xFF1B1B1F),
+    surfaceVariant = Color(0xFFE8E8EC),
+    onSurfaceVariant = Color(0xFF4A4A55),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF3F3F6),
+    surfaceContainer = Color(0xFFEEEEF1),
+    surfaceContainerHigh = Color(0xFFE8E8EC),
+    surfaceContainerHighest = Color(0xFFE2E2E7),
+    outline = Color(0xFF77777F),
+    outlineVariant = Color(0xFFD4D4DA),
 )
 
-/** Whether a look is dark. System follows the phone. */
+/** Clean, dark: the same calm look at night. */
+internal val CleanDarkColors = darkColorScheme(
+    primary = Color(0xFF9DB7FF),
+    onPrimary = Color(0xFF0A2366),
+    primaryContainer = Color(0xFF27407F),
+    onPrimaryContainer = Color(0xFFDCE5FF),
+    secondary = Color(0xFFF0C060),
+    onSecondary = Color(0xFF2E1E00),
+    secondaryContainer = Color(0xFF4A3500),
+    onSecondaryContainer = Color(0xFFFFE6B8),
+    tertiary = Color(0xFFFFB4AB),
+    onTertiary = Color(0xFF690005),
+    tertiaryContainer = Color(0xFF93000A),
+    onTertiaryContainer = Color(0xFFFFDAD6),
+    error = Color(0xFFFFB4AB),
+    background = Color(0xFF121214),
+    surface = Color(0xFF121214),
+    onSurface = Color(0xFFE6E6EA),
+    surfaceVariant = Color(0xFF2E2E34),
+    onSurfaceVariant = Color(0xFFB4B4BE),
+    surfaceContainerLowest = Color(0xFF0C0C0E),
+    surfaceContainerLow = Color(0xFF1A1A1D),
+    surfaceContainer = Color(0xFF1F1F23),
+    surfaceContainerHigh = Color(0xFF26262B),
+    surfaceContainerHighest = Color(0xFF2E2E34),
+    outline = Color(0xFF8A8A94),
+    outlineVariant = Color(0xFF3A3A42),
+)
+
+/** Whether a look is dark. System and Clean follow the phone. */
 internal fun ThemeMode.isDark(systemDark: Boolean) = when (this) {
-    ThemeMode.SYSTEM -> systemDark
-    ThemeMode.LIGHT, ThemeMode.DAWN -> false
+    ThemeMode.SYSTEM, ThemeMode.CLEAN -> systemDark
+    ThemeMode.LIGHT -> false
     else -> true
 }
 
@@ -178,11 +230,17 @@ internal fun ThemeMode.scheme(systemDark: Boolean): ColorScheme = when (this) {
     ThemeMode.SYSTEM -> if (systemDark) DarkColors else LightColors
     ThemeMode.LIGHT -> LightColors
     ThemeMode.DARK -> DarkColors
-    ThemeMode.GROVE -> GroveColors
-    ThemeMode.BLOOD -> BloodColors
-    ThemeMode.FROST -> FrostColors
-    ThemeMode.ABYSS -> AbyssColors
-    ThemeMode.DAWN -> DawnColors
+    ThemeMode.PIXEL -> PixelColors
+    ThemeMode.NEON -> NeonColors
+    ThemeMode.CLEAN -> if (systemDark) CleanDarkColors else CleanLightColors
+}
+
+/** The style a look draws in: shapes, fonts, art, bars and effects. */
+internal fun ThemeMode.style(): Style = when (this) {
+    ThemeMode.PIXEL -> Style.PIXEL
+    ThemeMode.NEON -> Style.NEON
+    ThemeMode.CLEAN -> Style.CLEAN
+    else -> Style.FANTASY
 }
 
 /** The colors of the look in use, for the heatmap. */
@@ -197,6 +255,8 @@ fun GoalTrackerTheme(
     val systemDark = isSystemInDarkTheme()
     val dark = mode.isDark(systemDark)
     val scheme = mode.scheme(systemDark)
+    val style = mode.style()
+    SideEffect { Feel.style = style }
     // Status bar icons must contrast with the chosen theme, not the phone's.
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -210,11 +270,11 @@ fun GoalTrackerTheme(
     }
     val context = LocalContext.current
     val motion = Feel.motion && !Feel.reducedMotion(context)
-    CompositionLocalProvider(LocalDarkTheme provides dark, LocalScheme provides scheme, LocalMotion provides motion) {
+    CompositionLocalProvider(LocalDarkTheme provides dark, LocalScheme provides scheme, LocalMotion provides motion, LocalStyle provides style) {
         MaterialTheme(
             colorScheme = scheme,
-            shapes = SoftShapes,
-            typography = SoftTypography,
+            shapes = shapesFor(style),
+            typography = typographyFor(style),
             content = content,
         )
     }
@@ -280,12 +340,34 @@ fun SoftCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scheme = MaterialTheme.colorScheme
-    val border = if (glow) BorderStroke(1.5.dp, scheme.secondary.copy(alpha = 0.7f))
-    else BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.7f))
+    val style = LocalStyle.current
+    val shape = cardShape(style)
+    val border = when (style) {
+        Style.FANTASY -> if (glow) BorderStroke(1.5.dp, scheme.secondary.copy(alpha = 0.7f))
+        else BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.7f))
+        // Chunky outline, like a game window.
+        Style.PIXEL -> BorderStroke(2.dp, if (glow) scheme.secondary else scheme.outlineVariant)
+        // A thin lit edge.
+        Style.NEON -> BorderStroke(1.dp, (if (glow) scheme.secondary else scheme.primary).copy(alpha = if (glow) 0.9f else 0.45f))
+        // No outline unless it matters.
+        Style.CLEAN -> if (glow) BorderStroke(1.dp, scheme.secondary.copy(alpha = 0.6f)) else null
+    }
+    val shadow = if (style == Style.PIXEL) scheme.surfaceContainerLowest else Color.Unspecified
+    val glowColor = if (glow) scheme.secondary else scheme.primary
+    val styled = when (style) {
+        // A hard drop shadow, offset down and right, with no blur.
+        Style.PIXEL -> modifier.drawBehind {
+            val step = 4.dp.toPx()
+            drawRect(shadow, Offset(step, step), size)
+        }
+        // A soft colored light around the panel.
+        Style.NEON -> modifier.shadow(10.dp, shape, ambientColor = glowColor, spotColor = glowColor)
+        else -> modifier
+    }
     if (onClick != null) {
-        Card(onClick = onClick, modifier = modifier, shape = TabletShape, colors = colors, border = border, content = content)
+        Card(onClick = onClick, modifier = styled, shape = shape, colors = colors, border = border, content = content)
     } else {
-        Card(modifier = modifier, shape = TabletShape, colors = colors, border = border, content = content)
+        Card(modifier = styled, shape = shape, colors = colors, border = border, content = content)
     }
 }
 

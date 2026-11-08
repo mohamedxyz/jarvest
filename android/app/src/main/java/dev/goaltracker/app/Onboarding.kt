@@ -379,6 +379,15 @@ private class Release(val version: String, val notes: List<String>)
 
 /** Newest first. Add one entry per release. */
 private val changelog = listOf(
+    Release(
+        "0.15.0",
+        listOf(
+            "Three new looks that change more than colors. Retro pixel: pixel font, square windows with hard shadows, pixel art, block bars and falling pixel confetti.",
+            "Neon: glowing chamfered panels, Orbitron font, art drawn as lit outlines, gauge bars and rings of light.",
+            "Clean: plain cards, the system font, flat one-color art, thin bars and a quiet check. It follows the phone's light or dark setting.",
+            "Each look has its own tab icons and its own buzz. The five color-only looks from 0.14.0 are gone; if you used one, you are back on Dark fantasy.",
+        ),
+    ),
     Release("0.14.3", listOf("Milestones follow their goal everywhere: an archived or deleted goal's milestones leave the calendar too.")),
     Release("0.14.2", listOf("An archived goal's milestones no longer show in Tasks. They come back when the goal is restored.")),
     Release("0.14.1", listOf("Swipe a message at the bottom left or right to close it.")),
