@@ -3,7 +3,15 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#F2C14E" android:pathData="M54.0,33.0 L72.0,39.0 L72.0,54.0 C72.0,65.0 64.0,72.0 54.0,75.6 C44.0,72.0 36.0,65.0 36.0,54.0 L36.0,39.0 Z" />
-    <path android:fillColor="#1C1733" android:pathData="M54.0,38.0 L67.0,42.6 L67.0,54.0 C67.0,62.0 61.6,67.6 54.0,70.6 C46.4,67.6 41.0,62.0 41.0,54.0 L41.0,42.6 Z" />
-    <path android:fillColor="#F2C14E" android:pathData="M54.0,45.0 L56.8,51.2 L63.0,54.0 L56.8,56.8 L54.0,63.0 L51.2,56.8 L45.0,54.0 L51.2,51.2 Z" />
+    <!-- A white check mark inside a ring: the same shape as a ticked task. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:pathData="M54,30 A24,24 0 1,1 53.99,30 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M43,55 L51,63 L66,46" />
 </vector>

@@ -1,7 +1,5 @@
 <resources>
-    <style name="Theme.GoalTracker" parent="android:Theme.Material.NoActionBar" />
-    <style name="Theme.GoalTracker.Translucent" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowIsTranslucent">true</item>
+    <style name="Theme.Jarvest" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
     </style>
 </resources>

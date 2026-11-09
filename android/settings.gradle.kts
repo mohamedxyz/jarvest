@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GoalTracker"
+rootProject.name = "Jarvest"
 include(":app")

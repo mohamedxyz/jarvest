@@ -1,6 +1,6 @@
 name: CI
 
-# Checks every push and pull request, so a problem shows up before a release tag does.
+# Checks every push and pull request, so a problem shows up before a release does.
 on:
   push:
     branches: [main]
@@ -12,7 +12,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -23,47 +23,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Install the Rust toolchain
-        run: |
-          rustup toolchain install
-          rustup show
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cargo/bin/cargo-ndk
-          key: cargo-${{ runner.os }}-${{ hashFiles('core/Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: core
-          cache-targets: true
-
-      - name: Rust formatting
-        working-directory: core
-        run: cargo fmt --check
-
-      - name: Rust lints
-        working-directory: core
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Rust tests
-        working-directory: core
-        run: cargo test
-
-      - name: Install cargo-ndk
-        run: command -v cargo-ndk || cargo install cargo-ndk --locked
-
-      - name: Install the Android NDK
-        run: |
-          ndk="$(sed -n 's/.*ndkVersion = "\(.*\)".*/\1/p' android/app/build.gradle.kts)"
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk"
-
       # Debug builds need no signing key, so this runs for pull requests from forks too.
-      - name: Android unit tests and debug build
+      - name: Unit tests and debug build
         working-directory: android
-        run: ./gradlew testDebugUnitTest assembleDebug --no-daemon -Parm64Only=true
+        run: ./gradlew testDebugUnitTest assembleDebug --no-daemon

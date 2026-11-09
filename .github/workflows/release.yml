@@ -49,38 +49,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Install the Rust toolchain
-        run: |
-          rustup toolchain install
-          rustup show
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cargo/bin/cargo-ndk
-          key: cargo-${{ runner.os }}-${{ hashFiles('core/Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
-
-      # Keeps the compiled Rust dependencies between runs, which is most of the build time.
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: core
-          cache-targets: true
-
-      - name: Install cargo-ndk
-        run: command -v cargo-ndk || cargo install cargo-ndk --locked
-
-      - name: Install the Android NDK
-        run: |
-          ndk="$(sed -n 's/.*ndkVersion = "\(.*\)".*/\1/p' android/app/build.gradle.kts)"
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk"
-
-      - name: Run the Rust tests
-        working-directory: core
-        run: cargo test
+      - name: Run the unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon
 
       - name: Restore the signing key
         env:
@@ -98,7 +69,7 @@ jobs:
 
       - name: Build the release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon -Parm64Only=true
+        run: ./gradlew assembleRelease --no-daemon
 
       - name: Work out the release tag
         id: tag

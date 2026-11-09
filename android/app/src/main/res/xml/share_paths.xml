@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <!-- Only this folder can be shared. Files here are made right before sharing and deleted on the next start. -->
-    <cache-path name="share" path="share/" />
-</paths>

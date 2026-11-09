@@ -1,183 +1,28 @@
 # Jarvest
 
-A personal goals and habits app for Android. The rules, statistics, rewards, and
-storage are written in Rust, and the screens are written in Kotlin with Jetpack
-Compose. All data stays on the phone.
+A simple checklist for Android, in the style of Apple's Reminders.
 
-See [PLAN.md](PLAN.md) for the design and the exact rules.
+- Add tasks. Tap a task to rename it, and add subtasks under it.
+- Tick a task with the ring. A task with subtasks finishes by itself when its last subtask is ticked.
+- Long press a task to select it, then select more and tap Delete. Undo is offered.
+- Settings: delete finished tasks automatically (after 1, 7 or 30 days), and export or import your tasks as a file.
 
-## Features
+Everything stays on the phone. It follows the phone's light or dark setting.
 
-- **Three goal types:** habits (such as 3 times a week, or only on chosen weekdays),
-  numeric goals (such as 5 km a day or 300 pages in total), and one-off yes/no goals
-- **Missed a day?** Log past days, skip a day, or pause a goal without losing the streak
-- **Tasks:** a separate Tasks tab for one-off to-dos with due dates, priority, a tag, notes,
-  a checklist, and repeating. Type `Essay tomorrow !high #uni` to fill in the date, priority,
-  and tag. A task can be linked to a goal and shows on that goal's page with its progress. Deleted
-  tasks wait in the trash for 30 days, and tasks never affect rewards or stats. Every milestone also
-  shows up in Tasks and stays in step with it: ticking either one ticks both (and can win a treat)
-- **Clearer screens:** tap a goal on Today for a details sheet, "?" buttons explain terms such as
-  skip and pause, and short tips appear once (Settings > Appearance > Show tips again)
-- **Organizing:** categories, deadlines, ordered milestones, and an archive
-- **Today screen and home screen widgets** for logging in one tap
-- **Stats:** heatmap, line charts, weekly and monthly summaries, best and worst weekdays,
-  category comparison, completion rates, and streak history
-- **Reward jar:** add your own treats, draw them at random when you hit targets, and earn badges.
-  A countdown shows how close the guaranteed treat is, and every target tells you if it won one
-- **Advancing or slipping:** Stats opens with a plain verdict (Advancing, Steady, or Slipping) with
-  the numbers behind it, trend arrows per goal and per week, and the same verdict on the streaks widget
-- **Reminders:** an optional daily summary of what is still due, plus an optional time
-  per goal. A reminder stays silent if the goal is already done, skipped, or off today.
-  Reminders use exact alarms when the phone allows them. Otherwise they can arrive a few minutes late
-- **Counter:** numeric goals have `-` and `+` buttons and a Submit button, so they work
-  as a tally counter. Submit logs the count as one entry
-- **Calendar:** events, tasks and goals hour by hour, with a month overview and drag to move
-- **Focus timer:** sessions for a task or goal, with a countdown notification and history
-- **Levels and bosses:** a day score, XP and hero levels, a weekly boss, custom monsters, and a daily quest
-- **Insights:** a history calendar, records, and a look back at each week or month
-- **Planning aids:** holiday mode pauses every goal for chosen days, private day notes with a mood, a weekly review that picks up to three focus items, and routines such as a morning routine
-- **Also:** search and filter, reorder goals, quick-start templates, a dark-fantasy look
-  (or parchment), a streaks widget, and CSV export
-- **Backup:** everything saves to a single SQLite file that you can restore later. Settings shows
-  when you last saved one, and Today nudges you when it has been a week
+## Build
 
-## Project layout
+You need Java 21 and the Android SDK.
 
-| Path | What it is |
-|---|---|
-| `core/` | The Rust library. Start with `src/lib.rs`, which lists everything the app can call. |
-| `core/src/sql/` | The database structure |
-| `android/app/src/main/java/dev/goaltracker/app/` | The Kotlin screens and widget |
-| `android/app/build.gradle.kts` | The Android build, including the steps that compile the Rust code |
-| `scripts/` | Toolchain setup and signing key creation |
-
-Kotlin calls Rust through code that UniFFI generates during the build. You never
-edit that code. When you add a `#[uniffi::export]` method in Rust, it becomes
-available in Kotlin after the next build.
-
-## First-time setup
-
-You need Linux, Android Studio or the Android SDK command-line tools, and Java.
-
-```bash
-scripts/setup-toolchain.sh
 ```
-
-This installs the pinned Rust version, Android's Rust targets, `cargo-ndk`, and
-the Android NDK. It doesn't need `sudo` or change your shell config.
-
-## Run the tests
-
-The rules can be tested on your computer without a phone:
-
-```bash
-cd core
-~/.cargo/bin/cargo test
-```
-
-## Run the app on your phone
-
-**1. Turn on developer options (once).** Open **Settings > About phone** and tap
-**Build number** seven times. The exact menu names vary between phone brands.
-
-**2. Turn on USB debugging (once).** In **Settings > Developer options**, turn on
-**USB debugging**.
-
-**3. Connect your phone with USB.** Approve the prompt on the phone, then check
-that it's listed as `device`:
-
-```bash
-adb devices
-```
-
-If it's listed as `unauthorized`, look for the prompt on your phone. If it's listed
-with `no permissions`, your computer needs Android udev rules. On Arch, install the
-`android-udev` package, then reconnect the phone.
-
-**4. Build and install:**
-
-```bash
 cd android
-./gradlew installDebug
+./gradlew testDebugUnitTest assembleDebug
+./gradlew installDebug        # on a connected phone
 ```
 
-The first build compiles SQLite and all the Rust code, so it takes a few minutes.
-Jarvest then appears in your app list.
+## Release
 
-To add the widget, touch and hold your home screen, choose **Widgets**, and find
-**Jarvest**.
+1. Create a signing key once with `scripts/create-keystore.sh`, and add the `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` secrets to the GitHub repository.
+2. Raise `versionCode` and `versionName` in `android/app/build.gradle.kts`.
+3. Run the Release workflow from the Actions tab. It publishes `jarvest-v<version>.apk`.
 
-## Share the app with testers
-
-**1. Create your signing key (once):**
-
-```bash
-scripts/create-keystore.sh
-```
-
-This repository's working copy already has a key if `android/release.keystore`
-exists, and the script won't replace it.
-
-> **Back up `android/release.keystore` and `android/keystore.properties` somewhere
-> private.** Android only installs an update if it's signed with the same key. If
-> you lose the key, testers must uninstall the app, which deletes their data unless
-> they saved a backup. Never share these files or commit them. Git ignores them.
-
-**2. Build the APK:**
-
-```bash
-cd android
-./gradlew assembleRelease
-```
-
-**3. Send this file to your testers:**
-`android/app/build/outputs/apk/release/app-release.apk`
-
-**4. Testers install it** by opening the file on their phone. Android asks them to
-allow installs from that source the first time. It runs on Android 8 or newer, on
-64-bit phones.
-
-**To build releases on GitHub,** add three repository secrets under **Settings >
-Secrets and variables > Actions**: `ANDROID_KEYSTORE_BASE64` (the output of
-`base64 -w0 android/release.keystore`), `ANDROID_KEYSTORE_PASSWORD` (the
-`storePassword` line in `android/keystore.properties`), and optionally
-`ANDROID_KEY_ALIAS` (default `goaltracker`). Then push a tag that matches
-`versionName`, such as `git tag v0.2.0 && git push origin v0.2.0`. The workflow runs
-the tests, builds the signed APK, and attaches it to a GitHub release.
-
-**To ship an update,** increase `versionCode` and `versionName` in
-`android/app/build.gradle.kts`, then build again.
-
-## Device checklist before a release
-
-The Rust tests cannot see the screens, so run this on a real phone (or an emulator) before every release. Install the release APK over the previous version, never on a clean phone only, so the database upgrade is tested too.
-
-1. Open the app. Nothing crashes, and the "What's new" entry for this version is there.
-2. Visit every tab: Today, Plan (Tasks and Calendar), Quests (Goals and Habits), Hero (Stats, Rewards, History, Routines, Holiday, Settings).
-3. Create a goal, a habit, a task with a due day and a start time, an event, and a monster. Finish the task and the habit. The day score, the level card and the weekly boss move.
-4. Calendar: the task and the event show at the right hour. Tap an empty hour to add one, press and hold a block to move it, drag its bottom edge to resize, drop it on another day in the strip, drag an Anytime chip onto the day, pinch to zoom, and check Undo restores each change.
-5. Delete a goal and a task, open Trash, restore one, empty the trash. A message says what happened.
-6. Add the Today widget and tick something from it. Add a reminder two minutes ahead and check it arrives.
-7. Settings: the version number is right, a test notification arrives, "Back up now" makes a file, restore it.
-8. Today shows the daily quest card. History shows Insights. Add the Score and Agenda widgets. Turn on quiet hours and tap Snooze on a reminder. Export tasks to CSV and import them back.
-9. Start and end a holiday, save a day note, make a routine and tick a step, share text from another app into Tasks.
-10. Turn the phone sideways and use the big text setting once. Nothing is cut off.
-
-## Back up and restore your data
-
-In the app, open **Settings** using the gear icon.
-
-- **Save backup** writes one `.sqlite` file to a location you choose.
-- **Share backup** sends a fresh backup file to another app. 
-- **Restore from backup** replaces all current data with that file. A file that
-  isn't a valid backup is rejected, and nothing changes.
-
-Uninstalling the app deletes its data, so save a backup first. Android's automatic
-cloud backup and device-to-device transfer are deliberately off, so a backup file
-is also how you move to a new phone.
-
-## Change the database
-
-Never edit a released file in `core/src/sql/`, because testers' phones have already
-applied it. Add a new numbered file instead, then add it to the `MIGRATIONS` list in
-`core/src/db.rs`. Existing data and older backups are upgraded automatically.
+Keep the same signing key for every release, or phones can't update the app.
